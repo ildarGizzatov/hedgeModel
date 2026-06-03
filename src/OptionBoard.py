@@ -5,9 +5,9 @@ import os
 
 BYBIT_API = "https://api.bybit.com/v5/market/tickers"
 
-# Мы всегда будем запускать скрипт из корня проекта (hedgeModel/).
-# Поэтому путь к файлу должен быть относительно корня.
-EXCEL_OUT = "sol_options_chain.xlsx" 
+# Путь к файлу относительно корня проекта.
+# Сохраняем в папку excel/ вместо корня.
+EXCEL_OUT = "excel/sol_options_chain.xlsx"
 
 BASE_COIN = "SOL"
 SHEET_NAME = "OptionBoard"
@@ -18,7 +18,7 @@ def fetch_option_chain(base_coin):
         "category": "option",
         "baseCoin": base_coin
     }
-    r = requests.get(BYBIT_API, params=params, timeout=30)
+    r = requests.get(BYBIT_API, params=params, timeout=60)
     r.raise_for_status()
     data = r.json()
 
@@ -29,7 +29,7 @@ def fetch_option_chain(base_coin):
 
 
 def fetch_spot_price(base_coin):
-    r = requests.get(BYBIT_API, params={"category": "spot"}, timeout=30)
+    r = requests.get(BYBIT_API, params={"category": "spot"}, timeout=60)
     r.raise_for_status()
     data = r.json()
 
@@ -133,6 +133,52 @@ def save_to_excel(rows, filename):
     print(f"Option board saved to sheet '{SHEET_NAME}' in {os.path.abspath(filename)}")
 
 
+def update_positions_csv(excel_file, csv_path="data/open_positions.csv"):
+    """Обновляет current_price, total_value, pnl в open_positions.csv из Excel"""
+    excel_path = os.path.abspath(excel_file)
+    if not os.path.exists(excel_path):
+        print(f"[positions] {excel_path} не найден")
+        return
+
+    df_excel = pd.read_excel(excel_path, sheet_name=SHEET_NAME)
+    if df_excel.empty or 'spot_price' not in df_excel.columns:
+        print("[positions] нет spot_price в Excel")
+        return
+
+    spot_price = float(df_excel.iloc[0]['spot_price'])
+
+    csv_target = os.path.abspath(csv_path)
+    if not os.path.exists(csv_target):
+        print(f"[positions] {csv_target} не найден")
+        return
+
+    df = pd.read_csv(csv_target)
+    updated = 0
+    for i, row in df.iterrows():
+        symbol_pos = str(row.get('symbol', '')).strip().upper()
+        if not symbol_pos:
+            continue
+        if BASE_COIN in symbol_pos:
+            qty = float(row.get('qty', 0))
+            if qty <= 0:
+                continue
+            old_price = float(row.get('current_price', 0))
+            total_cost = float(row.get('total_cost', 0))
+            df.at[i, 'current_price'] = round(spot_price, 2)
+            df.at[i, 'total_value'] = round(qty * spot_price, 2)
+            df.at[i, 'pnl'] = round(qty * spot_price - total_cost, 4)
+            df.at[i, 'updated'] = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+            if old_price != spot_price:
+                print(f"[positions] {symbol_pos}: {old_price} -> {spot_price}")
+            updated += 1
+
+    if updated > 0:
+        df.to_csv(csv_target, index=False)
+        print(f"[positions] {updated} позиций обновлено, current_price = {spot_price}")
+    else:
+        print(f"[positions] совпадений по {BASE_COIN} не найдено")
+
+
 if __name__ == "__main__":
     try:
         chain = fetch_option_chain(BASE_COIN)
@@ -143,6 +189,7 @@ if __name__ == "__main__":
             print("No options found after filtering")
         else:
             save_to_excel(parsed, EXCEL_OUT)
+        update_positions_csv(EXCEL_OUT)
 
     except Exception as e:
         print("Error:", e)
