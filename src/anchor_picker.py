@@ -11,15 +11,24 @@ anchor_picker.py — подбор Anchor Layer (Core + Tail).
   Шаг 4: Подбор (n1, n2) — DeltaRatio(-20%) >= 80%, Core <= 60% бюджета,
           минимизация отклонения от 100%
   Шаг 5: Вывод рекомендаций
+
+Читает позицию из БД, chain из Bybit API.
 """
 
 import math
 import sys
-from datetime import datetime
+from datetime import datetime, date
 from pathlib import Path
 
-import pandas as pd
 import tomllib
+
+# Add project to path
+PROJECT_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_DIR))
+
+from src.db import get_position
+from src.bybit_api import fetch_option_chain, fetch_spot_price
+from src.chain_parser import parse_option, calc_dte
 
 
 # ============================================================
@@ -64,12 +73,12 @@ def bs_delta_put(S, K, T, sigma):
 
 
 # ============================================================
-# CONFIG — JSON
+# CONFIG
 # ============================================================
 
 def load_config():
     """Load config.toml."""
-    cfg_path = Path(__file__).resolve().parent.parent / "config.toml"
+    cfg_path = PROJECT_DIR / "config.toml"
     if not cfg_path.exists():
         print(f"⚠️ {cfg_path.name} не найден — запустите gen_config.py")
         return {}
@@ -89,41 +98,23 @@ def layer_pct(config, name):
 
 
 # ============================================================
-# DATA
+# DATA — ПОЗИЦИЯ ИЗ БД
 # ============================================================
 
 def load_positions():
-    """Load SOL position from data/open_positions.csv.
+    """Load SOL position from БД.
     Returns (qty, avg_price) or None on error.
     """
-    p = Path(__file__).resolve().parent.parent / "data" / "open_positions.csv"
-
-    if not p.exists():
-        print(f"⚠️ {p.name} не найден")
+    pos = get_position("SOL")
+    if not pos:
+        print(f"⚠️ Позиция SOL не найдена в БД")
         return None
 
-    try:
-        df = pd.read_csv(p)
-    except Exception as e:
-        print(f"⚠️ Не удалось прочитать {p.name}: {e}")
-        return None
-
-    required = {"symbol", "qty", "avg_price"}
-    if not required.issubset(df.columns):
-        missing = required - set(df.columns)
-        print(f"⚠️ В {p.name} нет колонок: {missing}")
-        return None
-
-    sol = df[df["symbol"].str.upper().str.startswith("SOL")]
-    if sol.empty:
-        print(f"⚠️ В {p.name} нет позиции SOL")
-        return None
-
-    qty = float(sol.iloc[0]["qty"])
-    avg_price = float(sol.iloc[0]["avg_price"])
+    qty = float(pos["qty"])
+    avg_price = float(pos["avg_price"])
 
     if qty <= 0:
-        print(f"⚠️ {p.name}: qty={qty} (нужно > 0)")
+        print(f"⚠️ Позиция SOL: qty={qty} (нужно > 0)")
         return None
 
     return qty, avg_price
@@ -154,16 +145,28 @@ def main():
     # Целевой уровень (просадка от avg-цены)
     s_target = avg_price * (1 - target_dd_pct)
 
-    # Спот из Excel
-    chain_path = Path(__file__).resolve().parent.parent / "excel" / "sol_options_chain.xlsx"
-    if not chain_path.exists():
-        print(f"⚠️ Файл {chain_path} не найден")
-        return
-    chain = pd.read_excel(chain_path, sheet_name="OptionBoard")
-    spot = chain["spot_price"].iloc[0] if "spot_price" in chain.columns else 0
+    # Спот и чейн из Bybit API
+    print("\n[0/5] Загрузка данных с Bybit API...")
+    spot = fetch_spot_price("SOL")
     if spot <= 0:
-        print("⚠️ Не удалось получить spot-цену из Excel")
+        print("⚠️ Не удалось получить spot-цену с Bybit")
         return
+    print(f"   Spot SOL: ${spot:.2f}")
+
+    chain_raw = fetch_option_chain("SOL")
+    if not chain_raw:
+        print("⚠️ Не удалось получить option chain с Bybit")
+        return
+
+    chain = []
+    for ticker in chain_raw:
+        parsed = parse_option(ticker)
+        if parsed is None:
+            continue
+        parsed["dte"] = calc_dte(parsed["expiry_str"])
+        chain.append(parsed)
+
+    print(f"   Получено опционов: {len(chain)}")
 
     print("=" * 70)
     print("ANCHOR LAYER SELECTION (T006)")
@@ -180,11 +183,6 @@ def main():
     # ============================================================
     # ШАГ 1: Фильтрация кандидатов
     # ============================================================
-    required_cols = {"type", "dte", "strike", "delta", "iv", "mark_price"}
-    if not required_cols.issubset(chain.columns):
-        missing = required_cols - set(chain.columns)
-        print(f"⚠️ В Excel нет колонок: {missing}")
-        return
 
     # --- Anchor filter params (все — строго из конфига) ---
     af = config.get("anchor_filter")
@@ -208,34 +206,32 @@ def main():
     if min_dte is None:
         return
 
-
-
-    puts = chain[chain["type"] == "PUT"].copy()
+    # Фильтр PUT-опционов
+    puts = [o for o in chain if o["type"] == "PUT"]
     total_puts = len(puts)
     print(f"\n  PUT-опционов всего: {total_puts}")
 
     # DTE >= min_dte
-    puts = puts[puts["dte"] >= min_dte]
+    puts = [o for o in puts if o["dte"] >= min_dte]
     print(f"  DTE >= {min_dte}:             {len(puts)} (убрано {total_puts - len(puts)})")
 
     # Distance от средней цены покупки: >= dist_min %
-    puts["dist"] = abs(avg_price - puts["strike"]) / avg_price * 100
-    puts = puts[puts["dist"] >= dist_min]
+    for o in puts:
+        o["dist"] = abs(avg_price - o["strike"]) / avg_price * 100
+    puts = [o for o in puts if o["dist"] >= dist_min]
     print(f"  dist >= {dist_min}%:            {len(puts)} (убрано {total_puts - len(puts)})")
 
     # Максимальная delta (верхняя граница для OTM PUT)
-    puts = puts[abs(puts["delta"]) <= max_delta]
+    puts = [o for o in puts if abs(o["delta"]) <= max_delta]
     print(f"  |Delta| <= {max_delta}:         {len(puts)} (убрано {total_puts - len(puts)})")
 
     # Антипаттерн: |Delta| < min_delta — слишком дешёвые
-    puts = puts[abs(puts["delta"]) >= min_delta]
+    puts = [o for o in puts if abs(o["delta"]) >= min_delta]
     print(f"  |Delta| >= {min_delta}:       {len(puts)} (убрано {total_puts - len(puts)})")
 
+    puts = sorted(puts, key=lambda o: o["strike"])
 
-
-    puts = puts.sort_values("strike")
-
-    if puts.empty:
+    if not puts:
         print("⚠️ Нет Put-опционов для анализа после фильтрации")
         return
 
@@ -247,7 +243,7 @@ def main():
     # Acceleration = E(-35%) - E(-20%)
 
     results = []
-    for _, c in puts.iterrows():
+    for c in puts:
         K = c["strike"]
         T = c["dte"] / 365.0
         sigma = c["iv"]
@@ -291,14 +287,9 @@ def main():
     # ============================================================
 
     # Core: страйк >= S_target (ближе к ATM), max E20
-    # S_target = AvgBuy * 0.80 — Core должен быть на уровне или выше целевой просадки
     core_range = [r for r in results if r["strike"] >= s_target]
 
     if not core_range:
-        # Fallback: max E20 среди всех
-        core_range = results[:]
-    if not core_range:
-        # Ещё fallback: max E20 среди всех
         core_range = results[:]
 
     k1 = max(core_range, key=lambda r: r["E20"])
@@ -309,7 +300,6 @@ def main():
                   and r["strike"] < k1["strike"]]
 
     if not tail_range:
-        # Fallback: max accel среди всех кроме K1
         tail_range = [r for r in results if r["strike"] != k1["strike"]]
 
     k2 = max(tail_range, key=lambda r: r["accel"])
@@ -326,22 +316,16 @@ def main():
     # ============================================================
 
     # Delta-профиль Core и Tail на уровнях падения
-    def delta_at_level(r, level_pct, S_target):
-        """|put_delta| на уровне падения от S_target."""
-        S = avg_price * (1 - level_pct)
-        return abs(bs_delta_put(S, r["strike"], r["T"], r["IV"]))
+    S_level_20 = avg_price * 0.80
+    d1_at_20 = abs(bs_delta_put(S_level_20, k1["strike"], k1["T"], k1["IV"]))
+    d2_at_20 = abs(bs_delta_put(S_level_20, k2["strike"], k2["T"], k2["IV"]))
 
     # --- Anchor budget split (из конфига) ---
     afb = config.get("anchor_budget_split", {})
     core_pct = afb.get("core_pct", 60) / 100
     tail_pct = afb.get("tail_pct", 40) / 100
 
-    # ============================================================
-    # ШАГ 4: Коррекция бюджета по дистанции
-    # ============================================================
-    # dist >= 15% → покупаем на полный бюджет
-    # dist < 15% → опцион дорого, покупаем на 70% бюджета
-
+    # --- Коррекция бюджета по дистанции ---
     core_budget = anchor_budget * core_pct
     tail_budget = anchor_budget * tail_pct
 
@@ -355,17 +339,7 @@ def main():
         tail_budget *= 0.70
         print(f"  ⚠️ Tail dist={k2['dist']:.1f}% < {dist_min}% → бюджет ×0.7")
 
-    # ============================================================
-    # ШАГ 5: Подбор (n1, n2) — перебор
-    # ============================================================
-    # DeltaRatio(-20%) >= 80%
-    # Core cost <= 60% anchor_budget
-    # Минимизация отклонения DeltaRatio от 100%
-
-    S_level_20 = avg_price * 0.80
-    d1_at_20 = abs(bs_delta_put(S_level_20, k1["strike"], k1["T"], k1["IV"]))
-    d2_at_20 = abs(bs_delta_put(S_level_20, k2["strike"], k2["T"], k2["IV"]))
-
+    # --- Перебор (n1, n2) ---
     n1_max = int(core_budget / k1["premium"]) if k1["premium"] > 0 else 0
     n1_max = min(n1_max, 50)
 
@@ -489,14 +463,13 @@ def main():
     else:
         print(f"  ⚠️ Delta(-20%) = {delta_20:.0%} < 80% — не хватает покрытия")
 
-    core_pct = (best["cost1"] / anchor_budget * 100) if anchor_budget > 0 else 0
-    if core_pct <= 60:
-        print(f"  ✓ Core cost = {core_pct:.1f}% <= 60% ✅")
+    core_pct_used = (best["cost1"] / anchor_budget * 100) if anchor_budget > 0 else 0
+    if core_pct_used <= 60:
+        print(f"  ✓ Core cost = {core_pct_used:.1f}% <= 60% ✅")
     else:
-        print(f"  ⚠️ Core cost = {core_pct:.1f}% > 60% — нарушен лимит")
+        print(f"  ⚠️ Core cost = {core_pct_used:.1f}% > 60% — нарушен лимит")
 
     print("=" * 70)
-
 
 
 if __name__ == '__main__':

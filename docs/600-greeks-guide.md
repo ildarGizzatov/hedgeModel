@@ -4,7 +4,7 @@ status: active
 id: 600
 created: 2026-06-15
 updated: 2026-06-15
-related: [[202-formulas]], [[201-selection-criteria]], [[T001-conditions-closing]]
+related: [[202-formulas]], [[201-selection-criteria]], [[dev/T001-conditions-closing]]
 ---
 
 # Греческие параметры опционов (Greeks)

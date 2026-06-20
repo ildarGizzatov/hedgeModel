@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-T007 — Покупка опциона.
+buy_option.py — Покупка Put-опциона с записью в БД.
 
-Загружает option chain с Bybit, выбирает опцион по параметрам,
-записывает в options_registry.csv и options_tracking.csv с Greeks.
+Заменяет CSV-запись: options_registry.csv → options (БД),
+                    options_tracking.csv → option_greeks_history (БД)
 
 Использование:
   python src/buy_option.py --strike 70 --expiry 2026-07-25 --qty 1 --layer active
@@ -13,7 +13,6 @@ T007 — Покупка опциона.
 
 import os
 import sys
-import csv
 import math
 import json
 from datetime import datetime, date
@@ -23,28 +22,17 @@ from pathlib import Path
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_DIR))
 
-import toml
+import tomllib
+
+# ============================================================
+# DB IMPORT
+# ============================================================
+from src.db import get_position, add_option, record_greeks, get_connection
 
 # ============================================================
 # CONFIG
 # ============================================================
 CONFIG_PATH = PROJECT_DIR / "config.toml"
-REGISTRY_PATH = PROJECT_DIR / "data" / "options_registry.csv"
-TRACKING_PATH = PROJECT_DIR / "data" / "options_tracking.csv"
-PORTFOLIO_PATH = PROJECT_DIR / "data" / "open_positions.csv"
-
-REGISTRY_FIELDS = [
-    "id", "symbol", "type", "strike", "expiry", "qty",
-    "entry_date", "entry_price", "total_cost",
-    "iv_entry", "iv_atm_entry", "delta_entry", "gamma_entry",
-    "theta_entry", "vega_entry", "layer", "status", "notes"
-]
-
-TRACKING_FIELDS = [
-    "symbol", "current_price", "pnl", "delta", "gamma", "theta",
-    "vega", "dte", "iv", "iv_atm", "intrinsic_value", "layer", "updated"
-]
-
 
 # ============================================================
 # BYBIT API
@@ -150,55 +138,15 @@ def load_config() -> dict:
         print(f"  ❌ Config not found: {CONFIG_PATH}")
         return {}
     with open(CONFIG_PATH) as f:
-        return toml.load(f)
+        return tomllib.load(f)
 
 
-def load_portfolio() -> list:
-    """Загрузить open_positions.csv."""
-    if not PORTFOLIO_PATH.exists():
-        return []
-    with open(PORTFOLIO_PATH, encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-
-
-# ============================================================
-# FILE WRITING
-# ============================================================
-def next_registry_id() -> int:
-    """Следующий ID в registry."""
-    if not REGISTRY_PATH.exists():
-        return 1
-    with open(REGISTRY_PATH, encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        ids = [int(r.get("id", 0)) for r in reader]
-        return max(ids) + 1 if ids else 1
-
-
-def write_registry(row: dict):
-    """Записать в options_registry.csv."""
-    exists = REGISTRY_PATH.exists()
-    with open(REGISTRY_PATH, "w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=REGISTRY_FIELDS)
-        writer.writeheader()
-        if exists:
-            # Дописываем к существующим
-            with open(REGISTRY_PATH, "r", encoding="utf-8") as rf:
-                for r in csv.DictReader(rf):
-                    writer.writerow(r)
-        writer.writerow(row)
-
-
-def write_tracking(row: dict):
-    """Записать в options_tracking.csv."""
-    exists = TRACKING_PATH.exists()
-    with open(TRACKING_PATH, "w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=TRACKING_FIELDS)
-        writer.writeheader()
-        if exists:
-            with open(TRACKING_PATH, "r", encoding="utf-8") as rf:
-                for r in csv.DictReader(rf):
-                    writer.writerow(r)
-        writer.writerow(row)
+def load_portfolio_avg_price() -> float:
+    """Загрузить avg_price из БД (позиция SOL)."""
+    pos = get_position("SOL")
+    if pos:
+        return float(pos["avg_price"])
+    return None
 
 
 # ============================================================
@@ -211,7 +159,7 @@ def buy_option(args: dict) -> bool:
     print("=" * 60)
 
     # 1. Загрузка данных
-    print("\n[1/5] Загрузка данных...")
+    print("\n[1/4] Загрузка данных...")
     spot = fetch_spot_price("SOLUSDT")
     if spot <= 0:
         print("  ❌ Не удалось получить цену спота")
@@ -225,7 +173,7 @@ def buy_option(args: dict) -> bool:
     print(f"  PUT-опционов: {len(chain)}")
 
     # 2. Поиск опциона
-    print("\n[2/5] Поиск опциона...")
+    print("\n[2/4] Поиск опциона...")
     symbol = args.get("symbol")
     strike = args.get("strike")
     expiry = args.get("expiry")
@@ -243,16 +191,8 @@ def buy_option(args: dict) -> bool:
     print(f"     Strike: ${opt['strike']} | DTE: {opt['dte']} | IV: {opt['iv']:.2%} | Price: ${opt['mark_price']:.2f}")
 
     # 3. Загрузка config
-    print("\n[3/5] Конфигурация...")
+    print("\n[3/4] Конфигурация...")
     config = load_config()
-    portfolio = load_portfolio()
-
-    avg_price = spot
-    for p in portfolio:
-        if p["symbol"].upper() == "SOL":
-            avg_price = float(p.get("avg_price", spot))
-            break
-
     layer = args.get("layer", "active")
     qty = args.get("qty", 1)
     entry_price = opt["mark_price"]
@@ -265,55 +205,46 @@ def buy_option(args: dict) -> bool:
     print(f"  Total Cost: ${total_cost:.2f}")
     print(f"  Intrinsic: ${intrinsic:.4f}")
 
-    # 4. Запись в registry
-    print("\n[4/5] Запись в registry...")
-    new_id = next_registry_id()
-    entry_date = date.today().strftime("%Y-%m-%d")
-    expiry_dt = datetime.strptime(opt["expiry"], "%Y-%m-%d")
-    expiry_ms = int(expiry_dt.timestamp() * 1000)
+    # 4. Запись в БД
+    print("\n[4/4] Запись в БД...")
 
-    reg_row = {
-        "id": str(new_id),
-        "symbol": opt["symbol"],
-        "type": "PUT",
-        "strike": str(opt["strike"]),
-        "expiry": opt["expiry"],
-        "qty": str(qty),
-        "entry_date": entry_date,
-        "entry_price": f"{entry_price:.4f}",
-        "total_cost": f"{total_cost:.2f}",
-        "iv_entry": f"{opt['iv']:.4f}",
-        "iv_atm_entry": f"{opt['iv']:.4f}",  # Placeholder, updated by monitor
-        "delta_entry": f"{opt['delta']:.4f}",
-        "gamma_entry": f"{opt['gamma']:.4f}",
-        "theta_entry": f"{opt['theta']:.4f}",
-        "vega_entry": f"{opt['vega']:.4f}",
-        "layer": layer,
-        "status": "open",
-        "notes": f"Auto-buy {entry_date}",
-    }
-    write_registry(reg_row)
-    print(f"  ✅ Registry: ID={new_id}")
+    # 4a. Записать в options (реестр)
+    new_id = add_option(
+        symbol=opt["symbol"],
+        opt_type="PUT",
+        strike=opt["strike"],
+        expiry=opt["expiry"],
+        qty=qty,
+        layer=layer,
+        entry_date=date.today().isoformat(),
+        entry_price=entry_price,
+        iv_entry=opt["iv"],
+        iv_atm_entry=opt["iv"],
+        delta_entry=opt["delta"],
+        gamma_entry=opt["gamma"],
+        theta_entry=opt["theta"],
+        vega_entry=opt["vega"],
+        notes=f"Auto-buy {date.today().isoformat()}",
+    )
+    print(f"  ✅ options: ID={new_id}")
 
-    # 5. Запись в tracking
-    print("\n[5/5] Запись в tracking...")
-    tracking_row = {
-        "symbol": opt["symbol"],
-        "current_price": f"{entry_price:.4f}",
-        "pnl": "0.00",
-        "delta": f"{opt['delta']:.4f}",
-        "gamma": f"{opt['gamma']:.4f}",
-        "theta": f"{opt['theta']:.4f}",
-        "vega": f"{opt['vega']:.4f}",
-        "dte": str(opt["dte"]),
-        "iv": f"{opt['iv']:.4f}",
-        "iv_atm": f"{opt['iv']:.4f}",
-        "intrinsic_value": f"{intrinsic:.4f}",
-        "layer": layer,
-        "updated": entry_date,
-    }
-    write_tracking(tracking_row)
-    print(f"  ✅ Tracking updated")
+    # 4b. Записать в option_greeks_history (первый снимок)
+    record_greeks(
+        option_id=new_id,
+        option_symbol=opt["symbol"],
+        current_price=entry_price,
+        delta=opt["delta"],
+        gamma=opt["gamma"],
+        theta=opt["theta"],
+        vega=opt["vega"],
+        iv=opt["iv"],
+        iv_atm=opt["iv"],
+        dte=opt["dte"],
+        intrinsic_value=intrinsic,
+        unrealized_pnl=0.0,
+        timestamp=datetime.now().strftime("%Y-%m-%d %H:%M"),
+    )
+    print(f"  ✅ greeks_history: snapshot #1")
 
     # Итог
     print("\n" + "=" * 60)

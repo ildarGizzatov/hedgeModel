@@ -1,7 +1,7 @@
 ---
 type: strategy
 status: active
-related: [[101-anchor-layer]], [[102-adaptation-layer]], [[103-active-layer]], [[200-budget-allocation]], [[T001-conditions-closing]], [[T002-theta-monitoring]]
+related: [[101-anchor-layer]], [[102-adaptation-layer]], [[103-active-layer]], [[200-budget-allocation]], [[dev/T001-conditions-closing]], [[dev/T002-theta-monitoring]]
 created: 2026-05-28
 updated: 2026-05-29
 ---
@@ -41,8 +41,6 @@ updated: 2026-05-29
 
 ## Целевая просадка (SOL)
 
-См. [[001-input-parameters#просадка]]
-
 > **Важно:** Просадка вычисляется от **Avg Price хедж-объёма** (средней цены покупки именно той части, которую хеджим), а не от всей позиции.
 
 Solana — это высоковолатильный актив:
@@ -60,13 +58,12 @@ Solana — это высоковолатильный актив:
 
 ## Управление капиталом
 
-См. [[001-input-parameters]]
 - **Глобальный бюджет:** от позиции
 - **Распределение по слоям:** от параметров
 
 ## Связь с пайплайном
 
-Данные поступают через [[300-pipeline]], обрабатываются скриптами [[301-optionboard-script]] и [[302-lastprice-script]].
+Данные поступают через [[300-pipeline]], обрабатываются скриптом [[301-optionboard-script]].
 
 ---
 

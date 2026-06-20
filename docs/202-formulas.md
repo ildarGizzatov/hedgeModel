@@ -74,7 +74,7 @@ Efficiency_closed = PnL_hedge_realized / TotalHedgeCost
 
 Цель: максимизировать Efficiency для Anchor, MinDrawdown для Adaptation, Gamma для Active.
 
-## Anchor selection (T006)
+## Anchor selection (dev/T006-anchor-selection)
 
 ### PnL портфеля (моделирование)
 

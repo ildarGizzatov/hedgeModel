@@ -11,21 +11,23 @@ hedgeModel/
 ├── src/                      # Ядро системы
 │   ├── pipeline.py           # Оркестратор: fetch → select → monitor
 │   ├── OptionBoard.py        # Загрузка опционного чейна с Bybit → Excel
-│   ├── LastPrice.py          # Обновление текущих цен опционов
 │   ├── anchor_picker.py      # Подбор Anchor Layer (Core + Tail)
 │   ├── monitor_options.py    # Мониторинг позиций + рекомендации
 │   ├── buy_option.py         # Покупка опционов с записью в registry
+│   ├── buy_sol.py            # Покупка SOL с усреднением cost basis
+│   ├── db.py                 # Обёртка SQLite (инициализация, CRUD, query)
 │   └── black_scholes.py      # BS-расчёт цены и Greeks (r=0)
 ├── dashboard/                 # Web-дашборд
 │   ├── server.py             # FastAPI backend (/api/positions, /api/options...)
 │   ├── app.js                # Frontend (таблицы, графики, табы)
 │   └── index.html            # UI
 ├── data/                      # Данные (CSV)
-│   ├── open_positions.csv    # Текущая позиция SOL
+│   ├── open_positions.csv    # Текущая позиция SOL (источник для CSV-совместимости)
 │   ├── buy_history.csv       # История покупок SOL
 │   ├── closed_positions.csv  # Закрытые опционы
 │   ├── options_registry.csv  # Реестр купленных опционов
 │   └── options_tracking.csv  # Текущие Greeks и цены опционов
+├── hedge_model.db             # SQLite-база (история Greeks, IV, snapshots, рекомендации)
 ├── excel/                     # Опционный чейн (Excel)
 ├── docs/                      # Zettelkasten-база знаний (Obsidian)
 ├── config.toml                # Параметры стратегии (генерируется из docs)
@@ -80,7 +82,15 @@ python server.py
 # Открываем: http://localhost:8083
 ```
 
-### 5. Покупка опциона
+### 5. Покупка SOL
+
+```bash
+python src/buy_sol.py --qty 10 --price 72.50 --notes "покупка 20 июня"
+```
+
+Записывает покупку в БД, усредняет avg_price позиции SOL.
+
+### 6. Покупка опциона
 
 ```bash
 python src/buy_option.py --strike 70 --expiry 2026-07-25 --qty 1 --layer active
@@ -117,6 +127,8 @@ python src/buy_option.py --symbol "SOL-25JUL25-70-P-USDT"
 | 203 | Алгоритм выбора Anchor |
 | 300 | Pipeline |
 | 400 | Деплой |
+| 401 | Хранение позиций |
+| 402 | SQLite-схема |
 | T001–T007 | Технические заметки |
 
 ## Зависимости
@@ -125,4 +137,5 @@ python src/buy_option.py --symbol "SOL-25JUL25-70-P-USDT"
 - `requests` — Bybit API
 - `pandas`, `openpyxl` — Excel
 - `fastapi`, `uvicorn` — дашборд
-- `toml` — парсинг config.toml
+- `sqlite3` — встроен в Python (БД)
+- `numpy` — расчёты Greeks

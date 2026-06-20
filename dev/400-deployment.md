@@ -1,7 +1,7 @@
 ---
 type: ops
 status: active
-related: [[300-pipeline]], [[301-optionboard-script]], [[302-lastprice-script]]
+related: [[300-pipeline]], [[301-optionboard-script]]
 created: 2026-05-29
 updated: 2026-05-29
 ---
@@ -28,12 +28,7 @@ cd /home/maks/projects/hedgeModel
 ./venv/bin/python src/OptionBoard.py
 ```
 
-### LastPrice.py
 
-```bash
-cd /home/maks/projects/hedgeModel
-./venv/bin/python src/LastPrice.py
-```
 
 
 ## Логирование
@@ -43,7 +38,6 @@ mkdir -p /home/maks/projects/hedgeModel/logs
 ```
 
 - `logs/optionboard.log` — вывод OptionBoard
-- `logs/lastprice.log` — вывод LastPrice
 
 ## Мониторинг
 
@@ -53,7 +47,6 @@ stat excel/sol_options_chain.xlsx
 
 # Проверить логи
 tail -f logs/optionboard.log
-tail -f logs/lastprice.log
 
 # Проверить данные
 ./venv/bin/python -c "import pandas as pd; df = pd.read_excel('excel/sol_options_chain.xlsx', 'OptionBoard'); print(f'Records: {len(df)}')"

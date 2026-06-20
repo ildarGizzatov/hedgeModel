@@ -15,7 +15,7 @@
 | Фраза | Действие |
 |-------|---------|
 | `обнови доску` / `обновить доску` | запустить `src/OptionBoard.py` |
-| `обнови цены` | запустить `src/LastPrice.py` |
+
 | `помести информацию в базу знаний` | добавить заметку в docs/ по правилам Zettelkasten |
 | `закрыл [N] SOL по $X` | обновить `data/closed_positions.csv`, пересчитать `data/open_positions.csv` |
 | `купил [N] SOL по $X` | добавить строку в `data/buy_history.csv`, пересчитать `data/open_positions.csv` |

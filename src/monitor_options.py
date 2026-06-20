@@ -1,29 +1,34 @@
 """
-Мониторинг открытых опционных позиций.
+monitor_options.py — Мониторинг открытых опционных позиций.
 
-Читает реестр купленных опционов, запрашивает Bybit API текущие Greeks/цены,
-рассчитывает IV ATM и выдаёт рекомендации.
+Заменяет CSV:
+  - Чтение registry → БД (get_all_open_options)
+  - Чтение portfolio → БД (get_position)
+  - Запись tracking → БД (record_greeks)
+  - Рекомендации → БД (add_recommendation)
 
 Использование:
     python src/monitor_options.py
 """
 
 import os
-import csv
-import json
+import sys
 from datetime import datetime, date
+from pathlib import Path
 
-import requests
+# Add project to path
+PROJECT_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_DIR))
 
-# Bybit API
-BYBIT_API = "https://api.bybit.com/v5/market/tickers"
+from src.bybit_api import fetch_option_chain, fetch_spot_price
+from src.chain_parser import calc_dte, calc_intrinsic
+from src.db import (
+    get_all_open_options, get_position, get_latest_greeks,
+    update_position_prices, record_greeks, add_recommendation,
+    get_all_latest_greeks, execute_query
+)
+
 BASE_COIN = "SOL"
-
-# Путь к проекту
-PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-REGISTRY_PATH = os.path.join(PROJECT_DIR, "data", "options_registry.csv")
-TRACKING_PATH = os.path.join(PROJECT_DIR, "data", "options_tracking.csv")
-PORTFOLIO_PATH = os.path.join(PROJECT_DIR, "data", "open_positions.csv")
 
 # Триггеры по слоям
 LAYER_RULES = {
@@ -33,49 +38,9 @@ LAYER_RULES = {
 }
 
 
-def fetch_full_chain():
-    """Забрает весь чейн SOL-опционов одним запросом."""
-    params = {"category": "option", "baseCoin": BASE_COIN}
-    r = requests.get(BYBIT_API, params=params, timeout=60)
-    r.raise_for_status()
-    data = r.json()
-    
-    if not data.get("result") or not isinstance(data["result"].get("list"), list):
-        raise RuntimeError("Unexpected API response structure")
-    
-    return data["result"]["list"]
-
-
 def parse_option(ticker):
-    """Парсит один тикер в структуру."""
-    symbol = ticker.get("symbol", "")
-    if "-P-" not in symbol and "-C-" not in symbol:
-        return None
-    
-    try:
-        parts = symbol.split("-")
-        date_str = parts[1]
-        expiry = datetime.strptime(date_str, "%d%b%y")
-        expiry_str = expiry.strftime("%Y-%m-%d")
-        strike = float(parts[2])
-        opt_type = "PUT" if "-P-" in symbol else "CALL"
-        
-        return {
-            "symbol": symbol,
-            "expiry_str": expiry_str,
-            "strike": strike,
-            "type": opt_type,
-            "delta": float(ticker.get("delta") or 0),
-            "gamma": float(ticker.get("gamma") or 0),
-            "theta": float(ticker.get("theta") or 0),
-            "vega": float(ticker.get("vega") or 0),
-            "mark_price": float(ticker.get("markPrice") or 0),
-            "last_price": float(ticker.get("lastPrice") or 0),
-            "iv": float(ticker.get("markIv") or 0),
-            "underlying_price": float(ticker.get("underlyingPrice") or 0),
-        }
-    except Exception:
-        return None
+    """Обёртка над chain_parser.parse_option."""
+    return __import__("src.chain_parser", fromlist=["parse_option"]).parse_option(ticker)
 
 
 def calc_iv_atm(chain: list) -> dict:
@@ -107,166 +72,88 @@ def calc_iv_atm(chain: list) -> dict:
     return {exp: data["iv"] for exp, data in atm_by_expiry.items()}
 
 
-def find_atm_symbol_for_expiry(chain: list, expiry_str: str) -> str:
-    """Возвращает символ ATM-опциона для заданной экспирации."""
-    atm_by_expiry = {}
-    
-    for ticker in chain:
-        parsed = parse_option(ticker)
-        if not parsed:
-            continue
+def fetch_spot_price_local() -> float:
+    """Обёртка для fetch_spot_price с BASE_COIN."""
+    return fetch_spot_price(BASE_COIN)
+
+
+def generate_portfolio_summary(positions: list, chain: list) -> str:
+    """Формирует сводку по портфелю + опционам."""
+    # === Портфель SOL ===
+    sol_pos = get_position("SOL")
+    sol_line = ""
+    if sol_pos:
+        total_sol_qty = float(sol_pos["qty"])
+        avg_price = float(sol_pos["avg_price"])
+        total_cost = float(sol_pos["total_cost"])
+        current_price = float(sol_pos["current_price"])
+        total_value = float(sol_pos["total_value"])
+        pnl = float(sol_pos["pnl"])
+        pnl_pct = (pnl / total_cost * 100) if total_cost > 0 else 0
         
-        if parsed["expiry_str"] != expiry_str:
-            continue
+        sol_line = (
+            f"📊 ПОРТФЕЛЬ SOL\n"
+            f"   Количество: {total_sol_qty:.2f} SOL\n"
+            f"   Avg Price: ${avg_price:.2f}\n"
+            f"   Current: ${current_price:.2f}\n"
+            f"   PnL: ${pnl:+.2f} ({pnl_pct:+.1f}%)\n"
+        )
+    
+    # === Опционы ===
+    opt_line = ""
+    if positions:
+        chain_idx = {}
+        for ticker in chain:
+            parsed = parse_option(ticker)
+            if parsed:
+                chain_idx[parsed["symbol"]] = parsed
         
-        delta_abs = abs(parsed["delta"])
-        current = atm_by_expiry.get(expiry_str)
-        if current is None or abs(delta_abs - 0.5) < current["delta_dist"]:
-            atm_by_expiry[expiry_str] = {"symbol": parsed["symbol"], "delta_dist": abs(delta_abs - 0.5)}
-    
-    atm = atm_by_expiry.get(expiry_str)
-    return atm["symbol"] if atm else ""
-
-
-def calc_dte(expiry_str: str) -> int:
-    """Дней до экспирации."""
-    expiry = datetime.strptime(expiry_str, "%Y-%m-%d").date()
-    delta = expiry - date.today()
-    return max(delta.days, 0)
-
-
-def calc_intrinsic(strike: float, option_type: str, spot: float) -> float:
-    """Внутренняя стоимость."""
-    if option_type == "PUT":
-        return max(strike - spot, 0)
-    return max(spot - strike, 0)
-
-
-def read_registry() -> list:
-    """Читает реестр, возвращает только open."""
-    positions = []
-    
-    with open(REGISTRY_PATH, "r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            if row.get("status", "").strip() == "open":
-                positions.append(row)
-    
-    return positions
-
-
-def fetch_spot_price() -> float:
-    """Получает актуальную цену SOL из Bybit spot."""
-    try:
-        params = {"category": "spot"}
-        r = requests.get(BYBIT_API, params=params, timeout=30)
-        r.raise_for_status()
-        data = r.json()
+        opt_total_cost = 0
+        opt_total_value = 0
+        opt_total_pnl = 0
         
-        for ticker in data.get("result", {}).get("list", []):
-            if ticker.get("symbol") == "SOLUSDT":
-                return float(ticker.get("lastPrice", 0))
-    except Exception:
-        pass
-    return 0
-
-
-def update_portfolio(spot_price: float) -> list:
-    """Обновляет current_price в open_positions.csv и пересчитывает PnL."""
-    if not os.path.exists(PORTFOLIO_PATH):
-        return []
-    
-    if spot_price <= 0:
-        print("   ⚠️ Spot price не получен, использую данные из CSV")
-        return read_portfolio()
-    
-    with open(PORTFOLIO_PATH, "r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        rows = list(reader)
-    
-    updated = 0
-    for row in rows:
-        symbol = row.get("symbol", "").strip().upper()
-        qty = float(row.get("qty", 0))
-        total_cost = float(row.get("total_cost", 0))
-        
-        if qty <= 0:
-            continue
-        
-        old_price = float(row.get("current_price", 0))
-        old_value = float(row.get("total_value", 0))
-        old_pnl = float(row.get("pnl", 0))
-        
-        row["current_price"] = spot_price
-        row["total_value"] = round(qty * spot_price, 2)
-        row["pnl"] = round(qty * spot_price - total_cost, 2)
-        row["updated"] = date.today().strftime("%Y-%m-%d")
-        
-        if old_price != spot_price:
-            print(f"   {symbol}: {old_price} -> {spot_price}")
-        
-        updated += 1
-    
-    if updated > 0:
-        with open(PORTFOLIO_PATH, "w", encoding="utf-8", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=rows[0].keys())
-            writer.writeheader()
-            writer.writerows(rows)
-        print(f"   ✅ Обновлено: {updated} позиций")
-    
-    return read_portfolio()
-
-
-def read_portfolio() -> list:
-    """Читает open_positions.csv, возвращает список позиций."""
-    positions = []
-    
-    if not os.path.exists(PORTFOLIO_PATH):
-        return positions
-    
-    with open(PORTFOLIO_PATH, "r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            symbol = row.get("symbol", "").strip().upper()
-            if not symbol:
-                continue
+        for pos in positions:
+            symbol = pos["symbol"].strip()
+            entry_cost = float(pos["total_cost"]) if pos["total_cost"] is not None else float(pos["entry_price"]) * int(pos["qty"])
+            qty = int(pos["qty"])
+            entry_price = float(pos["entry_price"])
             
-            try:
-                qty = float(row.get("qty", 0))
-                avg_price = float(row.get("avg_price", 0))
-                total_cost = float(row.get("total_cost", 0))
-                current_price = float(row.get("current_price", 0))
-                total_value = float(row.get("total_value", 0))
-                pnl = float(row.get("pnl", 0))
-            except (ValueError, TypeError):
-                continue
+            # Текущая цена из API
+            ticker_data = chain_idx.get(symbol)
+            if ticker_data:
+                current_price = ticker_data["mark_price"]
+                opt_pnl = (current_price - entry_price) * qty
+            else:
+                current_price = entry_price
+                opt_pnl = 0
             
-            if qty <= 0:
-                continue
-            
-            positions.append({
-                "symbol": symbol,
-                "qty": qty,
-                "avg_price": avg_price,
-                "total_cost": total_cost,
-                "current_price": current_price,
-                "total_value": total_value,
-                "pnl": pnl,
-                "pnl_pct": (pnl / total_cost * 100) if total_cost > 0 else 0,
-            })
+            opt_total_cost += entry_cost
+            opt_total_value += current_price * qty
+            opt_total_pnl += opt_pnl
+        
+        opt_pnl_pct = (opt_total_pnl / opt_total_cost * 100) if opt_total_cost > 0 else 0
+        
+        opt_line = (
+            f"📊 ОПЦИОНЫ ({len(positions)} позиций)\n"
+            f"   Total Cost: ${opt_total_cost:.2f}\n"
+            f"   Current Value: ${opt_total_value:.2f}\n"
+            f"   PnL: ${opt_total_pnl:+.2f} ({opt_pnl_pct:+.1f}%)\n"
+        )
     
-    return positions
+    # === Delta-coverage ===
+    greeks = calc_portfolio_greeks(positions, chain)
+    greeks_line = (
+        f"📊 GREEKS ПОРТФЕЛЯ\n"
+        f"   Net Delta: {greeks['net_delta_sols']:+.2f} SOL\n"
+        f"   Theta: ${greeks['portfolio_theta']:.2f}/день\n"
+    )
+    
+    return sol_line + opt_line + greeks_line
 
 
 def calc_portfolio_greeks(positions: list, chain: list) -> dict:
     """
     Считает совокупные Greeks портфеля с учётом опционов.
-    
-    Bybit delta — изменение цены опциона при изменении SOL на $1.
-    Для перевода в SOL: option_delta_in_sols = option_delta / spot_price
-    
-    Portfolio Delta (SOL) = qty_sol + sum(option_delta / spot * qty_option)
-    Portfolio Theta (USD/день) = sum(option_theta * qty_option)
     """
     if not positions:
         return {
@@ -312,7 +199,11 @@ def calc_portfolio_greeks(positions: list, chain: list) -> dict:
         opt_theta += parsed["theta"] * qty
     
     # Delta портфеля: SOL (delta=1) + опционы (переведённые в SOL)
-    spot_qty = sum(p["qty"] for p in positions if p["symbol"] == "SOL")
+    spot_qty = 0
+    sol_pos = get_position("SOL")
+    if sol_pos:
+        spot_qty = float(sol_pos["qty"])
+    
     net_delta_sols = spot_qty + opt_delta_sols
     
     return {
@@ -322,89 +213,8 @@ def calc_portfolio_greeks(positions: list, chain: list) -> dict:
     }
 
 
-def generate_portfolio_summary(portfolio: list, positions: list, chain: list) -> str:
-    """Формирует сводку по портфелю + опционам."""
-    if not portfolio and not positions:
-        return "Нет открытых позиций."
-    
-    lines = []
-    
-    # === Портфель SOL ===
-    sol_positions = [p for p in portfolio if p["symbol"] == "SOL"]
-    if sol_positions:
-        total_sol_qty = sum(p["qty"] for p in sol_positions)
-        total_sol_cost = sum(p["total_cost"] for p in sol_positions)
-        total_sol_value = sum(p["total_value"] for p in sol_positions)
-        total_sol_pnl = sum(p["pnl"] for p in sol_positions)
-        total_sol_pnl_pct = (total_sol_pnl / total_sol_cost * 100) if total_sol_cost > 0 else 0
-        
-        spot = None
-        if sol_positions:
-            spot = sol_positions[0]["current_price"]
-        
-        lines.append("📊 ПОРТФЕЛЬ SOL")
-        lines.append(f"   Количество: {total_sol_qty:.2f} SOL")
-        lines.append(f"   Avg Price: ${total_sol_cost / total_sol_qty:.2f}" if total_sol_qty else "   Avg Price: -")
-        lines.append(f"   Current: ${spot:.2f}" if spot else "   Current: -")
-        lines.append(f"   PnL: ${total_sol_pnl:+.2f} ({total_sol_pnl_pct:+.1f}%)")
-        lines.append("")
-    
-    # === Опционы ===
-    if positions:
-        # Индекс из chain для получения текущих цен опционов
-        chain_idx = {}
-        for ticker in chain:
-            parsed = parse_option(ticker)
-            if parsed:
-                chain_idx[parsed["symbol"]] = parsed
-        
-        opt_total_cost = 0
-        opt_total_value = 0
-        opt_total_pnl = 0
-        
-        for pos in positions:
-            symbol = pos["symbol"].strip()
-            entry_cost = float(pos["total_cost"])
-            qty = int(pos["qty"])
-            entry_price = float(pos["entry_price"])
-            
-            # Текущая цена из API
-            ticker = chain_idx.get(symbol)
-            if ticker:
-                current_price = ticker["mark_price"]
-                opt_pnl = (current_price - entry_price) * qty
-            else:
-                current_price = entry_price
-                opt_pnl = 0
-            
-            opt_total_cost += entry_cost
-            opt_total_value += current_price * qty
-            opt_total_pnl += opt_pnl
-        
-        opt_pnl_pct = (opt_total_pnl / opt_total_cost * 100) if opt_total_cost > 0 else 0
-        
-        lines.append(f"📊 ОПЦИОНЫ ({len(positions)} позиций)")
-        lines.append(f"   Total Cost: ${opt_total_cost:.2f}")
-        lines.append(f"   Current Value: ${opt_total_value:.2f}")
-        lines.append(f"   PnL: ${opt_total_pnl:+.2f} ({opt_pnl_pct:+.1f}%)")
-        lines.append("")
-    
-    # === Delta-coverage ===
-    greeks = calc_portfolio_greeks(positions, chain)
-    lines.append("📊 GREEKS ПОРТФЕЛЯ")
-    lines.append(f"   Net Delta: {greeks['net_delta_sols']:+.2f} SOL")
-    lines.append(f"   Theta: ${greeks['portfolio_theta']:.2f}/день")
-    
-    return "\n".join(lines)
-
-
-def write_tracking(positions: list, chain: list, iv_atm: dict):
-    """Записывает/обновляет tracking CSV."""
-    headers = [
-        "symbol", "current_price", "pnl", "delta", "gamma", "theta", "vega",
-        "dte", "iv", "iv_atm", "intrinsic_value", "layer", "updated"
-    ]
-    
+def record_greeks_to_db(positions: list, chain: list, iv_atm: dict) -> None:
+    """Записывает/обновляет Greeks в БД (option_greeks_history)."""
     # Строим индекс из чейна
     chain_idx = {}
     for ticker in chain:
@@ -412,57 +222,59 @@ def write_tracking(positions: list, chain: list, iv_atm: dict):
         if parsed:
             chain_idx[parsed["symbol"]] = parsed
     
-    file_exists = os.path.exists(TRACKING_PATH)
-    file_has_data = file_exists and os.path.getsize(TRACKING_PATH) > 30
-    
-    with open(TRACKING_PATH, "w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=headers)
-        writer.writeheader()
+    for pos in positions:
+        symbol = pos["symbol"].strip()
+        ticker_data = chain_idx.get(symbol)
         
-        for pos in positions:
-            symbol = pos["symbol"].strip()
-            ticker = chain_idx.get(symbol)
-            
-            if not ticker:
-                print(f"   ⚠️ {symbol} — нет данных в API")
-                continue
-            
-            entry_price = float(pos["entry_price"])
-            qty = int(pos["qty"])
-            current_price = ticker["mark_price"]
-            strike = float(pos["strike"])
-            option_type = pos["type"]
-            spot = ticker["underlying_price"]
-            
-            # PnL
-            pnl = (current_price - entry_price) * qty
-            
-            # DTE
-            dte = calc_dte(pos["expiry"])
-            
-            # IV ATM
-            iv_atm_val = iv_atm.get(pos["expiry"], 0)
-            
-            # Внутренняя стоимость
-            intrinsic = calc_intrinsic(strike, option_type, spot)
-            
-            row = {
-                "symbol": symbol,
-                "current_price": round(current_price, 4),
-                "pnl": round(pnl, 2),
-                "delta": round(ticker["delta"], 4),
-                "gamma": round(ticker["gamma"], 4),
-                "theta": round(ticker["theta"], 4),
-                "vega": round(ticker["vega"], 4),
-                "dte": dte,
-                "iv": round(ticker["iv"], 4),
-                "iv_atm": round(iv_atm_val, 4),
-                "intrinsic_value": round(intrinsic, 4),
-                "layer": pos["layer"].strip(),
-                "updated": date.today().strftime("%Y-%m-%d"),
-            }
-            
-            writer.writerow(row)
+        if not ticker_data:
+            print(f"   ⚠️ {symbol} — нет данных в API")
+            continue
+        
+        # Ищем option_id по symbol
+        option = execute_query(
+            "SELECT id FROM options WHERE symbol=?", (symbol,)
+        )
+        if not option:
+            print(f"   ⚠️ {symbol} — не найден в options")
+            continue
+        
+        option_id = option[0]["id"]
+        
+        entry_price = float(pos["entry_price"])
+        qty = int(pos["qty"])
+        current_price = ticker_data["mark_price"]
+        strike = float(pos["strike"])
+        option_type = pos["type"]
+        spot = ticker_data["underlying_price"]
+        
+        # PnL
+        pnl = (current_price - entry_price) * qty
+        
+        # DTE
+        dte = calc_dte(pos["expiry"])
+        
+        # IV ATM
+        iv_atm_val = iv_atm.get(pos["expiry"], 0)
+        
+        # Внутренняя стоимость
+        intrinsic = calc_intrinsic(strike, option_type, spot)
+        
+        # Запись в БД
+        record_greeks(
+            option_id=option_id,
+            option_symbol=symbol,
+            current_price=current_price,
+            delta=ticker_data["delta"],
+            gamma=ticker_data["gamma"],
+            theta=ticker_data["theta"],
+            vega=ticker_data["vega"],
+            iv=ticker_data["iv"],
+            iv_atm=iv_atm_val,
+            dte=dte,
+            intrinsic_value=intrinsic,
+            unrealized_pnl=pnl,
+            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M"),
+        )
 
 
 def generate_recommendations(positions: list, chain: list) -> str:
@@ -478,23 +290,23 @@ def generate_recommendations(positions: list, chain: list) -> str:
     
     for pos in positions:
         symbol = pos["symbol"].strip()
-        ticker = chain_idx.get(symbol)
+        ticker_data = chain_idx.get(symbol)
         
-        if not ticker:
+        if not ticker_data:
             lines.append(f"⚠️ {symbol} — нет данных API")
             continue
         
         entry_price = float(pos["entry_price"])
         qty = int(pos["qty"])
-        current_price = ticker["mark_price"]
+        current_price = ticker_data["mark_price"]
         pnl = (current_price - entry_price) * qty
         pnl_pct = ((current_price - entry_price) / entry_price * 100) if entry_price > 0 else 0
         dte = calc_dte(pos["expiry"])
         layer = pos["layer"].strip()
-        delta_abs = abs(ticker["delta"])
-        gamma = ticker["gamma"]
+        delta_abs = abs(ticker_data["delta"])
+        gamma = ticker_data["gamma"]
         gamma_entry = float(pos["gamma_entry"])
-        iv = ticker["iv"]
+        iv = ticker_data["iv"]
         iv_entry = float(pos["iv_entry"])
         
         base = f"{symbol} | {layer.title()} | DTE={dte} | PnL={pnl_pct:+.1f}%"
@@ -502,38 +314,69 @@ def generate_recommendations(positions: list, chain: list) -> str:
         # === ACTIVE LAYER ===
         if layer == "active":
             if pnl_pct >= 30:
-                lines.append(f"🔴 {base} → Закрыть (цель достигнута, +{pnl_pct:.1f}%)")
+                rec = f"🔴 {base} → Закрыть (цель достигнута, +{pnl_pct:.1f}%)"
+                action = "sell"
             elif dte < 3 and pnl_pct < 0:
-                lines.append(f"🔴 {base} → Закрыть (DTE < 3, импульс не сработал)")
+                rec = f"🔴 {base} → Закрыть (DTE < 3, импульс не сработал)"
+                action = "sell"
             elif dte < 3 and pnl_pct >= 0:
-                lines.append(f"🟡 {base} → Роллировать или закрыть (DTE < 3)")
+                rec = f"🟡 {base} → Роллировать или закрыть (DTE < 3)"
+                action = "roll"
             elif gamma < gamma_entry * 0.5:
-                lines.append(f"🔴 {base} → Закрыть (gamma упала в 2x: {gamma_entry:.3f} → {gamma:.3f})")
+                rec = f"🔴 {base} → Закрыть (gamma упала в 2x: {gamma_entry:.3f} → {gamma:.3f})"
+                action = "sell"
             else:
-                lines.append(f"🟢 {base} → Мониторить")
+                rec = f"🟢 {base} → Мониторить"
+                action = "hold"
         
         # === ADAPTATION LAYER ===
         elif layer == "adaptation":
             if gamma < gamma_entry * 0.3:
-                lines.append(f"🔴 {base} → Закрыть (импульс исчерпан, gamma = {gamma_entry:.3f} → {gamma:.3f})")
+                rec = f"🔴 {base} → Закрыть (импульс исчерпан, gamma = {gamma_entry:.3f} → {gamma:.3f})"
+                action = "sell"
             elif dte < 7 and pnl_pct < -20:
-                lines.append(f"🔴 {base} → Закрыть (DTE < 7, убыток > 20%)")
+                rec = f"🔴 {base} → Закрыть (DTE < 7, убыток > 20%)"
+                action = "sell"
             elif dte < 7:
-                lines.append(f"🟡 {base} → Роллировать (DTE < 7, рынок ещё в зоне)")
+                rec = f"🟡 {base} → Роллировать (DTE < 7, рынок ещё в зоне)"
+                action = "roll"
             else:
-                lines.append(f"🟢 {base} → Мониторить theta-распад")
+                rec = f"🟢 {base} → Мониторить theta-распад"
+                action = "hold"
         
         # === ANCHOR LAYER ===
         elif layer == "anchor":
             if delta_abs < 0.1 and dte < 7:
-                lines.append(f"🟡 {base} → Роллировать (delta < 0.1, DTE < 7)")
+                rec = f"🟡 {base} → Роллировать (delta < 0.1, DTE < 7)"
+                action = "roll"
             elif pnl_pct >= 20:
-                lines.append(f"🔴 {base} → Закрыть (цель достигнута, +{pnl_pct:.1f}%)")
+                rec = f"🔴 {base} → Закрыть (цель достигнута, +{pnl_pct:.1f}%)"
+                action = "sell"
             elif dte > 60:
-                lines.append(f"🟢 {base} → Мониторить (дальняя защита)")
+                rec = f"🟢 {base} → Мониторить (дальняя защита)"
+                action = "hold"
             else:
-                lines.append(f"🟣 {base} → Держать (tail-хедж)")
+                rec = f"🟣 {base} → Держать (tail-хедж)"
+                action = "hold"
         
+        lines.append(rec)
+        
+        # Запись рекомендации в БД
+        try:
+            option_id = execute_query(
+                "SELECT id FROM options WHERE symbol=?", (symbol,)
+            )[0]["id"]
+            add_recommendation(
+                option_id=option_id,
+                option_symbol=symbol,
+                action=action,
+                reason=f"{layer}: PnL={pnl_pct:+.1f}%, DTE={dte}, gamma={gamma:.3f}",
+                confidence=0.8,
+                llm_model="rule-based",
+            )
+        except Exception:
+            pass
+    
     return "\n".join(lines)
 
 
@@ -548,7 +391,7 @@ def main():
     # 1. Загрузка API — полный чейн (нужен для опционов и Greeks)
     print("🌐 Загрузка полного чейна SOL-опционов...")
     try:
-        chain_data = fetch_full_chain()
+        chain_data = fetch_option_chain(BASE_COIN)
         print(f"   Получено тикеров: {len(chain_data)}")
     except Exception as e:
         print(f"❌ Ошибка API: {e}")
@@ -561,24 +404,27 @@ def main():
     # 3. Расчёт IV ATM
     iv_atm = calc_iv_atm(chain_data)
     
-    # 4. Чтение реестра опционов
-    positions = read_registry()
-    print(f"\n📁 Открытых опционов: {len(positions)}")
+    # 4. Чтение реестра опционов из БД
+    positions = get_all_open_options()
+    print(f"\n📁 Открытых опционов (БД): {len(positions)}")
     
     # 5. Обновление портфеля (актуальный spot price из API)
-    spot_price = fetch_spot_price()
-    portfolio = update_portfolio(spot_price)
-    print(f"📁 Позиций в портфеле: {len(portfolio)}")
+    spot_price = fetch_spot_price_local()
+    if spot_price > 0:
+        update_position_prices("SOL", spot_price)
+        print(f"   ✅ SOL обновлён: ${spot_price:.2f}")
+    else:
+        print("   ⚠️ Spot price не получен")
     
-    # 6. Запись tracking (если есть опционы)
+    # 6. Запись Greeks в БД
     if positions:
-        print(f"\n💾 Запись в {TRACKING_PATH}...")
-        write_tracking(positions, chain_data, iv_atm)
+        print(f"\n💾 Запись Greeks в БД...")
+        record_greeks_to_db(positions, chain_data, iv_atm)
         print("   ✅ Готово")
     
     # 7. Сводка портфеля
     print("\n" + "=" * 70)
-    print(generate_portfolio_summary(portfolio, positions, chain_data))
+    print(generate_portfolio_summary(positions, chain_data))
     print("=" * 70)
     
     # 8. Рекомендации по опционам
@@ -589,8 +435,7 @@ def main():
         print(recs)
         print("=" * 70)
     
-    print(f"\n✅ Обновлено: {len(positions)} опционных позиций")
-    print(f"   Файл: {TRACKING_PATH}")
+    print(f"\n✅ Обновлено: {len(positions)} опционных позиций (БД)")
 
 
 if __name__ == "__main__":

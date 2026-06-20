@@ -5,7 +5,7 @@ related: [[101-anchor-layer]], [[200-budget-allocation]], [[201-selection-criter
 created: 2026-06-15
 updated: 2026-06-15
 ---
-# Выбор опционов для Anchor Layer (T006)
+# Выбор опционов для Anchor Layer (dev/T006-anchor-selection)
 
 > Алгоритм подбора двух страйков (Core + Tail) для дальнего слоя защиты.
 
