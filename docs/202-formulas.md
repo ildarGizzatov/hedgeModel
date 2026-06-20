@@ -52,12 +52,48 @@ PnL_hedge = Σ(N_contracts_i × (ExitPrice_i - Premium_i))
 
 ## Efficiency (эффективность слоя)
 
+### До покупки (выбор комбинации)
+
 ```
-Efficiency = PnL_hedge / TotalHedgeCost
+Efficiency = PnL_hedge_at_target / TotalHedgeCost
+```
+
+Где:
+- `PnL_hedge_at_target` = сумма PnL всех опционов при цене SOL = целевой уровень
+- `TotalHedgeCost` = общая стоимость покупки (премии × количество)
+
+**Обоснование:** высокая Efficiency = асимметричный риск/доход. Рисуем $1, чтобы при падении получить $3-5.
+
+Цель: **максимизировать**. Отбрасываем комбинации с Efficiency < 1.
+
+### После закрытия (оценка сделки)
+
+```
+Efficiency_closed = PnL_hedge_realized / TotalHedgeCost
 ```
 
 Цель: максимизировать Efficiency для Anchor, MinDrawdown для Adaptation, Gamma для Active.
 
+## Anchor selection (T006)
+
+### PnL портфеля (моделирование)
+
+```
+PositionPnL = (SpotPrice - EntryPrice) × SOL_qty
+HedgePnL = Σ( (MarkPrice(K, SpotPrice, DTE, IV) - Premium_K) × N_i )
+TotalPnL = PositionPnL + HedgePnL
+Drawdown = TotalPnL / НачальныйКапитал
+```
+
+**MarkPrice** считаем через Black-Scholes с текущим `markIv`.
+
+### Подбор количества контрактов
+
+```
+Σ(Premium_i × N_i) ≤ AnchorBudget
+Drawdown(SpotPrice) ≤ TargetDrawdown
+```
+
 ---
 
-*Создано: 2026-05-29 | Обновлено: 2026-05-29*
+*Создано: 2026-05-29 | Обновлено: 2026-06-15*

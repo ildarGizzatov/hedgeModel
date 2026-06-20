@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>HedgeModel Dashboard</title>
+<style>
+:root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--text-dim:#8b949e;--green:#3fb950;--red:#f85149;--yellow:#d29922;--blue:#58a6ff;--purple:#bc8cff}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text);font-size:14px}
+.header{display:flex;align-items:center;justify-content:space-between;padding:12px 24px;background:var(--surface);border-bottom:1px solid var(--border)}
+.tab{padding:10px 20px;cursor:pointer;border-bottom:2px solid transparent;color:var(--text-dim);font-size:13px;font-weight:500}
+.tab:hover{color:var(--text)}.tab.active{color:var(--blue);border-bottom-color:var(--blue)}
+.tab-content{display:none}.tab-content.active{display:block}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:16px;margin-bottom:16px}
+.card h2{font-size:15px;font-weight:600;margin-bottom:12px}
+.summary-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px}
+.summary-card{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:16px}
+.summary-card .label{color:var(--text-dim);font-size:12px;margin-bottom:4px}
+.summary-card .value{font-size:22px;font-weight:700}
+.summary-card .sub{font-size:12px;margin-top:2px}
+.green{color:var(--green)}.red{color:var(--red)}.yellow{color:var(--yellow)}.blue{color:var(--blue)}.purple{color:var(--purple)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:8px 12px;border-bottom:2px solid var(--border);color:var(--text-dim);font-weight:600;font-size:11px;text-transform:uppercase}
+td{padding:8px 12px;border-bottom:1px solid var(--border)}
+tr:hover td{background:rgba(88,166,255,.05)}
+.badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600}
+.badge-close{background:rgba(248,81,73,.15);color:var(--red)}
+.badge-roll{background:rgba(210,153,34,.15);color:var(--yellow)}
+.badge-hold{background:rgba(63,185,80,.15);color:var(--green)}
+.badge-high{background:rgba(248,81,73,.25);color:var(--red)}
+.badge-medium{background:rgba(210,153,34,.25);color:var(--yellow)}
+.badge-low{background:rgba(63,185,80,.25);color:var(--green)}
+.rec-item{display:flex;gap:12px;padding:12px;border-left:3px solid var(--border);margin-bottom:8px;border-radius:0 6px 6px 0;background:rgba(255,255,255,.02)}
+.rec-item.action-close{border-left-color:var(--red)}.rec-item.action-roll{border-left-color:var(--yellow)}.rec-item.action-hold{border-left-color:var(--green)}
+.chart-box{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:16px;margin-bottom:16px;height:260px;position:relative}
+.refresh-bar{font-size:12px;color:var(--text-dim);margin-bottom:12px}
+.countdown{color:var(--blue);font-weight:600}
+.progress-bar{height:6px;background:var(--border);border-radius:3px;overflow:hidden}
+.progress-fill{height:100%;border-radius:3px;transition:width .2s}
+.layer-anchor{color:var(--purple)}.layer-adaptation{color:var(--blue)}.layer-active{color:var(--yellow)}
+.ladder-wrap::-webkit-scrollbar{width:6px}
+.ladder-wrap::-webkit-scrollbar-track{background:var(--bg)}
+.ladder-wrap::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+.ladder-wrap::-webkit-scrollbar-thumb:hover{background:var(--text-dim)}
+.table-wrap::-webkit-scrollbar{height:6px}
+.table-wrap::-webkit-scrollbar-track{background:var(--bg)}
+.table-wrap::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+.position-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+
+.buy-row:hover{background:rgba(88,166,255,.08)}
+.buy-row.current{background:rgba(88,166,255,.12)}
+.btn-action{background:var(--blue);color:#fff;border:none;padding:4px 12px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:500;margin-left:8px}
+.btn-action:hover{opacity:.85}
+.btn-action:disabled{opacity:.4;cursor:not-allowed}
+.btn-action.spinning::after{content:'';display:inline-block;width:10px;height:10px;border:2px solid #fff;border-right-color:transparent;border-radius:50%;animation:spin .6s linear infinite;margin-left:6px;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="header"><h1>HedgeModel Dashboard</h1><div id="headerUpdated" style="color:var(--text-dim);font-size:12px">Загрузка...</div></div>
+<div class="tabs" style="display:flex;gap:0;border-bottom:1px solid var(--border);background:var(--surface);padding:0 24px">
+<div class="tab active" data-tab="positions">Позиции</div>
+<div class="tab" data-tab="options">Опционы</div>
+<div class="tab" data-tab="recommendations">Рекомендации</div>
+<div class="tab" data-tab="summary">Сводка</div>
+</div>
+<div style="padding:20px 24px">
+<div class="tab-content active" id="tab-positions">
+<div class="refresh-bar" id="refresh1"><span id="cd1"></span><button class="btn-action" onclick="refreshPrices()">🔄 Цены</button></div>
+<div class="summary-row" id="posSummary"></div>
+<div class="card"><h2>Позиции по активам</h2>
+<table><thead><tr><th>Символ</th><th>Кол-во</th><th>Avg Price</th><th>Current</th><th>PnL</th><th>PnL%</th><th>Зона</th></tr></thead>
+<tbody id="posTable"></tbody></table></div>
+<div class="position-grid">
+<div class="card"><h2>PnL по цене (шаг $1, ±20% от avg)</h2>
+<div class="ladder-wrap" style="max-height:300px;overflow-y:auto"><table><thead><tr><th>Цена</th><th>PnL</th><th>PnL%</th><th>Индикатор</th></tr></thead>
+<tbody id="posLadder"></tbody></table></div></div>
+<div class="card">
+<h2>История покупок</h2>
+<div class="ladder-wrap" style="max-height:300px;overflow-y:auto;margin-top:12px"><table><thead><tr><th>Дата</th><th>Qty</th><th>Цена</th><th>Total</th><th>PnL</th><th>PnL%</th><th>Примечание</th></tr></thead>
+<tbody id="buyHistoryTable"></tbody></table></div>
+<div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);display:flex;justify-content:space-between">
+<div style="font-size:12px;color:var(--text-dim)">Всего покупок: <b id="buyCount">0</b></div>
+<div style="font-size:12px">Общий PnL: <b id="buyTotalPnl"></b></div>
+</div>
+</div>
+</div>
+</div>
+<div class="tab-content" id="tab-options">
+<div class="refresh-bar" id="refresh2"><span id="cd2"></span><button class="btn-action" onclick="updateOptions()">⚡ Обновить греки</button></div>
+<div class="card" style="margin-bottom:16px"><h2>Слои защиты</h2><div id="layerCards"></div></div>
+<div class="card"><h2>Опционные позиции</h2>
+<table><thead><tr><th>Символ</th><th>Layer</th><th>Кол-во</th><th>Strike</th><th>Entry</th><th>Current</th><th>PnL</th><th>Δ</th><th>Γ</th><th>Θ</th><th>IV</th><th>ΔIV</th></tr></thead>
+<tbody id="optTable"></tbody></table></div>
+</div>
+<div class="tab-content" id="tab-recommendations">
+<div class="refresh-bar" id="refresh3"><span id="cd3"></span><button class="btn-action" onclick="runAnchor()">🎯 Anchor Layer</button></div>
+<div class="card"><h2>Anchor Layer (T006)</h2><div id="anchorInfo"></div></div>
+<div class="card"><h2>Рекомендации</h2><div id="recList"></div></div>
+</div>
+<div class="tab-content" id="tab-summary">
+<div class="refresh-bar" id="refresh4"><span id="cd4"></span><button class="btn-action" onclick="updateOptions()">⚡ Обновить данные</button></div>
+<div class="summary-row" id="totalSummary"></div>
+<div class="card"><h2>PnL по Блэку-Шоулзу</h2>
+<div class="table-wrap ladder-wrap"><table><thead><tr><th>Цена</th><th>PnL</th></tr></thead>
+<tbody id="bsLadder"></tbody></table></div></div>
+</div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

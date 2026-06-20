@@ -22,7 +22,7 @@ updated: 2026-05-29
 
 ## Вход
 
-- **Файл:** `sol_options_chain.xlsx`
+- **Файл:** `excel/sol_options_chain.xlsx`
 - **Лист:** `ListOption`
 - **Ключ:** `symbol`
 

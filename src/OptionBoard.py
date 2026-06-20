@@ -114,9 +114,9 @@ def parse_option_data(option_list, spot_price):
 def save_to_excel(rows, filename):
     df = pd.DataFrame(rows)
     if not df.empty:
-        df["type_order"] = df["type"].map({"PUT": 0, "CALL": 1})
-        df = df.sort_values(by=["dte", "type_order", "strike"])
-        df = df.drop(columns=["type_order"])
+       df["type_order"] = df["type"].map({"PUT": 0, "CALL": 1})
+       df = df.sort_values(by=["dte", "type_order", "strike"])
+       df = df.drop(columns=["type_order"])
 
     # Ищем полный путь к файлу относительно корня проекта
     # Мы предполагаем, что запуск идет из корня hedgeModel/

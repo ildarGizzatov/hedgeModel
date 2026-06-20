@@ -1,7 +1,7 @@
 ---
 type: strategy
 status: active
-related: [[100-strategy]], [[200-budget-allocation]], [[201-selection-criteria]], [[202-formulas]]
+related: [[100-strategy]], [[200-budget-allocation]], [[201-selection-criteria]], [[202-formulas]], [[T001-conditions-closing]], [[T002-theta-monitoring]], [[T003-roll-economics]]
 created: 2026-05-28
 updated: 2026-05-29
 ---
@@ -28,8 +28,13 @@ updated: 2026-05-29
 См. [[202-formulas#adaptation-sizing]]
 
 ## Бюджет
-
 См. [[200-budget-allocation#adaptation]]
+
+## Тета-мониторинг
+См. [[T002-theta-monitoring]]
+
+## Условия закрытия
+> См. [[T001-conditions-closing#adaptation]]
 
 ---
 

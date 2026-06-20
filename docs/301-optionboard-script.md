@@ -23,7 +23,7 @@ updated: 2026-05-29
 
 ## Выход
 
-- **Файл:** `sol_options_chain.xlsx`
+- **Файл:** `excel/sol_options_chain.xlsx`
 - **Лист:** `OptionBoard`
 - **Колонки:** symbol, strike, delta, gamma, vega, theta, mark_price, iv, dte, T, type, spot_price, hedge_cost_per_day, open_interest
 

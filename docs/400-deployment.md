@@ -35,21 +35,6 @@ cd /home/maks/projects/hedgeModel
 ./venv/bin/python src/LastPrice.py
 ```
 
-## Cron-задачи
-
-### Системный crontab
-
-```bash
-# OptionBoard.py каждые 5 минут
-*/5 * * * * cd /home/maks/projects/hedgeModel && ./venv/bin/python src/OptionBoard.py >> /home/maks/projects/hedgeModel/logs/optionboard.log 2>&1
-
-# LastPrice.py через 30 сек после OptionBoard
-*/5 * * * * sleep 30 && cd /home/maks/projects/hedgeModel && ./venv/bin/python src/LastPrice.py >> /home/maks/projects/hedgeModel/logs/lastprice.log 2>&1
-```
-
-### OpenClaw cron
-
-Можно настроить через OpenClaw scheduler.
 
 ## Логирование
 
@@ -64,14 +49,14 @@ mkdir -p /home/maks/projects/hedgeModel/logs
 
 ```bash
 # Проверить, что Excel обновлён
-stat sol_options_chain.xlsx
+stat excel/sol_options_chain.xlsx
 
 # Проверить логи
 tail -f logs/optionboard.log
 tail -f logs/lastprice.log
 
 # Проверить данные
-./venv/bin/python -c "import pandas as pd; df = pd.read_excel('sol_options_chain.xlsx', 'OptionBoard'); print(f'Records: {len(df)}')"
+./venv/bin/python -c "import pandas as pd; df = pd.read_excel('excel/sol_options_chain.xlsx', 'OptionBoard'); print(f'Records: {len(df)}')"
 ```
 
 ---

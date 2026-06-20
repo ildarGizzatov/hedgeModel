@@ -1,7 +1,7 @@
 ---
 type: strategy
 status: active
-related: [[100-strategy]], [[200-budget-allocation]], [[201-selection-criteria]], [[202-formulas]]
+related: [[100-strategy]], [[200-budget-allocation]], [[201-selection-criteria]], [[202-formulas]], [[T001-conditions-closing]]
 created: 2026-05-28
 updated: 2026-05-29
 ---
@@ -22,19 +22,14 @@ updated: 2026-05-29
 
 ## Расчёт контрактов
 
-См. [[202-formulas#anchor-sizing]]
+Реальный расчёт (Core + Tail, delta-коррекция): [[203-anchor-selection-algorithm]]
 
 ## Бюджет
 
 См. [[200-budget-allocation#anchor]]
 
-## Pre-purchase проверки
-
-- [ ] Бюджет: уложиться в выделенный бюджет слоя
-- [ ] Контроль дельты: Δ_hedge на уровне целевой цены ∈ [0.8, 1.2] от размера позиции
-- [ ] Диверсификация: отсутствие перекоса в один страйк
-- [ ] Эффективность: хвост должен ускоряться
-- [ ] Вклад: каждый контракт должен давать измеримый вклад в защиту
+## Условия закрытия
+> См. [[T001-conditions-closing#anchor]]
 
 ---
 

@@ -1,0 +1,3 @@
+id,symbol,type,strike,expiry,qty,entry_date,entry_price,total_cost,iv_entry,iv_atm_entry,delta_entry,gamma_entry,theta_entry,vega_entry,layer,status,notes
+1,SOL-26JUN26-66-P-USDT,PUT,66,2026-06-26,1,2026-06-14,1.93,1.93,0.537,0.510,-0.399,0.060,-0.107,0.046,active,open,Restored from tracking
+2,SOL-31JUL26-54-P-USDT,PUT,54,2026-07-31,1,2026-06-18,1.07,1.07,0.6490,0.6320,-0.088,0.0101,-0.0299,0.040,anchor,open,"SOL-31JUL26-54-P, anchor layer"

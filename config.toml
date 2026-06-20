@@ -1,0 +1,31 @@
+# Генерируется: gen_config.py
+# Источники: docs/200-budget-allocation.md, docs/201-selection-criteria.md
+# Обновлено: 2026-06-18 00:30
+
+# Процент от суммы покупки SOL, который можно потратить на весь хедж
+global_budget_pct = 5
+
+# Целевая просадка от Avg Buy Price, при которой хедж начинает защищать
+target_dd_pct = 20
+
+# Распределение глобального бюджета по слоям (в %)
+[layer_allocation]
+Anchor = 50       # Дальний слой — Tail Risk, структурная защита
+Adaptation = 30   # Средний слой — стабилизация PnL
+Active = 20       # Ближний слой — монетизация движения
+
+[anchor_filter]
+# Минимальный DTE (дни)
+min_dte = 25
+# Минимальная дистанция от спота (%, ниже — опцион слишком близко к споту)
+dist_min_pct = 15
+# Максимальный |Delta| — ограничение сверху
+max_delta = 0.2
+# Минимальный |Delta| (антипаттерн: меньше — слишком дешёвый)
+min_delta = 0.05
+
+[anchor_budget_split]
+# Core = 60% бюджета Anchor Layer (ядро)
+core_pct = 60
+# Tail = 40% бюджета Anchor Layer (усиление)
+tail_pct = 40

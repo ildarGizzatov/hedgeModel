@@ -1,7 +1,7 @@
 ---
 type: strategy
 status: active
-related: [[100-strategy]], [[200-budget-allocation]], [[201-selection-criteria]], [[202-formulas]]
+related: [[100-strategy]], [[200-budget-allocation]], [[201-selection-criteria]], [[202-formulas]], [[T001-conditions-closing]]
 created: 2026-05-28
 updated: 2026-05-29
 ---
@@ -28,8 +28,10 @@ updated: 2026-05-29
 См. [[202-formulas#active-sizing]]
 
 ## Бюджет
-
 См. [[200-budget-allocation#active]]
+
+## Условия закрытия
+> См. [[T001-conditions-closing#active]]
 
 ---
 

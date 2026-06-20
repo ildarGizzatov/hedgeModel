@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "docs/302-lastprice-script.md",
+                "file": "README.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "302-lastprice-script"
+              "title": "README"
             }
           }
         ]
@@ -78,7 +78,7 @@
       }
     ],
     "direction": "horizontal",
-    "width": 300
+    "width": 330.5
   },
   "right": {
     "id": "12ffd6a23ec586a0",
@@ -180,42 +180,47 @@
       "daily-notes:Сегодняшняя заметка": false,
       "templates:Вставить шаблон": false,
       "command-palette:Открыть палитру команд": false,
-      "bases:Создать новую базу": false
+      "bases:Создать новую базу": false,
+      "obsidian-kanban:Create new board": false
     }
   },
   "active": "bd9c837cb873cf31",
   "lastOpenFiles": [
-    "sol_options_chain.xlsx",
-    "sol_options_chain.xlsx.bak",
-    "docs/400-deployment.md",
-    "docs/300-pipeline.md",
-    "docs/pipeline_flow.md",
-    "docs/201-selection-criteria.md",
-    "docs/100-strategy.md",
-    "docs/101-anchor-layer.md",
-    "docs/202-formulas.md",
     "AGENTS.md",
-    "docs/900-open-tasks.md",
-    "docs/000-MOC.md",
-    "docs/000-ZK-rules.md",
-    "docs/200-budget-allocation.md",
-    "docs/203-asset-zones.md",
-    "docs/900-research-backlog.md",
+    "PROJECT-RULES.md",
+    "README.md",
+    "TODO.md",
+    "Kanban.md",
+    "docs/300-pipeline.md",
+    "data/lu25161nu6l3.tmp",
+    "data/lu24325nkv9y.tmp",
+    "data/lu19579eb5jg.tmp",
+    "data/lu19579eb5hh.tmp",
+    "src/buy_option.py",
+    "docs/501-option-selection-diagnostics.md",
     "docs/301-optionboard-script.md",
-    "docs/302-lastprice-script.md",
-    "docs/500-debug-log.md",
-    "docs/901-working-agreement.md",
+    "docs/T004-monitor-open-options.md",
+    "docs/T007-dashboard.md",
+    "dashboard/sedTwLWWu",
+    "dashboard/sedMsrTXc",
+    "dashboard/__pycache__/server.cpython-312.pyc",
+    "dashboard/__pycache__",
+    "docs/201-selection-criteria.md",
+    "dashboard/app.js",
+    "venv/lib/python3.12/site-packages/starlette-1.3.1.dist-info/licenses/LICENSE.md",
+    "venv/lib/python3.12/site-packages/uvicorn-0.49.0.dist-info/licenses/LICENSE.md",
+    "docs/T006-anchor-selection.md",
+    "docs/200-budget-allocation.md",
+    "docs/101-anchor-layer.md",
+    "docs/901-project-setup.md",
+    "docs/001-input-parameters.md",
+    "docs/Kanban.md",
+    "docs/203-anchor-selection-algorithm.md",
+    "docs/203-anchor-selection-tasks.md",
     "docs/102-adaptation-layer.md",
-    "docs/103-active-layer.md",
-    "docs/research_backlog.md",
-    "docs/strategy_definition.md",
-    "docs/project_manifest.md",
-    "203-asset-zones.md",
-    "100-strategy.md",
-    "src/LastPrice.py",
-    "src/OptionBoard.py",
-    "src",
-    "LastPrice.py",
-    "research"
+    "docs/T003-roll-economics.md",
+    "docs/401-positions-storage.md",
+    "docs/202-formulas.md",
+    "docs/103-active-layer.md"
   ]
 }

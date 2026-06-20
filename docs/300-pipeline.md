@@ -3,44 +3,104 @@ type: ops
 status: active
 related: [[301-optionboard-script]], [[302-lastprice-script]]
 created: 2026-05-28
-updated: 2026-05-29
+updated: 2026-06-16
 ---
 # Пайплайн обработки данных
 
-> Последовательность этапов обработки данных в проекте.
+> Единая точка входа через `src/pipeline.py`. Все модули подключены, логика не дублируется.
 
 ---
 
-## Этап 1: Data Ingestion (Загрузка данных)
-
-- **Инструмент:** [[301-optionboard-script]]
-- **Действие:** Забирает опционную цепочку SOL с Bybit API → записывает в `sol_options_chain.xlsx` (sheet `OptionBoard`)
-- **Результат:** Актуальный набор всех доступных опционов в Excel
-
-## Этап 2: Option Selection (Фильтрация/Выбор)
-
-- **Статус:** 🔴 В разработке
-- **Действие:** На основе критериев из [[201-selection-criteria]] выбираются целевые опционы
-- **Результат:** Список «целевых» опционов
-
-## Этап 3: Price Enrichment (Обновление цен)
-
-- **Инструмент:** [[302-lastprice-script]]
-- **Действие:** Считывает выбранные опционы → получает last/bid/ask/mark цены → записывает обратно
-- **Результат:** Обогащённый файл с актуальными рыночными ценами
-
-## Этап 4: Final Calculation (Финальный расчёт)
-
-- **Статус:** 🔴 В разработке
-- **Действие:** Расчёт стоимости хеджа, греков, PnL на основе обновлённых цен
-- **Результат:** Готовые аналитические показатели в листах `Hedge_Total`, `Portfolio`
-
-## Схема
+## Архитектура
 
 ```
-Bybit API → [[301-optionboard-script]] → Excel → Фильтрация → [[302-lastprice-script]] → Расчёт хеджа
+pipeline.py  ← orchestrator (импортирует модули, управляет порядком)
+├── OptionBoard.py    — fetch чейна SOL с Bybit → Excel
+├── anchor_picker.py  — подбор Core/Tail (чтёт конфиг + позицию + Excel)
+├── monitor_options.py — анализ позиций + рекомендации
+└── LastPrice.py      — обновление цен (опционально)
+```
+
+Каждый модуль — самостоятельная единица. Pipelineorchestrator только вызывает.
+
+---
+
+## Команды
+
+### `pipeline.py status`
+
+Показать дату и размер всех ключевых файлов:
+
+```bash
+./venv/bin/python src/pipeline.py status
+```
+
+### `pipeline.py fetch`
+
+Загрузить актуальный опционный чейн SOL с Bybit API → `excel/sol_options_chain.xlsx`. Обновить `data/open_positions.csv`.
+
+```bash
+./venv/bin/python src/pipeline.py fetch
+```
+
+### `pipeline.py select`
+
+Подобрать Anchor Layer — Core + Tail. Чтение параметров из `docs/001-input-parameters.md`, позиция из `data/open_positions.csv`, данные из Excel.
+
+```bash
+./venv/bin/python src/pipeline.py select
+```
+
+### `pipeline.py monitor`
+
+Сводка портфеля SOL + опционных позиций. Анализ Greeks, PnL, генерация рекомендаций (закрыть / роллировать / мониторить / держать).
+
+```bash
+./venv/bin/python src/pipeline.py monitor
+```
+
+### `pipeline.py run`
+
+Полный цикл: fetch → select → monitor. Вывод статуса каждого шага.
+
+```bash
+./venv/bin/python src/pipeline.py run
 ```
 
 ---
 
-*Создано: 2026-05-28 | Обновлено: 2026-05-29*
+## Модули
+
+### 1. OptionBoard.py — Data Ingestion
+
+См. [[301-optionboard-script]]
+
+### 2. anchor_picker.py — Option Selection
+
+См. [[203-anchor-selection-algorithm]]
+
+### 3. monitor_options.py — Portfolio Monitoring
+
+См. [[T004-monitor-open-options]]
+
+### 4. LastPrice.py — Price Enrichment
+
+См. [[302-lastprice-script]]
+
+---
+
+## Схема данных
+
+```
+Bybit API → OptionBoard.py → excel/sol_options_chain.xlsx
+                                      ↓
+                              anchor_picker.py (config + position + excel)
+                                      ↓
+                              monitor_options.py (registry + excel)
+                                      ↓
+                          Рекомендации → пользователь
+```
+
+---
+
+*Создано: 2026-05-28 | Обновлено: 2026-06-16*

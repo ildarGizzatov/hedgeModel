@@ -3,7 +3,7 @@ import pandas as pd
 
 BYBIT_API = "https://api.bybit.com/v5/market/tickers"
 
-EXCEL_FILE = "sol_options_chain.xlsx"
+EXCEL_FILE = "excel/sol_options_chain.xlsx"
 SHEET_NAME = "ListOption"
 BASE_COIN = "SOL"
 
