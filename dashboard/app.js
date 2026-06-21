@@ -236,7 +236,7 @@ function renderPositions(pos){
 }
 
 // === TAB 2: OPTIONS ===
-function renderOptions(opt){
+function renderOptions(opt, pos){
   var optT=document.getElementById("optTable");
   if(!opt){
     optT.innerHTML='<tr><td colspan="12" style="color:var(--red);text-align:center">Ошибка загрузки</td></tr>';
@@ -255,6 +255,27 @@ function renderOptions(opt){
   if(tEl){
     tEl.insertAdjacentHTML("beforeend",
       '<tr style="background:var(--surface);border-top:2px solid var(--border);font-weight:700"><td colspan="3" style="color:var(--blue);font-size:15px">Итого</td><td></td><td></td><td></td><td style="'+clr(t.total_pnl)+';font-size:15px">'+U(t.total_pnl)+'</td><td style="font-size:15px">'+F(t.net_delta,4)+'</td><td style="font-size:15px">'+F(t.net_gamma,4)+'</td><td style="font-size:15px">'+F(t.net_theta,4)+'</td><td style="font-size:15px">'+F(t.net_vega,4)+'</td><td></td></tr>');
+  }
+
+  // === PnL Ladder (step $1, ±20%) ===
+  var ladderEl=document.getElementById("posLadder");
+  if(ladderEl && pos && pos.positions && pos.positions.length>0){
+    var solLadder=pos.pnl_ladder||[];
+    var combIdx={};
+    ((combinedLadder||{}).ladder||[]).forEach(function(r){combIdx[r.price]=r;});
+    var html="";
+    solLadder.forEach(function(row){
+      var cls=row.is_current?"color:var(--blue);font-weight:700":clr(row.pnl);
+      var icon="";
+      if(row.is_current) icon=" 🔵";
+      else if(row.is_avg) icon=" 📍";
+      else if(row.pnl>=0) icon=" 🟢";
+      else icon=" 🔴";
+      var c=combIdx[row.price];
+      var combPnl=c?c.total_pnl:0;
+      html+='<tr><td class="'+cls+'">$'+row.price+icon+'</td><td class="'+cls+'">'+P(row.pnl_pct)+'</td><td class="'+cls+'">'+U(row.pnl)+'</td><td class="'+cls+'">'+U(combPnl)+'</td></tr>';
+    });
+    ladderEl.innerHTML=html;
   }
 }
 
@@ -325,7 +346,7 @@ function renderRecommendations(rec){
 }
 
 // === TAB 4: SUMMARY ===
-function renderSummary(sum, opt, pos){
+function renderSummary(sum, opt){
   var ts=document.getElementById("totalSummary");
   if(!sum){
     ts.innerHTML='<div style="color:var(--red)">Ошибка загрузки</div>';
@@ -339,27 +360,6 @@ function renderSummary(sum, opt, pos){
     '<div class="summary-card"><div class="label">Assets PnL</div><div class="value '+assetsPnl+'">'+U(sum.assets.total_pnl)+'</div><div class="sub '+assetsPnl+'">'+P(sum.assets.total_pnl_pct)+'</div></div>'+
     '<div class="summary-card"><div class="label">Options PnL</div><div class="value '+optPnl+'">'+U(sum.options.total_pnl)+'</div><div class="sub '+optPnl+'">'+P(sum.options.total_pnl_pct)+'</div></div>'+
     '<div class="summary-card"><div class="label">Общий PnL</div><div class="value '+totalPnl+'">'+U(t.total_pnl)+'</div><div class="sub '+totalPnl+'">'+P(t.total_pnl_pct)+'</div></div>';
-
-  // === PnL Ladder (step $1, ±20%) ===
-  if(pos && pos.positions && pos.positions.length>0){
-    var ladderEl=document.getElementById("posLadder");
-    var solLadder=pos.pnl_ladder||[];
-    var combIdx={};
-    ((combinedLadder||{}).ladder||[]).forEach(function(r){combIdx[r.price]=r;});
-    var html="";
-    solLadder.forEach(function(row){
-      var cls=row.is_current?"color:var(--blue);font-weight:700":clr(row.pnl);
-      var icon="";
-      if(row.is_current) icon=" 🔵";
-      else if(row.is_avg) icon=" 📍";
-      else if(row.pnl>=0) icon=" 🟢";
-      else icon=" 🔴";
-      var c=combIdx[row.price];
-      var combPnl=c?c.total_pnl:0;
-      html+='<tr><td class="'+cls+'">$'+row.price+icon+'</td><td class="'+cls+'">'+P(row.pnl_pct)+'</td><td class="'+cls+'">'+U(row.pnl)+'</td><td class="'+cls+'">'+U(combPnl)+'</td></tr>';
-    });
-    ladderEl.innerHTML=html;
-  }
 }
 
 // === Load all ===
@@ -375,9 +375,9 @@ function loadAll(){
   ]).then(function(results){
     combinedLadder=results[5]||{ladder:[]};
     renderPositions(results[0]);
-    renderOptions(results[1]);
+    renderOptions(results[1], results[0]);
     renderRecommendations(results[2]);
-    renderSummary(results[3], results[1], results[0]);
+    renderSummary(results[3], results[1]);
     renderLayers(results[4]);
   });
 }
