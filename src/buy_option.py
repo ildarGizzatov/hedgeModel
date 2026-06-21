@@ -60,32 +60,35 @@ def fetch_spot_price(symbol: str = "SOLUSDT") -> float:
 
 
 def fetch_option_chain(coin: str = "SOL") -> list:
-    """Получить полный option chain с Bybit."""
+    """Получить полный option chain с Bybit (через tickers API)."""
+    import requests
+    url = "https://api.bybit.com/v5/market/tickers"
     try:
-        conn = http.client.HTTPSConnection(BYBIT_HOST, timeout=15)
-        conn.request("GET", f"/v5/options/usdc/query?category=option&symbol={coin}USDC&limit=200")
-        resp = conn.getresponse()
-        data = json.loads(resp.read().decode())
-        if data["retCode"] != 0:
-            print(f"  ❌ Bybit chain error: {data.get('retMsg')}")
-            return []
+        params = {"category": "option", "baseCoin": coin}
+        r = requests.get(url, params=params, timeout=60)
+        r.raise_for_status()
+        data = r.json()
 
         chain = []
-        for item in data["result"]["list"]:
-            # Только PUT опционы
-            if item.get("optionsType", {}).get("optionType") != "P":
+        for item in data.get("result", {}).get("list", []):
+            # Только PUT опционы — по символу
+            if not item.get("symbol", "").endswith("-P-USDT"):
                 continue
             try:
-                strike = float(item["strike"])
-                expiry = item["settleTime"]  # ms since epoch
-                expiry_dt = datetime.fromtimestamp(expiry / 1000)
+                # Strike и expiry извлекаются из символа (SOL-DDMONYY-STRIKE-P-USDT)
+                sym = item.get("symbol", "")
+                parts = sym.split("-")
+                strike = float(parts[2])
+                # Парсим дату из символа (10JUL26 → 2026-07-10)
+                date_part = parts[1]
+                expiry_dt = datetime.strptime(date_part, "%d%b%y")
                 expiry_str = expiry_dt.strftime("%Y-%m-%d")
                 dte = (expiry_dt - datetime.now()).days
                 delta = float(item.get("delta", 0))
                 gamma = float(item.get("gamma", 0))
                 theta = float(item.get("theta", 0))
                 vega = float(item.get("vega", 0))
-                iv = float(item.get("impliedVolatility", 0))
+                iv = float(item.get("markIv", 0))
                 mark_price = float(item.get("markPrice", 0))
                 last_price = float(item.get("lastPrice", 0))
                 price = last_price if last_price > 0 else mark_price
@@ -103,7 +106,7 @@ def fetch_option_chain(coin: str = "SOL") -> list:
                     "iv": iv,
                     "mark_price": price,
                 })
-            except (ValueError, KeyError) as e:
+            except (ValueError, KeyError):
                 continue
         return chain
     except Exception as e:
@@ -137,7 +140,7 @@ def load_config() -> dict:
     if not CONFIG_PATH.exists():
         print(f"  ❌ Config not found: {CONFIG_PATH}")
         return {}
-    with open(CONFIG_PATH) as f:
+    with open(CONFIG_PATH, "rb") as f:
         return tomllib.load(f)
 
 
@@ -179,7 +182,10 @@ def buy_option(args: dict) -> bool:
     expiry = args.get("expiry")
 
     opt = find_option(chain, symbol=symbol, strike=strike, expiry=expiry)
-    if not opt:
+    if opt:
+        print(f"  ✅ {opt['symbol']}")
+        print(f"     Strike: ${opt['strike']} | DTE: {opt['dte']} | IV: {opt['iv']:.2%} | Price: ${opt['mark_price']:.2f}")
+    else:
         print("  ⚠️ Опцион не найден, показываем доступные:")
         print(f"  {'Символ':<40} {'Strike':>7} {'DTE':>5} {'IV':>6} {'Price':>7}")
         print("  " + "-" * 67)
@@ -187,8 +193,6 @@ def buy_option(args: dict) -> bool:
             if o["dte"] > 0:
                 print(f"  {o['symbol']:<40} ${o['strike']:>6.0f} {o['dte']:>5d} {o['iv']:>6.2%} ${o['mark_price']:>6.2f}")
         return False
-    print(f"  ✅ {opt['symbol']}")
-    print(f"     Strike: ${opt['strike']} | DTE: {opt['dte']} | IV: {opt['iv']:.2%} | Price: ${opt['mark_price']:.2f}")
 
     # 3. Загрузка config
     print("\n[3/4] Конфигурация...")
