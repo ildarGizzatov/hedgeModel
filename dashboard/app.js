@@ -273,7 +273,8 @@ function renderOptions(opt, pos){
       else icon=" 🔴";
       var c=combIdx[row.price];
       var combPnl=c?c.total_pnl:0;
-      html+='<tr><td class="'+cls+'">$'+row.price+icon+'</td><td class="'+cls+'">'+P(row.pnl_pct)+'</td><td class="'+cls+'">'+U(row.pnl)+'</td><td class="'+cls+'">'+U(combPnl)+'</td></tr>';
+      var optPnl=combPnl-row.pnl;
+      html+='<tr><td class="'+cls+'">$'+row.price+icon+'</td><td class="'+cls+'">'+P(row.pnl_pct)+'</td><td class="'+cls+'">'+U(row.pnl)+'</td><td class="'+cls+'">'+U(combPnl)+'</td><td class="'+clr(optPnl)+'">'+U(optPnl)+'</td></tr>';;
     });
     ladderEl.innerHTML=html;
   }
