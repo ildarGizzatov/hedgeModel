@@ -1,2 +1,0 @@
-date,qty,price_closed,avg_price,pnl,symbol,notes
-2026-06-17,1,0.4192,1.93,-1.51,SOL-26JUN26-66-P-USDT,Автозакрытие: PnL=-78.28% < -100%

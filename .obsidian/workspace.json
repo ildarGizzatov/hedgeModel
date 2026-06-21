@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "AGENTS.md",
+                "file": "README.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "AGENTS"
+              "title": "README"
             }
           }
         ]
@@ -184,19 +184,20 @@
       "obsidian-kanban:Create new board": false
     }
   },
-  "active": "61de22f5b4a7b078",
+  "active": "bd9c837cb873cf31",
   "lastOpenFiles": [
-    "hedge_model.db-wal",
-    "src/__pycache__/prices_step.cpython-312.pyc",
     "hedge_model.db-shm",
+    "hedge_model.db-wal",
+    "AGENTS.md",
+    "sedZdWJv5",
+    "README.md",
+    "src/__pycache__/prices_step.cpython-312.pyc",
     "src/__pycache__/fetch_step.cpython-312.pyc",
     "src/__pycache__/run_step.cpython-312.pyc",
     "src/__pycache__/status_step.cpython-312.pyc",
     "src/status_step.py",
     "src/run_step.py",
     "src/prices_step.py",
-    "src/fetch_step.py",
-    "src/__pycache__/chain_fetcher.cpython-312.pyc",
     "docs/901-project-setup.md",
     "docs/201-selection-criteria.md",
     "docs/202-formulas.md",
@@ -212,10 +213,8 @@
     "docs/103-active-layer.md",
     "docs/200-budget-allocation.md",
     "docs/401-positions-storage.md",
-    "README.md",
     "T003.md",
     "PROJECT-RULES.md",
-    "AGENTS.md",
     "900-research-backlog.md",
     "docs/501-option-selection-diagnostics.md",
     "dev/400-deployment.md",

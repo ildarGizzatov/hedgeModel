@@ -31,12 +31,6 @@ hedgeModel/
 │   ├── optionboard.py        # Опционный чейн → Excel
 │   └── excel/                # Excel-файл чейна
 │       └── sol_options_chain.xlsx
-├── data/                     # Бэкап CSV (быстрое чтение, не основной источник)
-│   ├── open_positions.csv
-│   ├── buy_history.csv
-│   ├── closed_positions.csv
-│   ├── options_registry.csv
-│   └── options_tracking.csv
 ├── hedge_model.db            # SQLite-база (источник истины)
 ├── schema.sql                # DDL-схема БД (7 таблиц)
 ├── config.toml               # Параметры стратегии (генерируется из docs)
