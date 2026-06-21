@@ -270,6 +270,17 @@ function renderOptions(opt, pos){
       '<tr style="background:var(--surface);border-top:2px solid var(--border);font-weight:700"><td colspan="3" style="color:var(--blue);font-size:15px">Итого</td><td></td><td></td><td></td><td style="'+clr(t.total_pnl)+';font-size:15px">'+U(t.total_pnl)+'</td><td style="font-size:15px">'+F(t.net_delta,4)+'</td><td style="font-size:15px">'+F(t.net_gamma,4)+'</td><td style="font-size:15px">'+F(t.net_theta,4)+'</td><td style="font-size:15px">'+F(t.net_vega,4)+'</td><td></td></tr>');
   }
 
+  // === Duplicate options table for Recommendations tab ===
+  var optRecEl=document.getElementById("optTableRec");
+  if(optRecEl && opt.options.length>0){
+    optRecEl.innerHTML=rows;
+    var recTotEl=document.getElementById("optTableRec");
+    if(recTotEl){
+      recTotEl.insertAdjacentHTML("beforeend",
+        '<tr style="background:var(--surface);border-top:2px solid var(--border);font-weight:700"><td colspan="3" style="color:var(--blue);font-size:15px">Итого</td><td></td><td></td><td></td><td style="'+clr(t.total_pnl)+';font-size:15px">'+U(t.total_pnl)+'</td><td style="font-size:15px">'+F(t.net_delta,4)+'</td><td style="font-size:15px">'+F(t.net_gamma,4)+'</td><td style="font-size:15px">'+F(t.net_theta,4)+'</td><td style="font-size:15px">'+F(t.net_vega,4)+'</td><td></td></tr>');
+    }
+  }
+
   // === PnL Ladder (step $1, ±20%) ===
   var ladderEl=document.getElementById("posLadder");
   if(ladderEl && pos && pos.positions && pos.positions.length>0){
