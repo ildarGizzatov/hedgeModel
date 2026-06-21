@@ -212,18 +212,48 @@ function renderPositions(pos){
   // === PnL Ladder (step $1, ±20%) ===
   var ladderEl=document.getElementById("posLadder");
   if(ladderEl && pos.positions.length>0){
-    var ladder=pos.pnl_ladder||[];
+    var solLadder=pos.pnl_ladder||[];
+    var combIdx={};
+    ((combinedLadder||{}).ladder||[]).forEach(function(r){combIdx[r.price]=r;});
     var html="";
-    ladder.forEach(function(row){
+    solLadder.forEach(function(row){
       var cls=row.is_current?"color:var(--blue);font-weight:700":clr(row.pnl);
       var icon="";
       if(row.is_current) icon=" 🔵";
       else if(row.is_avg) icon=" 📍";
       else if(row.pnl>=0) icon=" 🟢";
       else icon=" 🔴";
-      html+='<tr><td class="'+cls+'">$'+row.price+icon+'</td><td class="'+cls+'">'+U(row.pnl)+'</td><td class="'+cls+'">'+P(row.pnl_pct)+'</td><td><div class="progress-bar" style="width:200px"><div class="progress-fill" style="width:'+Math.min(Math.abs(row.pnl_pct)*2,100)+'%;background:'+clr(row.pnl)+'"></div></div></td></tr>';
+      var c=combIdx[row.price];
+      var combPnl=c?c.total_pnl:0;
+      var combPct=c?c.total_pnl_pct:row.pnl_pct;
+      html+='<tr><td class="'+cls+'">$'+row.price+icon+'</td><td class="'+cls+'">'+P(row.pnl_pct)+'</td><td class="'+cls+'">'+U(row.pnl)+'</td><td class="'+cls+'">'+U(combPnl)+'</td></tr>';
     });
     ladderEl.innerHTML=html;
+  }
+
+  // === Drop 20% from current price (step $1) ===
+  var dropEl=document.getElementById("posDrop");
+  if(dropEl && pos.positions.length>0){
+    var p=pos.positions[0];
+    var current=p.current_price;
+    var low20=Math.round(current*0.80);
+    var rows="";
+    for(var price=low20;price<=current;price++){
+      var dPnl=(price-p.avg_price)*p.qty;
+      var dPnlPct=((price-p.avg_price)/p.avg_price*100);
+      var dropPct=((price-current)/current*100);
+      var cls=clr(dPnl);
+      var icon="";
+      if(price===Math.round(current)) icon=" 🔵";
+      else if(price===Math.round(p.avg_price)) icon=" 📍";
+      else if(dPnl>=0) icon=" 🟢";
+      else icon=" 🔴";
+      rows+='<tr><td class="'+cls+'">$'+price+icon+'</td>';
+      rows+='<td class="'+cls+'">'+U(dPnl)+'</td>';
+      rows+='<td class="'+cls+'">'+P(dPnlPct)+'</td>';
+      rows+='<td class="'+cls+'">'+P(dropPct)+'</td></tr>';
+    }
+    dropEl.innerHTML=rows;
   }
 }
 
@@ -352,6 +382,7 @@ function renderBSSummary(bs){
 }
 
 // === Load all ===
+var combinedLadder=null;
 function loadAll(){
   Promise.all([
     api("/api/positions"),
@@ -359,8 +390,10 @@ function loadAll(){
     api("/api/recommendations"),
     api("/api/summary"),
     api("/api/layers"),
-    api("/api/blackscholes")
+    api("/api/blackscholes"),
+    api("/api/combined-ladder")
   ]).then(function(results){
+    combinedLadder=results[6]||{ladder:[]};
     renderPositions(results[0]);
     renderOptions(results[1]);
     renderRecommendations(results[2]);

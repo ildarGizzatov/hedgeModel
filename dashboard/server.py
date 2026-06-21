@@ -593,6 +593,69 @@ def api_summary() -> dict[str, Any]:
 
 
 # ==========================================
+# COMBINED LADDER (SOL + опционы по BS)
+# ==========================================
+
+@app.get("/api/combined-ladder")
+def api_combined_ladder() -> dict[str, Any]:
+    """PnL ladder: SOL + все опционы (BS-расчёт для каждого шага)."""
+    pos = get_position("SOL")
+    if not pos:
+        return {"ladder": []}
+
+    qty = float(pos["qty"])
+    avg_price = float(pos["avg_price"])
+    low = round(avg_price * 0.80)
+    high = round(avg_price * 1.20)
+
+    open_opts = get_all_open_options()
+    spot = float(pos.get("current_price") or avg_price)
+
+    r_rf = 0.05
+    ladder = []
+    for price in range(low, high + 1):
+        # SOL PnL
+        sol_pnl = (price - avg_price) * qty
+
+        # Опционы PnL (BS для каждого опциона)
+        opt_pnl = 0.0
+        for opt in open_opts:
+            strike = float(opt["strike"])
+            expiry = opt["expiry"]
+            entry_price = float(opt["entry_price"] or 0)
+            opt_qty = int(opt["qty"])
+            dte = calc_dte(expiry)
+            T_years = max(dte / 365.0, 1 / 365.0)
+
+            latest_greeks = get_all_latest_greeks()
+            greeks_idx = {g["option_symbol"]: g for g in latest_greeks}
+            greek = greeks_idx.get(opt["symbol"], {})
+            iv = float(greek.get("iv") or 0)
+
+            if iv > 0:
+                bs_price = _bs_put_price(price, strike, T_years, iv, r_rf)
+            else:
+                bs_price = max(strike - price, 0)
+
+            opt_pnl += (bs_price - entry_price) * opt_qty
+
+        total_pnl = sol_pnl + opt_pnl
+        total_pnl_pct = (total_pnl / (avg_price * qty) * 100) if avg_price > 0 else 0
+
+        ladder.append({
+            "price": price,
+            "sol_pnl": round(sol_pnl, 2),
+            "opt_pnl": round(opt_pnl, 2),
+            "total_pnl": round(total_pnl, 2),
+            "total_pnl_pct": round(total_pnl_pct, 2),
+            "is_current": price == round(spot),
+            "is_avg": price == round(avg_price),
+        })
+
+    return {"ladder": ladder, "updated": date.today().strftime("%Y-%m-%d")}
+
+
+# ==========================================
 # BLACK-SCHOLES PnL LADDER
 # ==========================================
 
