@@ -197,17 +197,14 @@ function renderPositions(pos){
   if(buyEl){
     var totalBuyPnl=0;
     var html="";
-    if(pos.positions.length>0){
-      var buys=pos.positions[0].buy_history||[];
-      buys.forEach(function(b){
-        totalBuyPnl+=b.pnl;
-        var pc3=clr(b.pnl);
-        var isCurrent="";
-        html+='<tr class="buy-row"><td>'+b.date+'</td><td>'+b.qty+'</td><td>$'+F(b.price)+'</td><td>$'+F(b.total)+'</td><td class="'+pc3+'">'+U(b.pnl)+'</td><td class="'+pc3+'">'+P(b.pnl_pct)+'</td><td style="color:var(--text-dim)">'+(b.notes||'')+'</td></tr>';
-      });
-    }
+    var buys=pos.buy_history||[];
+    buys.forEach(function(b){
+      totalBuyPnl+=b.pnl;
+      var pc3=clr(b.pnl);
+      html+='<tr class="buy-row"><td>'+b.date+'</td><td>'+b.qty+'</td><td>$'+F(b.price)+'</td><td>$'+F(b.total)+'</td><td class="'+pc3+'">'+U(b.pnl)+'</td><td class="'+pc3+'">'+P(b.pnl_pct)+'</td><td style="color:var(--text-dim)">'+(b.notes||'')+'</td></tr>';
+    });
     buyEl.innerHTML=html||'<tr><td colspan="7" style="color:var(--text-dim)">Нет данных</td></tr>';
-    document.getElementById("buyCount").textContent=buys?buys.length:0;
+    document.getElementById("buyCount").textContent=buys.length;
     var pnlEl=document.getElementById("buyTotalPnl");
     if(pnlEl){pnlEl.className=clr(totalBuyPnl);pnlEl.textContent=U(totalBuyPnl)}
   }
@@ -215,8 +212,7 @@ function renderPositions(pos){
   // === PnL Ladder (step $1, ±20%) ===
   var ladderEl=document.getElementById("posLadder");
   if(ladderEl && pos.positions.length>0){
-    var p=pos.positions[0]; // Render ladder for first (main) position
-    var ladder=p.pnl_ladder||[];
+    var ladder=pos.pnl_ladder||[];
     var html="";
     ladder.forEach(function(row){
       var cls=row.is_current?"color:var(--blue);font-weight:700":clr(row.pnl);
@@ -299,7 +295,7 @@ function renderRecommendations(rec){
   // Anchor info
   if(rec.anchor&&rec.anchor.length){
     var a=rec.anchor[0];
-    ai.innerHTML='<div class="rec-item"><div><b>Spot:</b> $'+F(a.spot)+' | <b>Avg Buy:</b> $'+F(a.avg_price)+' | <b>Target:</b> $'+F(a.s_target)+'<br><b>Position Size:</b> $'+F(a.position_size)+' | <b>Anchor Budget:</b> $'+F(a.anchor_budget)+' | <b>SOL qty:</b> '+F(a.qty,2)+'</div></div>';
+    ai.innerHTML='<div class="rec-item"><div><b>Avg Buy:</b> $'+F(a.avg_price)+' | <b>Target:</b> $'+F(a.s_target)+'<br><b>Position Size:</b> $'+F(a.position_size)+' | <b>Anchor Budget:</b> $'+F(a.anchor_budget)+' | <b>SOL qty:</b> '+F(a.qty,2)+'</div></div>';
   }
   // Suggestions
   var recs=rec.suggestions||[];
