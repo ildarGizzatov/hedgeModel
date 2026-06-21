@@ -255,7 +255,6 @@ function renderOptions(opt, pos){
     rows+='<td>$'+F(o.entry_price,2)+'</td>';
     rows+='<td>$'+F(o.current_price,2)+'</td>';
     rows+='<td class="'+pc2+'">'+U(o.pnl)+'</td>';
-    rows+='<td>'+o.dte+'</td>';
     rows+='<td title="Entry: '+F(o.delta_entry,4)+'\nИзменение: '+F(o.delta_change,4)+'">'+F(o.delta,4)+'</td>';
     rows+='<td title="Entry: '+F(o.gamma_entry,4)+'\nИзменение: '+F(o.gamma_change,4)+'">'+F(o.gamma,4)+'</td>';
     rows+='<td class="'+pc2+'" title="Entry: '+F(o.theta_entry,4)+'\nНа день: '+F(o.theta_per_day,4)+'">'+F(o.theta_per_day,4)+'</td>';
@@ -271,10 +270,28 @@ function renderOptions(opt, pos){
       '<tr style="background:var(--surface);border-top:2px solid var(--border);font-weight:700"><td colspan="3" style="color:var(--blue);font-size:15px">Итого</td><td></td><td></td><td></td><td style="'+clr(t.total_pnl)+';font-size:15px">'+U(t.total_pnl)+'</td><td style="font-size:15px">'+F(t.net_delta,4)+'</td><td style="font-size:15px">'+F(t.net_gamma,4)+'</td><td style="font-size:15px">'+F(t.net_theta,4)+'</td><td style="font-size:15px">'+F(t.net_vega,4)+'</td><td></td></tr>');
   }
 
-  // === Duplicate options table for Recommendations tab ===
+  // === Duplicate options table for Recommendations tab (with DTE) ===
   var optRecEl=document.getElementById("optTableRec");
   if(optRecEl && opt.options.length>0){
-    optRecEl.innerHTML=rows;
+    var rowsRec="";
+    opt.options.forEach(function(o){
+      var pc2=clr(o.pnl);
+      rowsRec+='<tr style="text-align:left">';
+      rowsRec+='<td>'+o.symbol+'</td>';
+      rowsRec+='<td class="layer-'+o.layer+'">'+o.layer+'</td>';
+      rowsRec+='<td>'+o.qty+'</td>';
+      rowsRec+='<td>$'+o.strike+'</td>';
+      rowsRec+='<td>$'+F(o.entry_price,2)+'</td>';
+      rowsRec+='<td>$'+F(o.current_price,2)+'</td>';
+      rowsRec+='<td class="'+pc2+'">'+U(o.pnl)+'</td>';
+      rowsRec+='<td>'+o.dte+'</td>';
+      rowsRec+='<td title="Entry: '+F(o.delta_entry,4)+'\nИзменение: '+F(o.delta_change,4)+'">'+F(o.delta,4)+'</td>';
+      rowsRec+='<td title="Entry: '+F(o.gamma_entry,4)+'\nИзменение: '+F(o.gamma_change,4)+'">'+F(o.gamma,4)+'</td>';
+      rowsRec+='<td class="'+pc2+'" title="Entry: '+F(o.theta_entry,4)+'\nНа день: '+F(o.theta_per_day,4)+'">'+F(o.theta_per_day,4)+'</td>';
+      rowsRec+='<td title="Entry: '+F(o.iv_entry,4)+'\nИзменение: '+F(o.iv_change,4)+'">'+F(o.iv,4)+'</td>';
+      rowsRec+='</tr>';
+    });
+    optRecEl.innerHTML=rowsRec;
     var recTotEl=document.getElementById("optTableRec");
     if(recTotEl){
       recTotEl.insertAdjacentHTML("beforeend",
