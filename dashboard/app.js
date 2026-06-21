@@ -247,7 +247,20 @@ function renderOptions(opt, pos){
   opt.options.forEach(function(o){
     var pc2=clr(o.pnl);
     var ivClr=o.iv_change>=0?"green":"red";
-    rows+='<tr style="text-align:left"><td>'+o.symbol+'</td><td class="layer-'+o.layer+'">'+o.layer+'</td><td>'+o.qty+'</td><td>$'+o.strike+'</td><td>$'+F(o.entry_price,2)+'</td><td>$'+F(o.current_price,2)+'</td><td class="'+pc2+'">'+U(o.pnl)+'</td><td>'+F(o.delta,4)+'</td><td>'+F(o.gamma,4)+'</td><td class="'+pc2+'">'+F(o.theta_per_day,4)+'</td><td>'+F(o.iv,4)+'</td><td class="'+ivClr+'">'+F(o.iv_change,4)+'</td></tr>';
+    rows+='<tr style="text-align:left">';
+    rows+='<td>'+o.symbol+'</td>';
+    rows+='<td class="layer-'+o.layer+'">'+o.layer+'</td>';
+    rows+='<td>'+o.qty+'</td>';
+    rows+='<td>$'+o.strike+'</td>';
+    rows+='<td>$'+F(o.entry_price,2)+'</td>';
+    rows+='<td>$'+F(o.current_price,2)+'</td>';
+    rows+='<td class="'+pc2+'">'+U(o.pnl)+'</td>';
+    rows+='<td title="Entry: '+F(o.delta_entry,4)+'\nИзменение: '+F(o.delta_change,4)+'">'+F(o.delta,4)+'</td>';
+    rows+='<td title="Entry: '+F(o.gamma_entry,4)+'\nИзменение: '+F(o.gamma_change,4)+'">'+F(o.gamma,4)+'</td>';
+    rows+='<td class="'+pc2+'" title="Entry: '+F(o.theta_entry,4)+'\nНа день: '+F(o.theta_per_day,4)+'">'+F(o.theta_per_day,4)+'</td>';
+    rows+='<td title="Entry: '+F(o.iv_entry,4)+'\nИзменение: '+F(o.iv_change,4)+'">'+F(o.iv,4)+'</td>';
+    rows+='<td class="'+ivClr+'" title="Входной IV: '+F(o.iv_entry,4)+'\nТекущий IV: '+F(o.iv,4)+'\nИзменение: '+F(o.iv_change,4)+'">'+F(o.iv_change,4)+'</td>';
+    rows+='</tr>';
   });
   optT.innerHTML=rows;
   // Net Greeks — итоговая строка внизу таблицы
