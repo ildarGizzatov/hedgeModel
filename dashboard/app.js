@@ -279,8 +279,8 @@ function renderOptions(opt, pos){
       rowsRec+='<tr style="text-align:left">';
       rowsRec+='<td>'+o.symbol+'</td>';
       rowsRec+='<td class="'+pc2+'">'+U(o.pnl)+'</td>';
-      rowsRec+='<td>'+o.dte+'</td>';
       rowsRec+='<td class="layer-'+o.layer+'">'+o.layer+'</td>';
+      rowsRec+='<td>'+o.dte+'</td>';
       rowsRec+='<td title="Entry: '+F(o.delta_entry,4)+'\nИзменение: '+F(o.delta_change,4)+'">'+F(o.delta,4)+'</td>';
       rowsRec+='<td title="Entry: '+F(o.gamma_entry,4)+'\nИзменение: '+F(o.gamma_change,4)+'">'+F(o.gamma,4)+'</td>';
       rowsRec+='<td class="'+pc2+'" title="Entry: '+F(o.theta_entry,4)+'\nНа день: '+F(o.theta_per_day,4)+'">'+F(o.theta_per_day,4)+'</td>';
@@ -288,11 +288,6 @@ function renderOptions(opt, pos){
       rowsRec+='</tr>';
     });
     optRecEl.innerHTML=rowsRec;
-    var recTotEl=document.getElementById("optTableRec");
-    if(recTotEl){
-      recTotEl.insertAdjacentHTML("beforeend",
-        '<tr style="background:var(--surface);border-top:2px solid var(--border);font-weight:700"><td colspan="3" style="color:var(--blue);font-size:15px">Итого</td><td></td><td></td><td></td><td style="'+clr(t.total_pnl)+';font-size:15px">'+U(t.total_pnl)+'</td><td style="font-size:15px">'+F(t.net_delta,4)+'</td><td style="font-size:15px">'+F(t.net_gamma,4)+'</td><td style="font-size:15px">'+F(t.net_theta,4)+'</td><td style="font-size:15px">'+F(t.net_vega,4)+'</td><td></td></tr>');
-    }
   }
 
   // === PnL Ladder (step $1, ±20%) ===
