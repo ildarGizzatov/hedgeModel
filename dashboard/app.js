@@ -363,24 +363,6 @@ function renderSummary(sum, opt){
     '<div class="summary-card"><div class="label">Общий PnL</div><div class="value '+totalPnl+'">'+U(t.total_pnl)+'</div><div class="sub '+totalPnl+'">'+P(t.total_pnl_pct)+'</div></div>';
 }
 
-// === TAB 4: BLACK-SCHOLES LADDER ===
-function renderBSSummary(bs){
-  var el=document.getElementById("bsLadder");
-  if(!bs || !bs.ladder || bs.ladder.length===0){
-    if(el) el.innerHTML='<tr><td colspan="4" style="color:var(--text-dim);text-align:center">Нет данных</td></tr>';
-    return;
-  }
-  var rows="";
-  bs.ladder.forEach(function(row){
-    var pc=clr(row.pnl);
-    var mark="";
-    if(row.is_current) mark=" 🔵";
-    else if(row.is_avg) mark=" 📍";
-    rows+='<tr style="text-align:left"><td>$'+row.price+mark+'</td><td class="'+pc+'">'+U(row.pnl)+'</td></tr>';
-  });
-  if(el) el.innerHTML=rows;
-}
-
 // === Load all ===
 var combinedLadder=null;
 function loadAll(){
@@ -390,16 +372,14 @@ function loadAll(){
     api("/api/recommendations"),
     api("/api/summary"),
     api("/api/layers"),
-    api("/api/blackscholes"),
     api("/api/combined-ladder")
   ]).then(function(results){
-    combinedLadder=results[6]||{ladder:[]};
+    combinedLadder=results[5]||{ladder:[]};
     renderPositions(results[0]);
     renderOptions(results[1]);
     renderRecommendations(results[2]);
     renderSummary(results[3], results[1]);
     renderLayers(results[4]);
-    renderBSSummary(results[5]);
   });
 }
 
