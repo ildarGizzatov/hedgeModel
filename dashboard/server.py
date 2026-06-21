@@ -309,7 +309,6 @@ def api_options() -> dict[str, Any]:
             "vega": round(vega, 4),
             "vega_entry": round(entry_vega, 4),
             "dte": dte,
-            "cost_option": round(total_cost_val, 2),
             "iv": round(iv, 4),
             "iv_entry": round(iv_entry, 4),
             "iv_change": round(iv - iv_entry, 4),
