@@ -133,21 +133,37 @@ def add_option(symbol: str, opt_type: str, strike: float, expiry: str,
                delta_entry: float = None, gamma_entry: float = None,
                theta_entry: float = None, vega_entry: float = None,
                notes: str = None) -> int:
-    """Добавить опцион в реестр."""
+    """Добавить опцион в реестр. Если уже есть — обновить qty и avg_price."""
     entry_date = entry_date or date.today().isoformat()
     conn = get_connection()
-    conn.execute("""
-        INSERT INTO options (symbol, type, strike, expiry, qty, layer, entry_date,
-                             entry_price, iv_entry, iv_atm_entry, delta_entry,
-                             gamma_entry, theta_entry, vega_entry, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (symbol, opt_type, strike, expiry, qty, layer, entry_date,
-          entry_price, iv_entry, iv_atm_entry, delta_entry,
-          gamma_entry, theta_entry, vega_entry, notes))
-    conn.commit()
-    row_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-    conn.close()
-    return row_id
+    existing = conn.execute("SELECT id, qty, entry_price FROM options WHERE symbol=?", (symbol,)).fetchone()
+    if existing:
+        # Обновляем среднюю цену покупки
+        old_id, old_qty, old_price = existing
+        new_qty = old_qty + qty
+        avg_price = round((old_price * old_qty + entry_price * qty) / new_qty, 4)
+        conn.execute("""
+            UPDATE options SET
+                qty = ?, entry_price = ?, layer = ?, entry_date = ?,
+                notes = ?, status = 'open'
+            WHERE id = ?
+        """, (new_qty, avg_price, layer or "", entry_date, notes or "", old_id))
+        conn.commit()
+        conn.close()
+        return old_id
+    else:
+        conn.execute("""
+            INSERT INTO options (symbol, type, strike, expiry, qty, layer, entry_date,
+                                 entry_price, iv_entry, iv_atm_entry, delta_entry,
+                                 gamma_entry, theta_entry, vega_entry, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (symbol, opt_type, strike, expiry, qty, layer, entry_date,
+              entry_price, iv_entry, iv_atm_entry, delta_entry,
+              gamma_entry, theta_entry, vega_entry, notes))
+        conn.commit()
+        row_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        conn.close()
+        return row_id
 
 
 def get_option_by_symbol(symbol: str) -> Optional[dict]:
