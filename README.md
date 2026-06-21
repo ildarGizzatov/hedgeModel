@@ -22,22 +22,21 @@ hedgeModel/
 │   ├── chain_fetcher.py      # Fetch + парсинг + фильтрация чейна
 │   ├── chain_parser.py       # Парсинг Bybit ticker → опцион
 │   ├── db.py                 # Обёртка SQLite: CRUD, query-хелперы
-│   ├── black_scholes.py      # BS-расчёт цены и Greeks (r=0)
-│   └── OptionBoard.py        # Загрузка чейна → Excel (legacy)
+│   └── black_scholes.py      # BS-расчёт цены и Greeks (r=0)
 ├── dashboard/                # Web-дашборд
 │   ├── server.py             # FastAPI backend (/api/positions, /api/options...)
 │   ├── app.js                # Frontend (таблицы, графики, табы)
 │   └── index.html            # UI
 ├── tools/                    # Вспомогательные утилиты
-│   └── optionboard.py        # Опционный чейн → Excel (альтернативный путь)
+│   ├── optionboard.py        # Опционный чейн → Excel
+│   └── excel/                # Excel-файл чейна
+│       └── sol_options_chain.xlsx
 ├── data/                     # Бэкап CSV (быстрое чтение, не основной источник)
-│   ├── open_positions.csv    # Бэкап позиции SOL
-│   ├── buy_history.csv       # Бэкап истории покупок
-│   ├── closed_positions.csv  # Бэкап закрытых опционов
-│   ├── options_registry.csv  # Бэкап реестра опционов
-│   └── options_tracking.csv  # Бэкап Greeks-трекинга
-├── excel/                    # Опционный чейн (Excel)
-│   └── sol_options_chain.xlsx
+│   ├── open_positions.csv
+│   ├── buy_history.csv
+│   ├── closed_positions.csv
+│   ├── options_registry.csv
+│   └── options_tracking.csv
 ├── hedge_model.db            # SQLite-база (источник истины)
 ├── schema.sql                # DDL-схема БД (7 таблиц)
 ├── config.toml               # Параметры стратегии (генерируется из docs)
@@ -162,11 +161,9 @@ python src/buy_option.py --symbol "SOL-25JUL25-70-P-USDT"
 
 ```bash
 python tools/optionboard.py
-# или
-python src/OptionBoard.py
 ```
 
-Загружает полный чейн SOL-опционов с Bybit, сохраняет в `excel/sol_options_chain.xlsx`.
+Загружает полный чейн SOL-опционов с Bybit, сохраняет в `tools/excel/sol_options_chain.xlsx`.
 
 ## API дашборда
 
@@ -178,6 +175,7 @@ python src/OptionBoard.py
 | `/api/recommendations` | GET | Рекомендации модели |
 | `/api/summary` | GET | Общая сводка портфеля |
 | `/api/blackscholes` | GET | BS PnL ladder для опциона |
+| `/api/stats` | GET | Статистика по БД (кол-во строк) |
 | `/api/update-options` | POST | Обновить Greeks через monitor_options |
 | `/api/refresh-prices` | POST | Обновить текущие цены |
 | `/api/close-option` | POST | Закрыть опцион по правилу убытка |
