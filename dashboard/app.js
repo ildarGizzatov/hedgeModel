@@ -278,7 +278,7 @@ function renderOptions(opt, pos){
       var pc2=clr(o.pnl);
       rowsRec+='<tr style="text-align:left">';
       rowsRec+='<td>'+o.symbol+'</td>';
-      rowsRec+='<td>'+F(o.cost_option,2)+'</td>';
+      rowsRec+='<td>'+F(o.entry_price*o.qty,2)+'</td>';
       rowsRec+='<td class="'+pc2+'">'+U(o.pnl)+'</td>';
       rowsRec+='<td class="layer-'+o.layer+'">'+o.layer+'</td>';
       rowsRec+='<td>'+o.dte+'</td>';
