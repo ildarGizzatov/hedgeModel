@@ -255,6 +255,7 @@ function renderOptions(opt, pos){
     rows+='<td>$'+F(o.entry_price,2)+'</td>';
     rows+='<td>$'+F(o.current_price,2)+'</td>';
     rows+='<td class="'+pc2+'">'+U(o.pnl)+'</td>';
+    rows+='<td>'+o.dte+'</td>';
     rows+='<td title="Entry: '+F(o.delta_entry,4)+'\nИзменение: '+F(o.delta_change,4)+'">'+F(o.delta,4)+'</td>';
     rows+='<td title="Entry: '+F(o.gamma_entry,4)+'\nИзменение: '+F(o.gamma_change,4)+'">'+F(o.gamma,4)+'</td>';
     rows+='<td class="'+pc2+'" title="Entry: '+F(o.theta_entry,4)+'\nНа день: '+F(o.theta_per_day,4)+'">'+F(o.theta_per_day,4)+'</td>';
