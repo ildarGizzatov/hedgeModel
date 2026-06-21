@@ -279,12 +279,9 @@ function renderOptions(opt, pos){
       rowsRec+='<tr style="text-align:left">';
       rowsRec+='<td>'+o.symbol+'</td>';
       rowsRec+='<td class="layer-'+o.layer+'">'+o.layer+'</td>';
-      rowsRec+='<td>'+o.qty+'</td>';
-      rowsRec+='<td>$'+o.strike+'</td>';
-      rowsRec+='<td>$'+F(o.entry_price,2)+'</td>';
-      rowsRec+='<td>$'+F(o.current_price,2)+'</td>';
-      rowsRec+='<td class="'+pc2+'">'+U(o.pnl)+'</td>';
       rowsRec+='<td>'+o.dte+'</td>';
+      rowsRec+='<td>'+o.qty+'</td>';
+      rowsRec+='<td class="'+pc2+'">'+U(o.pnl)+'</td>';
       rowsRec+='<td title="Entry: '+F(o.delta_entry,4)+'\nИзменение: '+F(o.delta_change,4)+'">'+F(o.delta,4)+'</td>';
       rowsRec+='<td title="Entry: '+F(o.gamma_entry,4)+'\nИзменение: '+F(o.gamma_change,4)+'">'+F(o.gamma,4)+'</td>';
       rowsRec+='<td class="'+pc2+'" title="Entry: '+F(o.theta_entry,4)+'\nНа день: '+F(o.theta_per_day,4)+'">'+F(o.theta_per_day,4)+'</td>';
