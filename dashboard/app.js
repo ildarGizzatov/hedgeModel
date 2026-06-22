@@ -428,19 +428,26 @@ function renderLayer(data){
   var el=document.getElementById("layerContent-"+layer);
   var t=document.getElementById("layerTitle-"+layer);
   if(!el) return;
-  if(t) t.textContent=data.label;
+  // Don't overwrite static HTML headers
+  // if(t) t.textContent=data.label;
   var purchasedCount=0;
   var html='<div style="margin-bottom:8px;font-size:13px;color:var(--text-dim)">Delta '+data.criteria.delta_min+'–'+data.criteria.delta_max+' | DTE '+(data.criteria.dte_max==="all"?"all":data.criteria.dte_min+'–'+data.criteria.dte_max)+' | '+(data.spot_price?'Spot: $'+F(data.spot_price,2)+' ':'')+'Всего: <b>'+data.count+'</b></div>';
   var opts=data.options||[];
   if(opts.length===0){html+='<div style="padding:12px;color:var(--text-dim)">Нет опционов</div>';el.innerHTML=html;return;}
+  // Build purchased symbols lookup
+  var purchSymbols={};
+  (purchasedOptions[layer]||[]).forEach(function(p){purchSymbols[p.symbol]=p.qty;});
+  
   html+='<div style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0">';
   html+='<th style="text-align:left;padding:3px 6px">Символ</th><th style="padding:3px 6px;text-align:right">Strike</th><th style="padding:3px 6px;text-align:center">DTE</th><th style="padding:3px 6px;text-align:right">Δ</th><th style="padding:3px 6px;text-align:right">IV</th><th style="padding:3px 6px;text-align:right">Θ</th><th style="padding:3px 6px;text-align:right">ν</th><th style="padding:3px 6px;text-align:right">Price</th><th style="padding:3px 6px;text-align:center">Метка</th></tr></thead><tbody>';
   opts.forEach(function(o){
     var rowCls=o.is_layer_match?'background:rgba(63,185,80,0.12);':'';
     var sym=o.symbol.replace(/'/g,"\\'");
     var title='Один клик: выделить, двойной: добавить | IV ATM: '+F(o.iv_atm,4);
+    var purchased=purchSymbols[o.symbol];
+    if(purchased){rowCls+='background:rgba(255,200,0,0.1);';title+=' | 📌 Куплено: '+purchased;}
     html+='<tr style="text-align:left;height:24px;cursor:pointer;'+rowCls+' onclick="window.__so(\''+layer+'\',\''+sym+'\')" ondblclick="event.preventDefault();event.stopPropagation();window.__as(\''+layer+'\',\''+sym+'\')" title="'+title+'">';
-    html+='<td style="padding:2px 6px;font-weight:bold">'+o.symbol+'</td>';
+    html+='<td style="padding:2px 6px;font-weight:bold">'+o.symbol+(purchased?'<span style="color:#f0ad4e">📌'+purchased+'</span>':'')+'</td>';
     html+='<td style="padding:2px 6px;text-align:right">$'+o.strike+'</td>';
     html+='<td style="padding:2px 6px;text-align:center">'+o.dte+'</td>';
     html+='<td style="padding:2px 6px;text-align:right">'+F(o.delta,4)+'</td>';
@@ -485,59 +492,95 @@ function addSelected(layer,symbol){
     if(!selList[layer]) selList[layer]=[];
     if(!selList[layer].find(function(x){return x.symbol===sel.symbol})){
       var item=JSON.parse(JSON.stringify(sel));
-      // Add qty from purchased if available
-      var p=purchasedOptions[layer]&&purchasedOptions[layer].find(function(x){return x.symbol===sel.symbol});
-      if(p) item.qty=p.qty;
+      item.qty=1;
       selList[layer].push(item);
       localStorage.setItem('selectedOptions',JSON.stringify(selList));
       alert('Добавлен: '+sel.symbol);
     } else {
       alert('Уже добавлен: '+sel.symbol);
     }
-    renderSelectedLayer(layer,purchasedOptions[layer]);
+    renderSelectedLayer(layer);
   } catch(e){ console.error('addSelected error:',e); }
 }
 
-function removeSelected(layer,index){
+function removeSelected(layer,index,isPurch){
+  if(isPurch) return; // не удаляем купленные из БД
   var selList=JSON.parse(localStorage.getItem('selectedOptions')||'{}');
-  if(selList[layer]){selList[layer].splice(index,1);localStorage.setItem('selectedOptions',JSON.stringify(selList));renderSelectedLayer(layer,purchasedOptions[layer]);}
+  if(!selList[layer]) return;
+  // build combined list to find which localStorage index to remove
+  var all=[],selIdx=0;
+  selList[layer].forEach(function(s){all.push({type:'sel',data:s,idx:selIdx++});});
+  (purchasedOptions[layer]||[]).forEach(function(p){all.push({type:'purch',data:p,idx:-1});});
+  if(index<all.length && all[index].type==='sel'){
+    selList[layer].splice(all[index].idx,1);
+    localStorage.setItem('selectedOptions',JSON.stringify(selList));
+  }
+  renderSelectedLayer(layer);
 }
 
-function renderSelectedLayer(layer, purchased){
+function renderSelectedLayer(layer){
   var el=document.getElementById('selectedContent-'+layer);
   if(!el) return;
   var selList=JSON.parse(localStorage.getItem('selectedOptions')||'{}');
-  var purchasedList=purchased||[];
-  var purchMap={};
-  purchasedList.forEach(function(p){purchMap[p.symbol]=p;});
-  // Merge: keep local storage items + add purchased (no duplicates)
+  var selItems=selList[layer]||[];
+  var purchItems=purchasedOptions[layer]||[];
+  // Combine: localStorage items + purchased from DB, each as separate row
   var all=[];
-  var seen={};
-  selList[layer].forEach(function(s){if(!seen[s.symbol]){all.push(s);seen[s.symbol]=true;}});
-  purchasedList.forEach(function(s){if(!seen[s.symbol]){all.push(s);seen[s.symbol]=true;}});
-  var items=all;
-  if(items.length===0){el.innerHTML='<div style="color:var(--text-dim);padding:12px;text-align:center">Нет выбранных</div>';return;}
+  selItems.forEach(function(s){all.push({type:'sel',data:s});});
+  purchItems.forEach(function(p){
+    all.push({type:'purch',data:p});
+  });
+  if(all.length===0){el.innerHTML='<div style="color:var(--text-dim);padding:12px;text-align:center">Нет выбранных</div>';return;}
+  
+  // Calculate totals
+  var totalCost=0, totalPnl=0, totalDelta=0, totalGamma=0, totalTheta=0;
+  var totalQty=0;
+  all.forEach(function(entry){
+    var item=entry.data;
+    var q=item.qty||1;
+    var p=Number(item.entry_price||item.price)||0;
+    totalCost+=p*q;
+    totalQty+=q;
+    var delta=Number(item.delta||0)*q;
+    var gamma=Number(item.gamma||0)*q;
+    var theta=Number(item.theta||0)*q;
+    totalDelta+=delta; totalGamma+=gamma; totalTheta+=theta;
+    // PnL: current_price from purchasedOptions or fallback
+    var current=item.current_price||p;
+    totalPnl+=(current-p)*q;
+  });
+  var pnlCls=totalPnl>=0?'color:var(--green)':'color:#d32f2f';
+  
   var html='<div style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:var(--bg);border-bottom:1px solid var(--border)"><th style="text-align:left;padding:3px 4px">Символ</th><th style="padding:3px 4px;text-align:right">DTE</th><th style="padding:3px 4px;text-align:right">Qty</th><th style="padding:3px 4px;text-align:right">Price</th><th style="padding:3px 4px;text-align:right">Cost</th><th style="padding:3px 4px;text-align:right">Δ</th><th style="padding:3px 4px;text-align:right">Γ</th><th style="padding:3px 4px;text-align:right">Θ</th><th style="padding:3px 4px;text-align:center">Действия</th></tr></thead><tbody>';
-  items.forEach(function(item,i){
-    var purch=purchMap[item.symbol]||{};
-    var s=item;
-    var dte=+s.dte||'';
-    var qty=s.qty!==undefined?s.qty:(purch.qty||1);
-    var priceNum=+purch.entry_price||+s.price||0;
+  all.forEach(function(entry,i){
+    var item=entry.data;
+    var isPurch=entry.type==='purch';
+    var qty=item.qty||1;
+    var priceNum=Number(item.entry_price||item.price)||0;
     var cost=(priceNum*qty).toFixed(2);
-    var delta=s.delta!==undefined&&s.delta!==''?Number(s.delta).toFixed(4):'';
-    var gamma=s.gamma!==undefined&&s.gamma!==''?Number(s.gamma).toFixed(4):'';
-    var theta=s.theta!==undefined&&s.theta!==''?Number(s.theta).toFixed(4):'';
-    html+='<tr><td style="padding:2px 4px;font-weight:bold">'+item.symbol+'</td>';
-    html+='<td style="padding:2px 4px;text-align:right">'+dte+'</td>';
+    var delta=(Number(item.delta||0)*qty).toFixed(4);
+    var gamma=(Number(item.gamma||0)*qty).toFixed(4);
+    var theta=(Number(item.theta||0)*qty).toFixed(4);
+    var rowBg=isPurch?'background:rgba(255,200,0,0.08);':'';
+    html+='<tr style="'+rowBg+'"><td style="padding:2px 4px;font-weight:bold">'+item.symbol+'</td>';
+    html+='<td style="padding:2px 4px;text-align:right">'+item.dte+'</td>';
     html+='<td style="padding:2px 4px;text-align:right">'+qty+'</td>';
-    html+='<td style="padding:2px 4px;text-align:right">'+Number(priceNum).toFixed(4)+'</td>';
+    html+='<td style="padding:2px 4px;text-align:right">'+priceNum.toFixed(4)+'</td>';
     html+='<td style="padding:2px 4px;text-align:right">'+cost+'</td>';
     html+='<td style="padding:2px 4px;text-align:right">'+delta+'</td>';
     html+='<td style="padding:2px 4px;text-align:right">'+gamma+'</td>';
     html+='<td style="padding:2px 4px;text-align:right">'+theta+'</td>';
-    html+='<td style="padding:2px 4px;text-align:center"><button onclick="removeSelected(\''+layer+'\','+i+')" style="background:#d32f2f;color:#fff;border:none;padding:2px 6px;border-radius:4px;cursor:pointer;font-size:11px">✕</button></td></tr>';
+    html+='<td style="padding:2px 4px;text-align:center"><button onclick="removeSelected(\''+layer+'\','+i+','+isPurch+')" style="background:#d32f2f;color:#fff;border:none;padding:2px 6px;border-radius:4px;cursor:pointer;font-size:11px">✕</button></td></tr>';
   });
+  html+='<tr style="border-top:2px solid var(--border);background:var(--bg);font-weight:bold"><td colspan="2" style="padding:4px 4px">Итого</td>'
+    +'<td style="padding:4px 4px;text-align:right">'+totalQty+'</td>'
+    +'<td style="padding:4px 4px;text-align:right"></td>'
+    +'<td style="padding:4px 4px;text-align:right">$'+totalCost.toFixed(2)+'</td>'
+    +'<td style="padding:4px 4px;text-align:right">'+totalDelta.toFixed(4)+'</td>'
+    +'<td style="padding:4px 4px;text-align:right">'+totalGamma.toFixed(4)+'</td>'
+    +'<td style="padding:4px 4px;text-align:right">'+totalTheta.toFixed(4)+'</td>'
+    +'<td style="padding:4px 4px;text-align:center"></td></tr>';
+  html+='<tr class="'+pnlCls+'"><td colspan="9" style="padding:4px 4px;text-align:right"><b>PnL:</b> $'+totalPnl.toFixed(2)+'</td></tr>';
   html+='</tbody></table></div>';
   el.innerHTML=html;
 }
@@ -553,7 +596,7 @@ function applyFilters(layer){
   if(inputs[3]) p.dte_max=inputs[3].value;
   var qs=Object.keys(p).length?"?"+Object.entries(p).map(function(e){return e[0]+"="+e[1]}).join("&"):"";
   layerFilterParams[layer]=qs;
-  api("/api/layer-"+layer+qs).then(function(data){renderLayer(data);renderSelectedLayer(layer,purchasedOptions[layer]);});
+  api("/api/layer-"+layer+qs).then(function(data){renderLayer(data);renderSelectedLayer(layer);});
 }
 
 function resetFilters(layer){
@@ -567,14 +610,14 @@ function resetFilters(layer){
   if(inputs[3]) inputs[3].value=defs.dte_max;
   var qs="?delta_min="+defs.delta_min+"&delta_max="+defs.delta_max+"&dte_min="+defs.dte_min+"&dte_max="+defs.dte_max;
   layerFilterParams[layer]=qs;
-  api("/api/layer-"+layer+qs).then(function(data){renderLayer(data);renderSelectedLayer(layer,purchasedOptions[layer]);});
+  api("/api/layer-"+layer+qs).then(function(data){renderLayer(data);renderSelectedLayer(layer);});
 }
 
 function refreshLayers(layer){
   var params=layerFilterParams[layer]?"?"+layerFilterParams[layer]:"";
   if(params&&!params.includes("refresh=1")) params+="&refresh=1";
   if(!params) params="?refresh=1";
-  api("/api/layer-"+layer+params).then(function(data){renderLayer(data);renderSelectedLayer(layer,purchasedOptions[layer]);});
+  api("/api/layer-"+layer+params).then(function(data){renderLayer(data);renderSelectedLayer(layer);});
 }
 
 // === Load all ===
@@ -608,9 +651,9 @@ function loadAll(){
       renderLayer(results[6]);
       renderLayer(results[7]);
       renderLayer(results[8]);
-      renderSelectedLayer('distant',purchasedOptions.distant);
-      renderSelectedLayer('mid',purchasedOptions.mid);
-      renderSelectedLayer('near',purchasedOptions.near);
+      renderSelectedLayer('distant');
+      renderSelectedLayer('mid');
+      renderSelectedLayer('near');
     });
   });
   document.getElementById('headerUpdated').textContent='Обновлено: '+new Date().toLocaleTimeString('ru-RU');

@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "README.md",
+                "file": "2026-06-22.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "README"
+              "title": "2026-06-22"
             }
           }
         ]
@@ -186,11 +186,13 @@
   },
   "active": "bd9c837cb873cf31",
   "lastOpenFiles": [
-    "hedge_model.db-shm",
     "hedge_model.db-wal",
+    "hedge_model.db-shm",
+    "docs/201-selection-criteria.md",
+    "2026-06-22.md",
+    "README.md",
     "AGENTS.md",
     "sedZdWJv5",
-    "README.md",
     "src/__pycache__/prices_step.cpython-312.pyc",
     "src/__pycache__/fetch_step.cpython-312.pyc",
     "src/__pycache__/run_step.cpython-312.pyc",
@@ -199,7 +201,6 @@
     "src/run_step.py",
     "src/prices_step.py",
     "docs/901-project-setup.md",
-    "docs/201-selection-criteria.md",
     "docs/202-formulas.md",
     "docs/203-anchor-selection-algorithm.md",
     "docs/300-pipeline.md",
@@ -219,7 +220,6 @@
     "docs/501-option-selection-diagnostics.md",
     "dev/400-deployment.md",
     "dev/301-optionboard-script.md",
-    "docs/400-deployment.md",
-    "dev/901-project-setup.md"
+    "docs/400-deployment.md"
   ]
 }

@@ -266,19 +266,22 @@ def api_purchased_options() -> dict[str, Any]:
         dte = int(greek.get("dte") or calc_dte(opt["expiry"]))
 
         mapped_layer = None
-        abs_delta = abs(delta)
-        if 0.05 <= abs_delta <= 0.20:
-            mapped_layer = "distant"
-        elif 0.20 < abs_delta <= 0.40:
-            mapped_layer = "mid"
-        elif 0.40 < abs_delta <= 0.55:
-            mapped_layer = "near"
-        elif layer == "anchor":
+        # First check stored layer from DB
+        if layer == "anchor":
             mapped_layer = "distant"
         elif layer == "adaptation":
             mapped_layer = "mid"
         elif layer == "active":
             mapped_layer = "near"
+        else:
+            # Fallback to delta-based mapping
+            abs_delta = abs(delta)
+            if 0.05 <= abs_delta <= 0.20:
+                mapped_layer = "distant"
+            elif 0.20 < abs_delta <= 0.40:
+                mapped_layer = "mid"
+            elif 0.40 < abs_delta <= 0.55:
+                mapped_layer = "near"
 
         if mapped_layer:
             by_layer[mapped_layer].append({
