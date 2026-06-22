@@ -1,5 +1,4 @@
-const API="http://localhost:8083",REFRESH=60000;
-let cd=REFRESH/1000;
+const API="http://localhost:8083";
 
 // === Tabs ===
 document.querySelectorAll(".tab").forEach(function(t){
@@ -81,12 +80,7 @@ function drawBar(canvasId, labels, data, colors){
 }
 
 function refreshUI(){
-  cd--;
-  var ids=["cd1","cd2","cd3","cd4"];
-  for(var i=0;i<ids.length;i++){
-    var el=document.getElementById(ids[i]);
-    if(el) el.innerHTML='Автообновление: <span class="countdown">'+cd+'s</span>';
-  }
+  document.getElementById('headerUpdated').textContent='Загрузка...';
 }
 
 function setBtnAction(id, text, loading){
@@ -397,16 +391,208 @@ function renderSummary(sum, opt){
     '<div class="summary-card"><div class="label">Общий PnL</div><div class="value '+totalPnl+'">'+U(t.total_pnl)+'</div><div class="sub '+totalPnl+'">'+P(t.total_pnl_pct)+'</div></div>';
 }
 
+// === LAYER TABS ===
+var layerFilterParams={distant:"",mid:"",near:""};
+var selectedOption={distant:null,mid:null,near:null};
+var layerDefaults={distant:{delta_min:0.05,delta_max:0.20,dte_min:25,dte_max:99999},mid:{delta_min:0.20,delta_max:0.40,dte_min:10,dte_max:25},near:{delta_min:0.38,delta_max:0.55,dte_min:5,dte_max:10}};
+var purchasedOptions={distant:[],mid:[],near:[]};
+
+window.__so = function(layer,symbol){
+  selectOption(layer,symbol);
+};
+
+window.__as = function(layer,symbol){
+  // Double-click: populate selectedOption even if click didn't fire
+  var data;
+  if(layer==='distant') data=layerData_distant;
+  else if(layer==='mid') data=layerData_mid;
+  else data=layerData_near;
+  var found=null;
+  if(data && data.options){
+    for(var i=0;i<data.options.length;i++){
+      if(data.options[i].symbol===symbol){found=data.options[i];break;}
+    }
+  }
+  if(found){
+    selectedOption[layer]={symbol:symbol, strike:found.strike, dte:found.dte, iv:found.iv, price:found.price, delta:found.delta, gamma:found.gamma, theta:found.theta, vega:found.vega};
+  } else {
+    selectedOption[layer]={symbol:symbol};
+  }
+  console.log('__as: selectedOption='+JSON.stringify(selectedOption[layer]));
+  addSelected(layer,symbol);
+};
+
+function renderLayer(data){
+  if(!data) return;
+  var layer=data.layer;
+  var el=document.getElementById("layerContent-"+layer);
+  var t=document.getElementById("layerTitle-"+layer);
+  if(!el) return;
+  if(t) t.textContent=data.label;
+  var purchasedCount=0;
+  var html='<div style="margin-bottom:8px;font-size:13px;color:var(--text-dim)">Delta '+data.criteria.delta_min+'–'+data.criteria.delta_max+' | DTE '+(data.criteria.dte_max==="all"?"all":data.criteria.dte_min+'–'+data.criteria.dte_max)+' | '+(data.spot_price?'Spot: $'+F(data.spot_price,2)+' ':'')+'Всего: <b>'+data.count+'</b></div>';
+  var opts=data.options||[];
+  if(opts.length===0){html+='<div style="padding:12px;color:var(--text-dim)">Нет опционов</div>';el.innerHTML=html;return;}
+  html+='<div style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0">';
+  html+='<th style="text-align:left;padding:3px 6px">Символ</th><th style="padding:3px 6px;text-align:right">Strike</th><th style="padding:3px 6px;text-align:center">DTE</th><th style="padding:3px 6px;text-align:right">Δ</th><th style="padding:3px 6px;text-align:right">IV</th><th style="padding:3px 6px;text-align:right">Θ</th><th style="padding:3px 6px;text-align:right">ν</th><th style="padding:3px 6px;text-align:right">Price</th><th style="padding:3px 6px;text-align:center">Метка</th></tr></thead><tbody>';
+  opts.forEach(function(o){
+    var rowCls=o.is_layer_match?'background:rgba(63,185,80,0.12);':'';
+    var sym=o.symbol.replace(/'/g,"\\'");
+    var title='Один клик: выделить, двойной: добавить | IV ATM: '+F(o.iv_atm,4);
+    html+='<tr style="text-align:left;height:24px;cursor:pointer;'+rowCls+' onclick="window.__so(\''+layer+'\',\''+sym+'\')" ondblclick="event.preventDefault();event.stopPropagation();window.__as(\''+layer+'\',\''+sym+'\')" title="'+title+'">';
+    html+='<td style="padding:2px 6px;font-weight:bold">'+o.symbol+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right">$'+o.strike+'</td>';
+    html+='<td style="padding:2px 6px;text-align:center">'+o.dte+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right">'+F(o.delta,4)+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right">'+F(o.iv,4)+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right">'+F(o.theta,4)+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right">'+F(o.vega,4)+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right">$'+F(o.price,4)+'</td>';
+    html+='<td style="padding:2px 6px;text-align:center">'+(o.is_layer_match?'<span style="color:var(--green);font-weight:bold">✓</span>':'<span style="color:var(--text-dim)">·</span>')+'</td>';
+    html+='</tr>';
+  });
+  html+='</tbody></table></div>';
+  el.innerHTML=html;
+}
+
+function selectOption(layer,symbol,o){
+  try {
+    if(o){
+      selectedOption[layer]={symbol:symbol, strike:o.strike, dte:o.dte, iv:o.iv, price:o.price, delta:o.delta, gamma:o.gamma, theta:o.theta, vega:o.vega};
+    } else if(layerData_distant&&layerData_distant.options&&layer==='distant'){
+      var f=layerData_distant.options.find(function(x){return x.symbol===symbol});
+      selectedOption[layer]=f?{symbol:symbol, strike:f.strike, dte:f.dte, iv:f.iv, price:f.price, delta:f.delta, gamma:f.gamma, theta:f.theta, vega:f.vega}:{symbol:symbol};
+    } else if(layerData_mid&&layerData_mid.options&&layer==='mid'){
+      var f=layerData_mid.options.find(function(x){return x.symbol===symbol});
+      selectedOption[layer]=f?{symbol:symbol, strike:f.strike, dte:f.dte, iv:f.iv, price:f.price, delta:f.delta, gamma:f.gamma, theta:f.theta, vega:f.vega}:{symbol:symbol};
+    } else if(layerData_near&&layerData_near.options&&layer==='near'){
+      var f=layerData_near.options.find(function(x){return x.symbol===symbol});
+      selectedOption[layer]=f?{symbol:symbol, strike:f.strike, dte:f.dte, iv:f.iv, price:f.price, delta:f.delta, gamma:f.gamma, theta:f.theta, vega:f.vega}:{symbol:symbol};
+    } else {
+      selectedOption[layer]={symbol:symbol};
+    }
+    console.log('selectOption:', layer, selectedOption[layer]);
+  } catch(e){ console.error('selectOption error:',e); }
+  var params=layerFilterParams[layer]?"?"+layerFilterParams[layer]:"";
+  api("/api/layer-"+layer+params).then(function(d){renderLayer(d);});
+}
+
+function addSelected(layer,symbol){
+  try {
+    var sel=selectedOption[layer];
+    if(!sel||!sel.symbol){alert('Сначала кликните на опцион');return;}
+    var selList=JSON.parse(localStorage.getItem('selectedOptions')||'{}');
+    if(!selList[layer]) selList[layer]=[];
+    if(!selList[layer].find(function(x){return x.symbol===sel.symbol})){
+      var item=JSON.parse(JSON.stringify(sel));
+      // Add qty from purchased if available
+      var p=purchasedOptions[layer]&&purchasedOptions[layer].find(function(x){return x.symbol===sel.symbol});
+      if(p) item.qty=p.qty;
+      selList[layer].push(item);
+      localStorage.setItem('selectedOptions',JSON.stringify(selList));
+      alert('Добавлен: '+sel.symbol);
+    } else {
+      alert('Уже добавлен: '+sel.symbol);
+    }
+    renderSelectedLayer(layer,purchasedOptions[layer]);
+  } catch(e){ console.error('addSelected error:',e); }
+}
+
+function removeSelected(layer,index){
+  var selList=JSON.parse(localStorage.getItem('selectedOptions')||'{}');
+  if(selList[layer]){selList[layer].splice(index,1);localStorage.setItem('selectedOptions',JSON.stringify(selList));renderSelectedLayer(layer,purchasedOptions[layer]);}
+}
+
+function renderSelectedLayer(layer, purchased){
+  var el=document.getElementById('selectedContent-'+layer);
+  if(!el) return;
+  var selList=JSON.parse(localStorage.getItem('selectedOptions')||'{}');
+  var purchasedList=purchased||[];
+  var purchMap={};
+  purchasedList.forEach(function(p){purchMap[p.symbol]=p;});
+  // Merge: keep local storage items + add purchased (no duplicates)
+  var all=[];
+  var seen={};
+  selList[layer].forEach(function(s){if(!seen[s.symbol]){all.push(s);seen[s.symbol]=true;}});
+  purchasedList.forEach(function(s){if(!seen[s.symbol]){all.push(s);seen[s.symbol]=true;}});
+  var items=all;
+  if(items.length===0){el.innerHTML='<div style="color:var(--text-dim);padding:12px;text-align:center">Нет выбранных</div>';return;}
+  var html='<div style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:var(--bg);border-bottom:1px solid var(--border)"><th style="text-align:left;padding:3px 4px">Символ</th><th style="padding:3px 4px;text-align:right">DTE</th><th style="padding:3px 4px;text-align:right">Qty</th><th style="padding:3px 4px;text-align:right">Price</th><th style="padding:3px 4px;text-align:right">Cost</th><th style="padding:3px 4px;text-align:right">Δ</th><th style="padding:3px 4px;text-align:right">Γ</th><th style="padding:3px 4px;text-align:right">Θ</th><th style="padding:3px 4px;text-align:center">Действия</th></tr></thead><tbody>';
+  items.forEach(function(item,i){
+    var purch=purchMap[item.symbol]||{};
+    var s=item;
+    var dte=+s.dte||'';
+    var qty=s.qty!==undefined?s.qty:(purch.qty||1);
+    var priceNum=+purch.entry_price||+s.price||0;
+    var cost=(priceNum*qty).toFixed(2);
+    var delta=s.delta!==undefined&&s.delta!==''?Number(s.delta).toFixed(4):'';
+    var gamma=s.gamma!==undefined&&s.gamma!==''?Number(s.gamma).toFixed(4):'';
+    var theta=s.theta!==undefined&&s.theta!==''?Number(s.theta).toFixed(4):'';
+    html+='<tr><td style="padding:2px 4px;font-weight:bold">'+item.symbol+'</td>';
+    html+='<td style="padding:2px 4px;text-align:right">'+dte+'</td>';
+    html+='<td style="padding:2px 4px;text-align:right">'+qty+'</td>';
+    html+='<td style="padding:2px 4px;text-align:right">'+Number(priceNum).toFixed(4)+'</td>';
+    html+='<td style="padding:2px 4px;text-align:right">'+cost+'</td>';
+    html+='<td style="padding:2px 4px;text-align:right">'+delta+'</td>';
+    html+='<td style="padding:2px 4px;text-align:right">'+gamma+'</td>';
+    html+='<td style="padding:2px 4px;text-align:right">'+theta+'</td>';
+    html+='<td style="padding:2px 4px;text-align:center"><button onclick="removeSelected(\''+layer+'\','+i+')" style="background:#d32f2f;color:#fff;border:none;padding:2px 6px;border-radius:4px;cursor:pointer;font-size:11px">✕</button></td></tr>';
+  });
+  html+='</tbody></table></div>';
+  el.innerHTML=html;
+}
+
+function applyFilters(layer){
+  var card=document.getElementById("tab-"+layer);
+  if(!card) return;
+  var inputs=card.querySelectorAll("input[type=number]");
+  var p={};
+  if(inputs[0]) p.delta_min=inputs[0].value;
+  if(inputs[1]) p.delta_max=inputs[1].value;
+  if(inputs[2]) p.dte_min=inputs[2].value;
+  if(inputs[3]) p.dte_max=inputs[3].value;
+  var qs=Object.keys(p).length?"?"+Object.entries(p).map(function(e){return e[0]+"="+e[1]}).join("&"):"";
+  layerFilterParams[layer]=qs;
+  api("/api/layer-"+layer+qs).then(function(data){renderLayer(data);renderSelectedLayer(layer,purchasedOptions[layer]);});
+}
+
+function resetFilters(layer){
+  var card=document.getElementById("tab-"+layer);
+  if(!card) return;
+  var inputs=card.querySelectorAll("input[type=number]");
+  var defs=layerDefaults[layer];
+  if(inputs[0]) inputs[0].value=defs.delta_min;
+  if(inputs[1]) inputs[1].value=defs.delta_max;
+  if(inputs[2]) inputs[2].value=defs.dte_min;
+  if(inputs[3]) inputs[3].value=defs.dte_max;
+  var qs="?delta_min="+defs.delta_min+"&delta_max="+defs.delta_max+"&dte_min="+defs.dte_min+"&dte_max="+defs.dte_max;
+  layerFilterParams[layer]=qs;
+  api("/api/layer-"+layer+qs).then(function(data){renderLayer(data);renderSelectedLayer(layer,purchasedOptions[layer]);});
+}
+
+function refreshLayers(layer){
+  var params=layerFilterParams[layer]?"?"+layerFilterParams[layer]:"";
+  if(params&&!params.includes("refresh=1")) params+="&refresh=1";
+  if(!params) params="?refresh=1";
+  api("/api/layer-"+layer+params).then(function(data){renderLayer(data);renderSelectedLayer(layer,purchasedOptions[layer]);});
+}
+
 // === Load all ===
 var combinedLadder=null;
 function loadAll(){
+  var distantQ=layerFilterParams.distant?"?"+layerFilterParams.distant:"";
+  var midQ=layerFilterParams.mid?"?"+layerFilterParams.mid:"";
+  var nearQ=layerFilterParams.near?"?"+layerFilterParams.near:"";
   Promise.all([
     api("/api/positions"),
     api("/api/options"),
     api("/api/recommendations"),
     api("/api/summary"),
     api("/api/layers"),
-    api("/api/combined-ladder")
+    api("/api/combined-ladder"),
+    api("/api/layer-distant"+distantQ),
+    api("/api/layer-mid"+midQ),
+    api("/api/layer-near"+nearQ)
   ]).then(function(results){
     combinedLadder=results[5]||{ladder:[]};
     renderPositions(results[0]);
@@ -414,8 +600,20 @@ function loadAll(){
     renderRecommendations(results[2]);
     renderSummary(results[3], results[1]);
     renderLayers(results[4]);
+    layerData_distant=results[6];
+    layerData_mid=results[7];
+    layerData_near=results[8];
+    api("/api/purchased-options").then(function(p){
+      purchasedOptions={distant:p.distant||[],mid:p.mid||[],near:p.near||[]};
+      renderLayer(results[6]);
+      renderLayer(results[7]);
+      renderLayer(results[8]);
+      renderSelectedLayer('distant',purchasedOptions.distant);
+      renderSelectedLayer('mid',purchasedOptions.mid);
+      renderSelectedLayer('near',purchasedOptions.near);
+    });
   });
+  document.getElementById('headerUpdated').textContent='Обновлено: '+new Date().toLocaleTimeString('ru-RU');
 }
 
 loadAll();
-setInterval(function(){refreshUI();if(cd<=0){loadAll();cd=REFRESH/1000}},1000);

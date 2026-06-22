@@ -19,7 +19,7 @@ from datetime import datetime, date
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -31,6 +31,7 @@ from src.db import (
     get_position, get_all_open_options, get_all_latest_greeks,
     get_buy_history, get_closed_positions, table_stats,
     get_pending_recommendations, execute_query, update_position_prices,
+    get_latest_chain_snapshot,
 )
 
 # ==========================================
@@ -240,6 +241,63 @@ def api_positions() -> dict[str, Any]:
 # ==========================================
 # ЭНДПОИНТ 2: ОПЦИОННЫЕ ПОЗИЦИИ
 # ==========================================
+
+@app.get("/api/purchased-options")
+def api_purchased_options() -> dict[str, Any]:
+    """Купленные опционы сгруппированные по слоям."""
+    open_opts = get_all_open_options()
+    latest_greeks = get_all_latest_greeks()
+    greeks_idx = {g["option_symbol"]: g for g in latest_greeks}
+
+    by_layer = {"distant": [], "mid": [], "near": []}
+
+    for opt in open_opts:
+        symbol = opt["symbol"].strip()
+        layer = (opt["layer"] or "").strip().lower()
+        greek = greeks_idx.get(symbol, {})
+        current_price = float(greek.get("current_price") or 0)
+        entry_price = float(opt["entry_price"] or 0)
+        qty = int(opt["qty"])
+        delta = float(greek.get("delta") or 0)
+        gamma = float(greek.get("gamma") or 0)
+        theta = float(greek.get("theta") or 0)
+        vega = float(greek.get("vega") or 0)
+        iv = float(greek.get("iv") or 0)
+        dte = int(greek.get("dte") or calc_dte(opt["expiry"]))
+
+        mapped_layer = None
+        abs_delta = abs(delta)
+        if 0.05 <= abs_delta <= 0.20:
+            mapped_layer = "distant"
+        elif 0.20 < abs_delta <= 0.40:
+            mapped_layer = "mid"
+        elif 0.40 < abs_delta <= 0.55:
+            mapped_layer = "near"
+        elif layer == "anchor":
+            mapped_layer = "distant"
+        elif layer == "adaptation":
+            mapped_layer = "mid"
+        elif layer == "active":
+            mapped_layer = "near"
+
+        if mapped_layer:
+            by_layer[mapped_layer].append({
+                "symbol": symbol,
+                "strike": float(opt["strike"]),
+                "delta": round(delta, 4),
+                "gamma": round(gamma, 4),
+                "theta": round(theta, 4),
+                "vega": round(vega, 4),
+                "iv": round(iv, 4),
+                "dte": dte,
+                "qty": qty,
+                "entry_price": entry_price,
+                "current_price": round(current_price, 4),
+                "pnl": round((current_price - entry_price) * qty, 2),
+            })
+
+    return {"distant": by_layer["distant"], "mid": by_layer["mid"], "near": by_layer["near"]}
+
 
 @app.get("/api/options")
 def api_options() -> dict[str, Any]:
@@ -749,6 +807,151 @@ def api_stats() -> dict:
         "stats": table_stats(),
         "updated": date.today().strftime("%Y-%m-%d"),
     }
+
+
+# ==========================================
+# LAYER API
+# ==========================================
+
+LAYER_DEFAULTS = {
+    "distant": {"delta_min": 0.05, "delta_max": 0.20, "dte_min": 25, "dte_max": 99999, "label": "Дальний слой (Anchor / Tail Risk)"},
+    "mid": {"delta_min": 0.20, "delta_max": 0.40, "dte_min": 10, "dte_max": 25, "label": "Средний слой (Adaptation)"},
+    "near": {"delta_min": 0.38, "delta_max": 0.55, "dte_min": 5, "dte_max": 10, "label": "Ближний слой (Active / Hedging)"},
+}
+
+def _fetch_chain_from_bybit():
+    try:
+        from src.chain_fetcher import fetch_and_filter_chain
+        rows, spot_price = fetch_and_filter_chain("SOL")
+        puts = [r for r in rows if r["type"] == "PUT"]
+        puts.sort(key=lambda x: (x.get("dte",0), x.get("strike",0)))
+        return puts, spot_price
+    except Exception as e:
+        print(f"Bybit fetch failed: {e}")
+        return None, None
+
+def _fetch_chain_from_db():
+    try:
+        rows = get_latest_chain_snapshot()
+        puts = [r for r in rows if r.get("type") == "PUT"]
+        puts.sort(key=lambda x: (x.get("dte",0), x.get("strike",0)))
+        return puts, 71.94
+    except Exception as e:
+        print(f"DB fallback failed: {e}")
+        return None, None
+
+def _build_layer_response(layer, criteria, puts, spot_price, layer_defaults):
+    # Group by expiry for ATM IV lookup
+    from collections import defaultdict
+    expiry_strikes = defaultdict(list)
+    for p in puts:
+        expiry = p.get("expiry")
+        strike = p.get("strike", 0)
+        if expiry and strike:
+            expiry_strikes[expiry].append((strike, p.get("iv", 0) or 0))
+    for expiry in expiry_strikes:
+        expiry_strikes[expiry].sort()
+
+    filtered = []
+    for p in puts:
+        abs_delta = abs(p["delta"]) if isinstance(p["delta"], (int, float)) else 0
+        dte = p.get("dte", 0)
+        if abs_delta < criteria["delta_min"] or abs_delta > criteria["delta_max"]:
+            continue
+        if dte < criteria["dte_min"] or dte > criteria["dte_max"]:
+            continue
+        is_match = (
+            abs_delta >= layer_defaults["delta_min"]
+            and abs_delta <= layer_defaults["delta_max"]
+            and dte >= layer_defaults["dte_min"]
+            and dte <= layer_defaults["dte_max"]
+        )
+        # IV ATM: nearest strike to spot for this expiry
+        iv_atm = 0
+        expiry = p.get("expiry")
+        if expiry and spot_price and expiry in expiry_strikes:
+            atm_strike, atm_iv = min(expiry_strikes[expiry], key=lambda x: abs(x[0] - spot_price))
+            iv_atm = round(atm_iv, 4)
+        filtered.append({
+            "symbol": p["symbol"],
+            "strike": p["strike"],
+            "expiry": p["expiry"],
+            "delta": round(p["delta"], 4),
+            "gamma": round(p.get("gamma", 0), 4),
+            "theta": round(p.get("theta", 0), 4),
+            "vega": round(p.get("vega", 0), 4),
+            "iv": round(p.get("iv", 0) or 0, 4),
+            "iv_atm": iv_atm,
+            "dte": p.get("dte", 0),
+            "price": round(p.get("mark_price", 0), 4),
+            "open_interest": p.get("open_interest", 0),
+            "is_layer_match": is_match,
+        })
+    return {
+        "layer": layer,
+        "label": layer_defaults["label"],
+        "spot_price": round(spot_price, 2) if spot_price else 71.94,
+        "criteria": criteria,
+        "layerDefaults": layer_defaults,
+        "count": len(filtered),
+        "options": filtered,
+        "updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+
+
+@app.get("/api/layer-distant")
+def api_layer_distant(request: Request):
+    layer = "distant"
+    layer_defaults = LAYER_DEFAULTS[layer]
+    q = request.query_params
+    criteria = {
+        "delta_min": float(q.get("delta_min", layer_defaults["delta_min"])),
+        "delta_max": float(q.get("delta_max", layer_defaults["delta_max"])),
+        "dte_min": int(q.get("dte_min", layer_defaults["dte_min"])),
+        "dte_max": int(q.get("dte_max", layer_defaults["dte_max"])),
+    }
+    puts, spot_price = _fetch_chain_from_bybit()
+    if not puts:
+        puts, spot_price = _fetch_chain_from_db()
+    if not puts:
+        return {**_build_layer_response(layer, criteria, [], 71.94, layer_defaults), "error": "No data"}
+    return _build_layer_response(layer, criteria, puts, spot_price, layer_defaults)
+
+@app.get("/api/layer-mid")
+def api_layer_mid(request: Request):
+    layer = "mid"
+    layer_defaults = LAYER_DEFAULTS[layer]
+    q = request.query_params
+    criteria = {
+        "delta_min": float(q.get("delta_min", layer_defaults["delta_min"])),
+        "delta_max": float(q.get("delta_max", layer_defaults["delta_max"])),
+        "dte_min": int(q.get("dte_min", layer_defaults["dte_min"])),
+        "dte_max": int(q.get("dte_max", layer_defaults["dte_max"])),
+    }
+    puts, spot_price = _fetch_chain_from_bybit()
+    if not puts:
+        puts, spot_price = _fetch_chain_from_db()
+    if not puts:
+        return {**_build_layer_response(layer, criteria, [], 71.94, layer_defaults), "error": "No data"}
+    return _build_layer_response(layer, criteria, puts, spot_price, layer_defaults)
+
+@app.get("/api/layer-near")
+def api_layer_near(request: Request):
+    layer = "near"
+    layer_defaults = LAYER_DEFAULTS[layer]
+    q = request.query_params
+    criteria = {
+        "delta_min": float(q.get("delta_min", layer_defaults["delta_min"])),
+        "delta_max": float(q.get("delta_max", layer_defaults["delta_max"])),
+        "dte_min": int(q.get("dte_min", layer_defaults["dte_min"])),
+        "dte_max": int(q.get("dte_max", layer_defaults["dte_max"])),
+    }
+    puts, spot_price = _fetch_chain_from_bybit()
+    if not puts:
+        puts, spot_price = _fetch_chain_from_db()
+    if not puts:
+        return {**_build_layer_response(layer, criteria, [], 71.94, layer_defaults), "error": "No data"}
+    return _build_layer_response(layer, criteria, puts, spot_price, layer_defaults)
 
 
 # ==========================================
