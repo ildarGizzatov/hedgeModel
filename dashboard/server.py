@@ -1018,6 +1018,9 @@ def api_available_options(request: Request):
     for opt in filtered:
         opt["is_layer_match"] = is_layer_match(opt)
         opt["layer"] = assign_layer(opt)
+        # Normalize price field (mark_price → price for frontend compatibility)
+        if "price" not in opt:
+            opt["price"] = opt.get("mark_price", 0)
     
     return {
         "options": filtered,
