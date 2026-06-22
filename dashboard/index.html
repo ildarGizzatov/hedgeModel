@@ -93,15 +93,6 @@ tr:hover td{background:rgba(88,166,255,.05)}
 <table><thead><tr><th>Символ</th><th>Layer</th><th>Кол-во</th><th>Strike</th><th>Entry</th><th>Current</th><th>PnL</th><th>Δ</th><th>Γ</th><th>Θ</th><th>IV</th><th>ΔIV</th></tr></thead>
 <tbody id="optTable"></tbody></table></div>
 <div class="card" style="margin-bottom:16px"><h2>Доступные опционы</h2>
-<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
-<span style="color:var(--text-dim);font-size:12px">Фильтр:</span>
-<label style="font-size:12px">Δ min: <input type="number" step="0.01" min="0" max="1" id="filterDeltaMin" value="0" style="width:60px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px 6px;border-radius:4px"></label>
-<label style="font-size:12px">Δ max: <input type="number" step="0.01" min="0" max="1" id="filterDeltaMax" value="1" style="width:60px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px 6px;border-radius:4px"></label>
-<label style="font-size:12px">DTE min: <input type="number" min="1" id="filterDteMin" value="0" style="width:60px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px 6px;border-radius:4px"></label>
-<label style="font-size:12px">DTE max: <input type="number" min="1" id="filterDteMax" value="99999" style="width:60px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px 6px;border-radius:4px"></label>
-<button class="btn-action" onclick="applyGlobalFilters()">Применить</button>
-<button class="btn-action" onclick="resetGlobalFilters()" style="background:var(--border)">Сброс</button>
-</div>
 <div id="globalLayerContent"></div>
 </div>
 <div class="card"><h2>Слои защиты</h2><div id="layerCards"></div></div>
@@ -173,6 +164,6 @@ tr:hover td{background:rgba(88,166,255,.05)}
 <tbody id="posLadder"></tbody></table></div></div>
 </div>
 </div>
-<script src="app.js?t=20260623_6"></script>
+<script src="app.js?t=20260623_7"></script>
 </body>
 </html>

@@ -587,14 +587,13 @@ function renderSelectedLayer(layer){
 }
 
 // === Global Available Options Table ===
-var globalFilterParams="";
 function renderGlobalLayer(data){
   if(!data) return;
   var el=document.getElementById("globalLayerContent");
   if(!el) return;
   var opts=data.options||[];
   if(opts.length===0){el.innerHTML='<div style="padding:12px;color:var(--text-dim)">Нет опционов</div>';return;}
-  var html='<div style="margin-bottom:8px;font-size:13px;color:var(--text-dim)">Всего: <b>'+data.count+'</b></div>';
+  var html='';
   html+='<div style="max-height:400px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0">';
   html+='<th style="text-align:left;padding:3px 6px">Символ</th><th style="padding:3px 6px;text-align:right">Layer</th><th style="padding:3px 6px;text-align:right">Strike</th><th style="padding:3px 6px;text-align:center">DTE</th><th style="padding:3px 6px;text-align:right">Δ</th><th style="padding:3px 6px;text-align:right">IV</th><th style="padding:3px 6px;text-align:right">Θ</th><th style="padding:3px 6px;text-align:right">ν</th><th style="padding:3px 6px;text-align:right">Price</th><th style="padding:3px 6px;text-align:center">Метка</th></tr></thead><tbody>';
   opts.forEach(function(o){
@@ -619,29 +618,6 @@ function renderGlobalLayer(data){
   });
   html+='</tbody></table></div>';
   el.innerHTML=html;
-}
-
-function applyGlobalFilters(){
-  var p={};
-  var dMin=document.getElementById('filterDeltaMin');
-  var dMax=document.getElementById('filterDeltaMax');
-  var tMin=document.getElementById('filterDteMin');
-  var tMax=document.getElementById('filterDteMax');
-  if(dMin&&dMin.value) p.delta_min=dMin.value;
-  if(dMax&&dMax.value) p.delta_max=dMax.value;
-  if(tMin&&tMin.value) p.dte_min=tMin.value;
-  if(tMax&&tMax.value) p.dte_max=tMax.value;
-  globalFilterParams=Object.keys(p).length?"?"+Object.entries(p).map(function(e){return e[0]+"="+e[1]}).join("&"):"";
-  api("/api/available-options"+globalFilterParams).then(function(d){renderGlobalLayer(d);});
-}
-
-function resetGlobalFilters(){
-  document.getElementById('filterDeltaMin').value=0;
-  document.getElementById('filterDeltaMax').value=1;
-  document.getElementById('filterDteMin').value=0;
-  document.getElementById('filterDteMax').value=99999;
-  globalFilterParams="";
-  applyGlobalFilters();
 }
 
 function applyFilters(layer){
@@ -719,7 +695,7 @@ function loadAll(){
       (purchasedOptions.mid||[]).forEach(function(x){globalPurchasedSymbols[x.symbol]=x.qty;});
       (purchasedOptions.near||[]).forEach(function(x){globalPurchasedSymbols[x.symbol]=x.qty;});
       // Load global available options
-      applyGlobalFilters();
+      api("/api/available-options").then(function(d){renderGlobalLayer(d);});
     });
   });
   document.getElementById('headerUpdated').textContent='Обновлено: '+new Date().toLocaleTimeString('ru-RU');
