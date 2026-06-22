@@ -595,17 +595,14 @@ function renderGlobalLayer(data){
   if(opts.length===0){el.innerHTML='<div style="padding:12px;color:var(--text-dim)">Нет опционов</div>';return;}
   var html='';
   html+='<div style="max-height:400px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0">';
-  html+='<th style="text-align:left;padding:3px 6px">Символ</th><th style="padding:3px 6px;text-align:right">Layer</th><th style="padding:3px 6px;text-align:right">Strike</th><th style="padding:3px 6px;text-align:center">DTE</th><th style="padding:3px 6px;text-align:right">Δ</th><th style="padding:3px 6px;text-align:right">IV</th><th style="padding:3px 6px;text-align:right">Θ</th><th style="padding:3px 6px;text-align:right">ν</th><th style="padding:3px 6px;text-align:right">Price</th><th style="padding:3px 6px;text-align:center">Метка</th></tr></thead><tbody>';
+  html+='<th style="text-align:left;padding:3px 6px">Символ</th><th style="padding:3px 6px;text-align:right">Strike</th><th style="padding:3px 6px;text-align:center">DTE</th><th style="padding:3px 6px;text-align:right">Δ</th><th style="padding:3px 6px;text-align:right">IV</th><th style="padding:3px 6px;text-align:right">Θ</th><th style="padding:3px 6px;text-align:right">ν</th><th style="padding:3px 6px;text-align:right">Price</th></tr></thead><tbody>';
   opts.forEach(function(o){
     var rowCls=o.is_layer_match?'background:rgba(63,185,80,0.12);':'';
     var sym=o.symbol.replace(/'/g,"\\'");
-    var layerLabel=o.layer==='distant'?'Дальний':o.layer==='mid'?'Средний':'Ближний';
-    var layerCls=o.layer==='distant'?'layer-anchor':o.layer==='mid'?'layer-adaptation':'layer-active';
     var purchased=globalPurchasedSymbols[o.symbol];
     if(purchased){rowCls+='background:rgba(255,200,0,0.1);';}
     html+='<tr style="text-align:left;height:24px;cursor:pointer;'+rowCls+' onclick="window.__so(\''+o.layer+'\',\''+sym+'\')" ondblclick="event.preventDefault();event.stopPropagation();window.__as(\''+o.layer+'\',\''+sym+'\')">';
     html+='<td style="padding:2px 6px;font-weight:bold">'+o.symbol+(purchased?'<span style="color:#f0ad4e"> 📌'+purchased+'</span>':'')+'</td>';
-    html+='<td style="padding:2px 6px;text-align:center"><span class="'+layerCls+'">'+layerLabel+'</span></td>';
     html+='<td style="padding:2px 6px;text-align:right">$'+o.strike+'</td>';
     html+='<td style="padding:2px 6px;text-align:center">'+o.dte+'</td>';
     html+='<td style="padding:2px 6px;text-align:right">'+F(o.delta,4)+'</td>';
@@ -613,7 +610,6 @@ function renderGlobalLayer(data){
     html+='<td style="padding:2px 6px;text-align:right">'+F(o.theta,4)+'</td>';
     html+='<td style="padding:2px 6px;text-align:right">'+F(o.vega,4)+'</td>';
     html+='<td style="padding:2px 6px;text-align:right">$'+F(o.price,4)+'</td>';
-    html+='<td style="padding:2px 6px;text-align:center">'+(o.is_layer_match?'<span style="color:var(--green);font-weight:bold">✓</span>':'<span style="color:var(--text-dim)">·</span>')+'</td>';
     html+='</tr>';
   });
   html+='</tbody></table></div>';
