@@ -958,6 +958,74 @@ def api_layer_near(request: Request):
 
 
 # ==========================================
+# AVAILABLE OPTIONS (ALL LAYERS)
+# ==========================================
+
+@app.get("/api/available-options")
+def api_available_options(request: Request):
+    """Все доступные опционы из всех слоёв с общими фильтрами."""
+    q = request.query_params
+    delta_min = float(q.get("delta_min", 0))
+    delta_max = float(q.get("delta_max", 1))
+    dte_min = int(q.get("dte_min", 0))
+    dte_max = int(q.get("dte_max", 99999))
+    
+    puts, spot_price = _fetch_chain_from_bybit()
+    if not puts:
+        puts, spot_price = _fetch_chain_from_db()
+    
+    if not puts:
+        return {"options": [], "count": 0, "spot_price": spot_price or 71.94}
+    
+    # Filter by global criteria
+    filtered = []
+    for p in puts:
+        d = abs(p.get("delta", 0))
+        dt = p.get("dte", 0)
+        if d >= delta_min and d <= delta_max and dt >= dte_min and dt <= dte_max:
+            filtered.append(p)
+    
+    # Sort by DTE then strike
+    filtered.sort(key=lambda x: (x.get("dte", 0), x.get("strike", 0)))
+    
+    # Determine layer matches for highlighting
+    # We'll mark as layer_match if it falls within any layer's default criteria
+    def is_layer_match(option):
+        d = abs(option.get("delta", 0))
+        dt = option.get("dte", 0)
+        # Distant
+        if 0.05 <= d <= 0.20 and 25 <= dt:
+            return True
+        # Mid
+        if 0.20 < d <= 0.40 and 10 <= dt <= 25:
+            return True
+        # Near
+        if 0.38 < d <= 0.55 and 5 <= dt <= 10:
+            return True
+        return False
+    
+    # Assign layer
+    def assign_layer(option):
+        d = abs(option.get("delta", 0))
+        if 0.05 <= d <= 0.20:
+            return "distant"
+        elif 0.20 < d <= 0.40:
+            return "mid"
+        elif 0.38 < d <= 0.55:
+            return "near"
+        return "distant"
+    
+    for opt in filtered:
+        opt["is_layer_match"] = is_layer_match(opt)
+        opt["layer"] = assign_layer(opt)
+    
+    return {
+        "options": filtered,
+        "count": len(filtered),
+        "spot_price": spot_price or 71.94
+    }
+
+# ==========================================
 # STATIC FILES
 # ==========================================
 

@@ -396,6 +396,7 @@ var layerFilterParams={distant:"",mid:"",near:""};
 var selectedOption={distant:null,mid:null,near:null};
 var layerDefaults={distant:{delta_min:0.05,delta_max:0.20,dte_min:25,dte_max:99999},mid:{delta_min:0.20,delta_max:0.40,dte_min:10,dte_max:25},near:{delta_min:0.38,delta_max:0.55,dte_min:5,dte_max:10}};
 var purchasedOptions={distant:[],mid:[],near:[]};
+var globalPurchasedSymbols={};
 
 window.__so = function(layer,symbol){
   selectOption(layer,symbol);
@@ -585,6 +586,64 @@ function renderSelectedLayer(layer){
   el.innerHTML=html;
 }
 
+// === Global Available Options Table ===
+var globalFilterParams="";
+function renderGlobalLayer(data){
+  if(!data) return;
+  var el=document.getElementById("globalLayerContent");
+  if(!el) return;
+  var opts=data.options||[];
+  if(opts.length===0){el.innerHTML='<div style="padding:12px;color:var(--text-dim)">Нет опционов</div>';return;}
+  var html='<div style="margin-bottom:8px;font-size:13px;color:var(--text-dim)">Всего: <b>'+data.count+'</b></div>';
+  html+='<div style="max-height:400px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0">';
+  html+='<th style="text-align:left;padding:3px 6px">Символ</th><th style="padding:3px 6px;text-align:right">Layer</th><th style="padding:3px 6px;text-align:right">Strike</th><th style="padding:3px 6px;text-align:center">DTE</th><th style="padding:3px 6px;text-align:right">Δ</th><th style="padding:3px 6px;text-align:right">IV</th><th style="padding:3px 6px;text-align:right">Θ</th><th style="padding:3px 6px;text-align:right">ν</th><th style="padding:3px 6px;text-align:right">Price</th><th style="padding:3px 6px;text-align:center">Метка</th></tr></thead><tbody>';
+  opts.forEach(function(o){
+    var rowCls=o.is_layer_match?'background:rgba(63,185,80,0.12);':'';
+    var sym=o.symbol.replace(/'/g,"\\'");
+    var layerLabel=o.layer==='distant'?'Дальний':o.layer==='mid'?'Средний':'Ближний';
+    var layerCls=o.layer==='distant'?'layer-anchor':o.layer==='mid'?'layer-adaptation':'layer-active';
+    var purchased=globalPurchasedSymbols[o.symbol];
+    if(purchased){rowCls+='background:rgba(255,200,0,0.1);';}
+    html+='<tr style="text-align:left;height:24px;cursor:pointer;'+rowCls+' onclick="window.__so(\''+o.layer+'\',\''+sym+'\')" ondblclick="event.preventDefault();event.stopPropagation();window.__as(\''+o.layer+'\',\''+sym+'\')">';
+    html+='<td style="padding:2px 6px;font-weight:bold">'+o.symbol+(purchased?'<span style="color:#f0ad4e"> 📌'+purchased+'</span>':'')+'</td>';
+    html+='<td style="padding:2px 6px;text-align:center"><span class="'+layerCls+'">'+layerLabel+'</span></td>';
+    html+='<td style="padding:2px 6px;text-align:right">$'+o.strike+'</td>';
+    html+='<td style="padding:2px 6px;text-align:center">'+o.dte+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right">'+F(o.delta,4)+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right">'+F(o.iv,4)+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right">'+F(o.theta,4)+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right">'+F(o.vega,4)+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right">$'+F(o.price,4)+'</td>';
+    html+='<td style="padding:2px 6px;text-align:center">'+(o.is_layer_match?'<span style="color:var(--green);font-weight:bold">✓</span>':'<span style="color:var(--text-dim)">·</span>')+'</td>';
+    html+='</tr>';
+  });
+  html+='</tbody></table></div>';
+  el.innerHTML=html;
+}
+
+function applyGlobalFilters(){
+  var p={};
+  var dMin=document.getElementById('filterDeltaMin');
+  var dMax=document.getElementById('filterDeltaMax');
+  var tMin=document.getElementById('filterDteMin');
+  var tMax=document.getElementById('filterDteMax');
+  if(dMin&&dMin.value) p.delta_min=dMin.value;
+  if(dMax&&dMax.value) p.delta_max=dMax.value;
+  if(tMin&&tMin.value) p.dte_min=tMin.value;
+  if(tMax&&tMax.value) p.dte_max=tMax.value;
+  globalFilterParams=Object.keys(p).length?"?"+Object.entries(p).map(function(e){return e[0]+"="+e[1]}).join("&"):"";
+  api("/api/available-options"+globalFilterParams).then(function(d){renderGlobalLayer(d);});
+}
+
+function resetGlobalFilters(){
+  document.getElementById('filterDeltaMin').value=0;
+  document.getElementById('filterDeltaMax').value=1;
+  document.getElementById('filterDteMin').value=0;
+  document.getElementById('filterDteMax').value=99999;
+  globalFilterParams="";
+  applyGlobalFilters();
+}
+
 function applyFilters(layer){
   var card=document.getElementById("tab-"+layer);
   if(!card) return;
@@ -654,6 +713,13 @@ function loadAll(){
       renderSelectedLayer('distant');
       renderSelectedLayer('mid');
       renderSelectedLayer('near');
+      // Build global purchased symbols lookup
+      globalPurchasedSymbols={};
+      (purchasedOptions.distant||[]).forEach(function(x){globalPurchasedSymbols[x.symbol]=x.qty;});
+      (purchasedOptions.mid||[]).forEach(function(x){globalPurchasedSymbols[x.symbol]=x.qty;});
+      (purchasedOptions.near||[]).forEach(function(x){globalPurchasedSymbols[x.symbol]=x.qty;});
+      // Load global available options
+      applyGlobalFilters();
     });
   });
   document.getElementById('headerUpdated').textContent='Обновлено: '+new Date().toLocaleTimeString('ru-RU');
