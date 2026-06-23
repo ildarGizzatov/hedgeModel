@@ -40,6 +40,36 @@ from src.db import (
 
 PORT = int(os.environ.get("DASHBOARD_PORT", "8083"))
 
+# Читаем config.toml при старте (target_dd_pct для PnL-лестницы)
+import tomllib
+with open(PROJECT_DIR / "config.toml", "rb") as f:
+    _config = tomllib.load(f)
+
+# Просадка, которую страхуем (100 - target_dd_pct = 80 для target_dd_pct=20)
+_TARGET_DD = _config.get("target_dd_pct", 20)
+_LADDER_DOWN = round(_TARGET_DD / 100, 2)  # 0.20
+_LADDER_UP = round(_TARGET_DD / 100, 2)   # 0.20
+
+LAYER_DEFAULTS = {
+    "distant": {"delta_min": 0.05, "delta_max": 0.20, "dte_min": 25, "dte_max": 99999, "label": "Дальний слой (Anchor / Tail Risk)"},
+    "mid": {"delta_min": 0.20, "delta_max": 0.40, "dte_min": 10, "dte_max": 25, "label": "Средний слой (Adaptation)"},
+    "near": {"delta_min": 0.38, "delta_max": 0.55, "dte_min": 5, "dte_max": 10, "label": "Ближний слой (Active / Hedging)"},
+}
+
+def _check_layer_match(d: float, dt: int) -> bool:
+    """Проверяет, попадает ли опцион в любой слой по LAYER_DEFAULTS."""
+    for ld in LAYER_DEFAULTS.values():
+        if ld["delta_min"] <= d <= ld["delta_max"] and ld["dte_min"] <= dt <= ld["dte_max"]:
+            return True
+    return False
+
+def _assign_layer(d: float) -> str:
+    """Определяет слой по delta из LAYER_DEFAULTS."""
+    for name, ld in LAYER_DEFAULTS.items():
+        if ld["delta_min"] <= d <= ld["delta_max"]:
+            return name
+    return "distant"  # fallback
+
 app = FastAPI(title="HedgeModel Dashboard", version="0.1.0")
 
 app.add_middleware(
@@ -200,9 +230,9 @@ def api_positions() -> dict[str, Any]:
             "notes": b.get("notes", ""),
         })
 
-    # === PnL-лестница по шагу $1 (от avg-цены ± 20%) ===
-    low = round(avg_price * 0.80)
-    high = round(avg_price * 1.20)
+    # === PnL-лестница по шагу $1 (от avg-цены ± ladder_range) ===
+    low = round(avg_price * (1 - DASHBOARD_LADDER_RANGE / 100))
+    high = round(avg_price * (1 + DASHBOARD_LADDER_RANGE / 100))
     ladder = []
     for price in range(low, high + 1):
         pnl_step = (price - avg_price) * qty
@@ -274,13 +304,13 @@ def api_purchased_options() -> dict[str, Any]:
         elif layer == "active":
             mapped_layer = "near"
         else:
-            # Fallback to delta-based mapping
+            # Fallback to delta-based mapping (from LAYER_DEFAULTS)
             abs_delta = abs(delta)
-            if 0.05 <= abs_delta <= 0.20:
+            if (LAYER_DEFAULTS["distant"]["delta_min"] <= abs_delta <= LAYER_DEFAULTS["distant"]["delta_max"]):
                 mapped_layer = "distant"
-            elif 0.20 < abs_delta <= 0.40:
+            elif (LAYER_DEFAULTS["mid"]["delta_min"] <= abs_delta <= LAYER_DEFAULTS["mid"]["delta_max"]):
                 mapped_layer = "mid"
-            elif 0.40 < abs_delta <= 0.55:
+            elif (LAYER_DEFAULTS["near"]["delta_min"] <= abs_delta <= LAYER_DEFAULTS["near"]["delta_max"]):
                 mapped_layer = "near"
 
         if mapped_layer:
@@ -666,8 +696,8 @@ def api_combined_ladder() -> dict[str, Any]:
 
     qty = float(pos["qty"])
     avg_price = float(pos["avg_price"])
-    low = round(avg_price * 0.80)
-    high = round(avg_price * 1.20)
+    low = round(avg_price * (1 - _LADDER_DOWN))
+    high = round(avg_price * (1 + _LADDER_UP))
 
     open_opts = get_all_open_options()
     spot = float(pos.get("current_price") or avg_price)
@@ -816,34 +846,44 @@ def api_stats() -> dict:
 # LAYER API
 # ==========================================
 
-LAYER_DEFAULTS = {
-    "distant": {"delta_min": 0.05, "delta_max": 0.20, "dte_min": 25, "dte_max": 99999, "label": "Дальний слой (Anchor / Tail Risk)"},
-    "mid": {"delta_min": 0.20, "delta_max": 0.40, "dte_min": 10, "dte_max": 25, "label": "Средний слой (Adaptation)"},
-    "near": {"delta_min": 0.38, "delta_max": 0.55, "dte_min": 5, "dte_max": 10, "label": "Ближний слой (Active / Hedging)"},
-}
-
 def _fetch_chain_from_bybit():
+    """Fetch from Bybit API. Returns (puts, spot_price, source, timestamp)."""
     try:
         from src.chain_fetcher import fetch_and_filter_chain
         rows, spot_price = fetch_and_filter_chain("SOL")
         puts = [r for r in rows if r["type"] == "PUT"]
         puts.sort(key=lambda x: (x.get("dte",0), x.get("strike",0)))
-        return puts, spot_price
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        return puts, spot_price, "live", now
     except Exception as e:
         print(f"Bybit fetch failed: {e}")
-        return None, None
+        return None, None, None, None
 
 def _fetch_chain_from_db():
+    """Fetch from DB snapshot. Returns (puts, spot_price, source, timestamp)."""
     try:
         rows = get_latest_chain_snapshot()
+        if not rows:
+            return None, None, None, None
         puts = [r for r in rows if r.get("type") == "PUT"]
         puts.sort(key=lambda x: (x.get("dte",0), x.get("strike",0)))
-        return puts, 71.94
+        # Берём реальный spot_price и timestamp из снапшота
+        spot_price = float(rows[0].get("spot_price", 0))
+        ts = rows[0].get("timestamp", "unknown")
+        return puts, spot_price, "db_fallback", ts
     except Exception as e:
         print(f"DB fallback failed: {e}")
-        return None, None
+        return None, None, None, None
 
-def _build_layer_response(layer, criteria, puts, spot_price, layer_defaults):
+def _data_age_minutes(timestamp_str: str) -> int:
+    """Сколько минут прошло с момента timestamp."""
+    try:
+        ts = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
+        return int((datetime.now() - ts).total_seconds() / 60)
+    except Exception:
+        return -1  # неизвестно
+
+def _build_layer_response(layer, criteria, puts, spot_price, layer_defaults, data_source="live", timestamp=None):
     # Group by expiry for ATM IV lookup
     from collections import defaultdict
     expiry_strikes = defaultdict(list)
@@ -893,19 +933,21 @@ def _build_layer_response(layer, criteria, puts, spot_price, layer_defaults):
     return {
         "layer": layer,
         "label": layer_defaults["label"],
-        "spot_price": round(spot_price, 2) if spot_price else 71.94,
+        "spot_price": round(spot_price, 2) if spot_price else None,
         "criteria": criteria,
         "layerDefaults": layer_defaults,
         "count": len(filtered),
         "options": filtered,
+        "data_source": data_source,
+        "data_age_minutes": _data_age_minutes(timestamp) if timestamp else -1,
         "updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
 
 
-@app.get("/api/layer-distant")
-def api_layer_distant(request: Request):
-    layer = "distant"
-    layer_defaults = LAYER_DEFAULTS[layer]
+@app.get("/api/layer/{name}")
+def api_layer(name: str, request: Request):
+    """Параметризованный эндпоинт слоёв (distant, mid, near)."""
+    layer_defaults = LAYER_DEFAULTS[name]
     q = request.query_params
     criteria = {
         "delta_min": float(q.get("delta_min", layer_defaults["delta_min"])),
@@ -913,48 +955,14 @@ def api_layer_distant(request: Request):
         "dte_min": int(q.get("dte_min", layer_defaults["dte_min"])),
         "dte_max": int(q.get("dte_max", layer_defaults["dte_max"])),
     }
-    puts, spot_price = _fetch_chain_from_bybit()
+    puts, spot_price, source, ts = _fetch_chain_from_bybit()
     if not puts:
-        puts, spot_price = _fetch_chain_from_db()
+        puts, spot_price, source, ts = _fetch_chain_from_db()
     if not puts:
-        return {**_build_layer_response(layer, criteria, [], 71.94, layer_defaults), "error": "No data"}
-    return _build_layer_response(layer, criteria, puts, spot_price, layer_defaults)
-
-@app.get("/api/layer-mid")
-def api_layer_mid(request: Request):
-    layer = "mid"
-    layer_defaults = LAYER_DEFAULTS[layer]
-    q = request.query_params
-    criteria = {
-        "delta_min": float(q.get("delta_min", layer_defaults["delta_min"])),
-        "delta_max": float(q.get("delta_max", layer_defaults["delta_max"])),
-        "dte_min": int(q.get("dte_min", layer_defaults["dte_min"])),
-        "dte_max": int(q.get("dte_max", layer_defaults["dte_max"])),
-    }
-    puts, spot_price = _fetch_chain_from_bybit()
-    if not puts:
-        puts, spot_price = _fetch_chain_from_db()
-    if not puts:
-        return {**_build_layer_response(layer, criteria, [], 71.94, layer_defaults), "error": "No data"}
-    return _build_layer_response(layer, criteria, puts, spot_price, layer_defaults)
-
-@app.get("/api/layer-near")
-def api_layer_near(request: Request):
-    layer = "near"
-    layer_defaults = LAYER_DEFAULTS[layer]
-    q = request.query_params
-    criteria = {
-        "delta_min": float(q.get("delta_min", layer_defaults["delta_min"])),
-        "delta_max": float(q.get("delta_max", layer_defaults["delta_max"])),
-        "dte_min": int(q.get("dte_min", layer_defaults["dte_min"])),
-        "dte_max": int(q.get("dte_max", layer_defaults["dte_max"])),
-    }
-    puts, spot_price = _fetch_chain_from_bybit()
-    if not puts:
-        puts, spot_price = _fetch_chain_from_db()
-    if not puts:
-        return {**_build_layer_response(layer, criteria, [], 71.94, layer_defaults), "error": "No data"}
-    return _build_layer_response(layer, criteria, puts, spot_price, layer_defaults)
+        resp = _build_layer_response(name, criteria, [], None, layer_defaults, "no_data", None)
+        resp["error"] = "No data"  # явный признак ошибки
+        return resp
+    return _build_layer_response(name, criteria, puts, spot_price, layer_defaults, source, ts)
 
 
 # ==========================================
@@ -970,12 +978,12 @@ def api_available_options(request: Request):
     dte_min = int(q.get("dte_min", 0))
     dte_max = int(q.get("dte_max", 99999))
     
-    puts, spot_price = _fetch_chain_from_bybit()
+    puts, spot_price, source, ts = _fetch_chain_from_bybit()
     if not puts:
-        puts, spot_price = _fetch_chain_from_db()
-    
+        puts, spot_price, source, ts = _fetch_chain_from_db()
+
     if not puts:
-        return {"options": [], "count": 0, "spot_price": spot_price or 71.94}
+        return {"options": [], "count": 0, "spot_price": None, "data_source": "no_data", "data_age_minutes": -1}
     
     # Filter by global criteria
     filtered = []
@@ -989,31 +997,14 @@ def api_available_options(request: Request):
     filtered.sort(key=lambda x: (x.get("dte", 0), x.get("strike", 0)))
     
     # Determine layer matches for highlighting
-    # We'll mark as layer_match if it falls within any layer's default criteria
     def is_layer_match(option):
         d = abs(option.get("delta", 0))
         dt = option.get("dte", 0)
-        # Distant
-        if 0.05 <= d <= 0.20 and 25 <= dt:
-            return True
-        # Mid
-        if 0.20 < d <= 0.40 and 10 <= dt <= 25:
-            return True
-        # Near
-        if 0.38 < d <= 0.55 and 5 <= dt <= 10:
-            return True
-        return False
+        return _check_layer_match(d, dt)
     
     # Assign layer
     def assign_layer(option):
-        d = abs(option.get("delta", 0))
-        if 0.05 <= d <= 0.20:
-            return "distant"
-        elif 0.20 < d <= 0.40:
-            return "mid"
-        elif 0.38 < d <= 0.55:
-            return "near"
-        return "distant"
+        return _assign_layer(abs(option.get("delta", 0)))
     
     for opt in filtered:
         opt["is_layer_match"] = is_layer_match(opt)
@@ -1025,7 +1016,9 @@ def api_available_options(request: Request):
     return {
         "options": filtered,
         "count": len(filtered),
-        "spot_price": spot_price or 71.94
+        "spot_price": round(spot_price, 2) if spot_price else None,
+        "data_source": source or "unknown",
+        "data_age_minutes": _data_age_minutes(ts) if ts else -1,
     }
 
 # ==========================================

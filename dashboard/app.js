@@ -482,7 +482,7 @@ function selectOption(layer,symbol,o){
     console.log('selectOption:', layer, selectedOption[layer]);
   } catch(e){ console.error('selectOption error:',e); }
   var params=layerFilterParams[layer]?"?"+layerFilterParams[layer]:"";
-  api("/api/layer-"+layer+params).then(function(d){renderLayer(d);});
+  api("/api/layer/"+layer+params).then(function(d){renderLayer(d);});
 }
 
 function addSelected(layer,symbol){
@@ -627,7 +627,7 @@ function applyFilters(layer){
   if(inputs[3]) p.dte_max=inputs[3].value;
   var qs=Object.keys(p).length?"?"+Object.entries(p).map(function(e){return e[0]+"="+e[1]}).join("&"):"";
   layerFilterParams[layer]=qs;
-  api("/api/layer-"+layer+qs).then(function(data){renderLayer(data);renderSelectedLayer(layer);});
+  api("/api/layer/"+layer+qs).then(function(data){renderLayer(data);renderSelectedLayer(layer);});
 }
 
 function resetFilters(layer){
@@ -641,18 +641,65 @@ function resetFilters(layer){
   if(inputs[3]) inputs[3].value=defs.dte_max;
   var qs="?delta_min="+defs.delta_min+"&delta_max="+defs.delta_max+"&dte_min="+defs.dte_min+"&dte_max="+defs.dte_max;
   layerFilterParams[layer]=qs;
-  api("/api/layer-"+layer+qs).then(function(data){renderLayer(data);renderSelectedLayer(layer);});
+  api("/api/layer/"+layer+qs).then(function(data){renderLayer(data);renderSelectedLayer(layer);});
 }
 
 function refreshLayers(layer){
   var params=layerFilterParams[layer]?"?"+layerFilterParams[layer]:"";
   if(params&&!params.includes("refresh=1")) params+="&refresh=1";
   if(!params) params="?refresh=1";
-  api("/api/layer-"+layer+params).then(function(data){renderLayer(data);renderSelectedLayer(layer);});
+  api("/api/layer/"+layer+params).then(function(data){renderLayer(data);renderSelectedLayer(layer);});
 }
 
 // === Load all ===
 var combinedLadder=null;
+function showDataStatus(){
+  // Берём data_source из ближайшего слоя
+  var sources = [
+    layerData_distant,
+    layerData_mid,
+    layerData_near
+  ];
+  var worstSource = "live";
+  var worstAge = -1;
+  for(var i=0; i<sources.length; i++){
+    var s = sources[i];
+    if(!s) continue;
+    var src = s.data_source || "live";
+    var age = s.data_age_minutes || -1;
+    // Определяем "худший" источник
+    if(src === "no_data" && worstSource !== "no_data") { worstSource=src; worstAge=age; }
+    else if(src === "db_fallback" && worstSource !== "no_data") { worstSource=src; worstAge=age; }
+    else if(worstAge < 0 && age > 0) { worstSource=src; worstAge=age; }
+  }
+  var banner = document.getElementById("dataStatusBanner");
+  if(!banner) return;
+  if(worstSource === "no_data"){
+    banner.style.display = "block";
+    banner.style.background = "rgba(248,81,73,0.15)";
+    banner.style.border = "1px solid var(--red)";
+    banner.style.borderRadius = "6px";
+    banner.style.margin = "0 24px 12px";
+    banner.style.padding = "8px 16px";
+    banner.style.fontSize = "13px";
+    banner.style.color = "var(--red)";
+    banner.innerHTML = "⛔ <b>Нет данных</b> — Bybit недоступен, снапшотов нет. Проверьте подключение.";
+  } else if(worstSource === "db_fallback"){
+    var ageStr = worstAge > 0 ? ("данные от " + worstAge + " мин. назад") : "данные устаревшие";
+    banner.style.display = "block";
+    banner.style.background = "rgba(210,153,34,0.15)";
+    banner.style.border = "1px solid var(--yellow)";
+    banner.style.borderRadius = "6px";
+    banner.style.margin = "0 24px 12px";
+    banner.style.padding = "8px 16px";
+    banner.style.fontSize = "13px";
+    banner.style.color = "var(--yellow)";
+    banner.innerHTML = "⚠️ <b>Bybit недоступен</b> — показаны " + ageStr + ". Опционы могут не совпадать с реальностью.";
+  } else {
+    banner.style.display = "none";
+  }
+}
+
 function loadAll(){
   var distantQ=layerFilterParams.distant?"?"+layerFilterParams.distant:"";
   var midQ=layerFilterParams.mid?"?"+layerFilterParams.mid:"";
@@ -664,9 +711,9 @@ function loadAll(){
     api("/api/summary"),
     api("/api/layers"),
     api("/api/combined-ladder"),
-    api("/api/layer-distant"+distantQ),
-    api("/api/layer-mid"+midQ),
-    api("/api/layer-near"+nearQ)
+    api("/api/layer/distant"+distantQ),
+    api("/api/layer/mid"+midQ),
+    api("/api/layer/near"+nearQ)
   ]).then(function(results){
     combinedLadder=results[5]||{ladder:[]};
     renderPositions(results[0]);
@@ -677,6 +724,7 @@ function loadAll(){
     layerData_distant=results[6];
     layerData_mid=results[7];
     layerData_near=results[8];
+    showDataStatus();
     api("/api/purchased-options").then(function(p){
       purchasedOptions={distant:p.distant||[],mid:p.mid||[],near:p.near||[]};
       renderLayer(results[6]);
