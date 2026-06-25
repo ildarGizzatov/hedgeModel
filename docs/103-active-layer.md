@@ -31,7 +31,7 @@ updated: 2026-05-29
 См. [[200-budget-allocation#active]]
 
 ## Условия закрытия
-> См. [[dev/T001-conditions-closing#active]]
+> См. [[104-active-closing-rules]]
 
 ---
 

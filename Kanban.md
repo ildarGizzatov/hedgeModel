@@ -10,8 +10,6 @@ kanban-plugin: board
 
 ## 📥 Входящие
 
-- [ ] [[T002-theta-monitoring]]
-- [ ] [[T007-dashboard]]
 
 
 ## 📐 На оценке
@@ -20,12 +18,12 @@ kanban-plugin: board
 - [ ] [[T003-roll-economics]]
 - [ ] [[T004-monitor-open-options]]
 - [ ] [[T001-conditions-closing]]
+- [ ] [[T009-active-layer-selection]]
 
 
 ## ✅ В работе
 
 - [ ] [[T006-anchor-selection]]
-
 
 
 ## 🏁 Готово

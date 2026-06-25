@@ -29,7 +29,7 @@ updated: 2026-05-29
 См. [[200-budget-allocation#anchor]]
 
 ## Условия закрытия
-> См. [[dev/T001-conditions-closing#anchor]]
+> См. [[T001-conditions-closing#anchor]]
 
 ---
 

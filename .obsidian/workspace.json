@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "2026-06-22.md",
+                "file": "2026-06-25.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "2026-06-22"
+              "title": "2026-06-25"
             }
           }
         ]
@@ -186,12 +186,28 @@
   },
   "active": "bd9c837cb873cf31",
   "lastOpenFiles": [
-    "hedge_model.db-wal",
     "hedge_model.db-shm",
-    "docs/201-selection-criteria.md",
-    "2026-06-22.md",
+    "hedge_model.db-wal",
     "README.md",
+    "2026-06-25.md",
+    "T009-active-layer-selection.md",
+    "docs/201-selection-criteria.md",
+    "Kanban.md",
+    "T006-anchor-selection.md",
+    "docs/200-budget-allocation.md",
+    "T007-dashboard.md",
+    "docs/203-anchor-selection-algorithm.md",
+    "docs/101-anchor-layer.md",
+    "docs/103-active-layer.md",
+    "docs/104-active-closing-rules.md",
+    "T003-roll-economics.md",
+    "T008-conditions-active-closing.md",
     "AGENTS.md",
+    "venv/lib/python3.12/site-packages/numpy-2.4.6.dist-info/licenses/numpy/random/src/pcg64/LICENSE.md",
+    "T001-conditions-closing.md",
+    "docs/102-adaptation-layer.md",
+    "src/edit_option.py",
+    "2026-06-22.md",
     "sedZdWJv5",
     "src/__pycache__/prices_step.cpython-312.pyc",
     "src/__pycache__/fetch_step.cpython-312.pyc",
@@ -199,27 +215,11 @@
     "src/__pycache__/status_step.cpython-312.pyc",
     "src/status_step.py",
     "src/run_step.py",
-    "src/prices_step.py",
     "docs/901-project-setup.md",
     "docs/202-formulas.md",
-    "docs/203-anchor-selection-algorithm.md",
     "docs/300-pipeline.md",
     "docs/100-strategy.md",
     "docs/402-database-schema.md",
-    "docs/000-MOC.md",
-    "docs/000-ZK-rules.md",
-    "001-input-parameters.md",
-    "docs/101-anchor-layer.md",
-    "docs/102-adaptation-layer.md",
-    "docs/103-active-layer.md",
-    "docs/200-budget-allocation.md",
-    "docs/401-positions-storage.md",
-    "T003.md",
-    "PROJECT-RULES.md",
-    "900-research-backlog.md",
-    "docs/501-option-selection-diagnostics.md",
-    "dev/400-deployment.md",
-    "dev/301-optionboard-script.md",
-    "docs/400-deployment.md"
+    "docs/000-MOC.md"
   ]
 }

@@ -31,10 +31,10 @@ updated: 2026-05-29
 См. [[200-budget-allocation#adaptation]]
 
 ## Тета-мониторинг
-См. [[dev/T002-theta-monitoring]]
+См. [[T002-theta-monitoring]]
 
 ## Условия закрытия
-> См. [[dev/T001-conditions-closing#adaptation]]
+> См. [[T001-conditions-closing#adaptation]]
 
 ---
 

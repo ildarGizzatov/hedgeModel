@@ -31,7 +31,7 @@ from src.db import (
     get_position, get_all_open_options, get_all_latest_greeks,
     get_buy_history, get_closed_positions, table_stats,
     get_pending_recommendations, execute_query, update_position_prices,
-    get_latest_chain_snapshot,
+    get_latest_chain_snapshot, get_option_by_id, update_option,
 )
 
 # ==========================================
@@ -69,6 +69,8 @@ def _assign_layer(d: float) -> str:
         if ld["delta_min"] <= d <= ld["delta_max"]:
             return name
     return "distant"  # fallback
+
+DASHBOARD_LADDER_RANGE = 20  # ±20% для PnL-лестницы
 
 app = FastAPI(title="HedgeModel Dashboard", version="0.1.0")
 
@@ -140,56 +142,111 @@ def api_refresh_prices() -> dict:
         return {"status": "error", "output": str(e)}
 
 
-@app.post("/api/close-option")
-def api_close_option() -> dict:
-    """Закрывает опцион по правилу убытка."""
-    import tomllib
+@app.post("/api/update-option-entry")
+async def api_update_option_entry(request: Request) -> dict:
+    """Обновляет entry_price (и/qty) опциона."""
     try:
-        cfg_path = PROJECT_DIR / "config.toml"
-        with open(cfg_path, "rb") as f:
-            config = tomllib.load(f)
+        data = await request.json()
+        option_id = data.get("option_id")
+        entry_price = data.get("entry_price")
+        qty = data.get("qty")
 
-        close_pct = config.get("close_pct", 100) / 100
+        if option_id is None:
+            return {"status": "error", "output": "Не указан option_id"}
 
-        # Читаем open опционы из БД
-        open_opts = get_all_open_options()
-        latest_greeks = {g["option_symbol"]: g for g in get_all_latest_greeks()}
+        row = get_option_by_id(option_id)
+        if not row:
+            return {"status": "error", "output": f"Опцион id={option_id} не найден"}
 
-        to_close = []
-        for opt in open_opts:
-            symbol = opt["symbol"].strip()
-            entry_price = float(opt["entry_price"] or 0)
-            qty = int(opt["qty"])
-            greek = latest_greeks.get(symbol, {})
-            current_price = float(greek.get("current_price") or entry_price)
-            pnl_pct = ((current_price - entry_price) / entry_price * 100) if entry_price > 0 else 0
+        if row["status"] == "closed":
+            return {"status": "error", "output": "Опцион закрыт, редактирование запрещено"}
 
-            if pnl_pct < -close_pct * 100:
-                to_close.append({
-                    "symbol": symbol,
-                    "pnl_pct": round(pnl_pct, 2),
-                    "entry_price": entry_price,
-                    "current_price": round(current_price, 4),
-                    "qty": qty,
-                    "pnl": round((current_price - entry_price) * qty, 2),
-                    "strike": float(opt["strike"]),
-                    "expiry": opt["expiry"],
-                })
+        updates = {}
+        if entry_price is not None:
+            updates["entry_price"] = float(entry_price)
+        if qty is not None:
+            updates["qty"] = int(qty)
 
-        # Закрытие через db.close_option
-        from src.db import get_connection, close_option as db_close_option
-        conn = get_connection()
-        for item in to_close:
-            row = conn.execute("SELECT id FROM options WHERE symbol=?", (item["symbol"],)).fetchone()
-            if row:
-                db_close_option(row["id"], item["current_price"], close_reason="auto_loss")
+        if not updates:
+            return {"status": "error", "output": "Нет данных для обновления"}
 
-        return {
-            "status": "ok",
-            "closed": to_close,
-            "count": len(to_close),
-            "message": f"Закрыто {len(to_close)} опционов",
-        }
+        updated = update_option(option_id, **updates)
+        return {"status": "ok", "updated": updated, "option_id": option_id}
+    except Exception as e:
+        return {"status": "error", "output": str(e)}
+
+
+@app.post("/api/update-option-layer")
+async def api_update_option_layer(request: Request) -> dict:
+    """Обновляет layer опциона (anchor / adaptation / active)."""
+    try:
+        data = await request.json()
+        option_id = data.get("option_id")
+        new_layer = data.get("layer")
+
+        if option_id is None:
+            return {"status": "error", "output": "Не указан option_id"}
+        if new_layer not in ("anchor", "adaptation", "active"):
+            return {"status": "error", "output": f"Недопустимый layer: {new_layer}. Доступные: anchor, adaptation, active"}
+
+        row = get_option_by_id(option_id)
+        if not row:
+            return {"status": "error", "output": f"Опцион id={option_id} не найден"}
+
+        if row["status"] == "closed":
+            return {"status": "error", "output": "Опцион закрыт, редактирование запрещено"}
+
+        old_layer = row["layer"] or "—"
+        updated = update_option(option_id, layer=new_layer)
+        return {"status": "ok", "updated": updated, "option_id": option_id, "old_layer": old_layer, "new_layer": new_layer}
+    except Exception as e:
+        return {"status": "error", "output": str(e)}
+
+
+@app.post("/api/close-option")
+async def api_close_option(request: Request) -> dict:
+    """Закрывает конкретный опцион по ID (или автоматическое по правилу)."""
+    import tomllib
+    import json as json_mod
+    try:
+        raw = await request.body()
+        if isinstance(raw, bytes):
+            data = json_mod.loads(raw)
+        else:
+            data = json_mod.loads(raw.decode())
+        option_id = data.get("option_id")
+        close_reason = data.get("close_reason", "manual")
+
+        # --- Ручное закрытие конкретного опциона ---
+        if option_id is not None:
+            row = get_option_by_id(option_id)
+            if not row:
+                return {"status": "error", "output": f"Опцион id={option_id} не найден"}
+
+            if row["status"] == "closed":
+                return {"status": "error", "output": "Опцион уже закрыт"}
+
+            # Берём текущую цену из greeks
+            all_greeks = get_all_latest_greeks()
+            greeks_idx = {g["option_symbol"]: g for g in all_greeks}
+            greek = greeks_idx.get(row["symbol"], {})
+            current_price = float(greek.get("current_price") or row["entry_price"])
+            qty = int(row["qty"])
+            entry_price = float(row["entry_price"] or 0)
+
+            from src.db import get_connection, close_option as db_close_option
+            conn = get_connection()
+            db_close_option(option_id, current_price, close_reason=close_reason,
+                           notes=f"closed via dashboard")
+
+            return {
+                "status": "ok",
+                "message": f"Опцион {row['symbol']} закрыт",
+                "current_price": round(current_price, 4),
+                "pnl": round((current_price - entry_price) * qty, 2),
+            }
+
+        return {"status": "error", "output": "Не указан option_id"}
     except Exception as e:
         return {"status": "error", "output": str(e)}
 
@@ -378,6 +435,7 @@ def api_options() -> dict[str, Any]:
         theta_per_day = theta * qty
 
         options.append({
+            "id": opt["id"],
             "symbol": symbol,
             "type": opt["type"],
             "strike": strike,
@@ -407,6 +465,10 @@ def api_options() -> dict[str, Any]:
             "intrinsic_value": round(intrinsic, 4),
             "cost_per_day": round(abs(theta_per_day), 4),
         })
+
+    # Сортировка: anchor → adaptation → active
+    layer_order = {"anchor": 0, "adaptation": 1, "active": 2}
+    options.sort(key=lambda o: (layer_order.get(o["layer"], 99), o["id"]))
 
     return {
         "options": options,
@@ -688,7 +750,7 @@ def api_summary() -> dict[str, Any]:
 # ==========================================
 
 @app.get("/api/combined-ladder")
-def api_combined_ladder() -> dict[str, Any]:
+def api_combined_ladder(request: Request, min_price: int = None, max_price: int = None) -> dict[str, Any]:
     """PnL ladder: SOL + все опционы (BS-расчёт для каждого шага)."""
     pos = get_position("SOL")
     if not pos:
@@ -696,8 +758,14 @@ def api_combined_ladder() -> dict[str, Any]:
 
     qty = float(pos["qty"])
     avg_price = float(pos["avg_price"])
-    low = round(avg_price * (1 - _LADDER_DOWN))
-    high = round(avg_price * (1 + _LADDER_UP))
+
+    # Custom range from query params
+    if min_price is not None and max_price is not None:
+        low = min_price
+        high = max_price
+    else:
+        low = round(avg_price * (1 - _LADDER_DOWN))
+        high = round(avg_price * (1 + _LADDER_UP))
 
     open_opts = get_all_open_options()
     spot = float(pos.get("current_price") or avg_price)
@@ -708,8 +776,9 @@ def api_combined_ladder() -> dict[str, Any]:
         # SOL PnL
         sol_pnl = (price - avg_price) * qty
 
-        # Опционы PnL (BS для каждого опциона)
+        # Опционы PnL и intrinsic value
         opt_pnl = 0.0
+        total_intrinsic_pnl = 0.0
         for opt in open_opts:
             strike = float(opt["strike"])
             expiry = opt["expiry"]
@@ -729,6 +798,9 @@ def api_combined_ladder() -> dict[str, Any]:
                 bs_price = max(strike - price, 0)
 
             opt_pnl += (bs_price - entry_price) * opt_qty
+            # Intrinsic PnL = max(0, strike - price) * qty - premium_paid
+            intrinsic_pnl = max(0, strike - price) * opt_qty - entry_price * opt_qty
+            total_intrinsic_pnl += intrinsic_pnl
 
         total_pnl = sol_pnl + opt_pnl
         total_pnl_pct = (total_pnl / (avg_price * qty) * 100) if avg_price > 0 else 0
@@ -739,6 +811,7 @@ def api_combined_ladder() -> dict[str, Any]:
             "opt_pnl": round(opt_pnl, 2),
             "total_pnl": round(total_pnl, 2),
             "total_pnl_pct": round(total_pnl_pct, 2),
+            "intrinsic_value": round(total_intrinsic_pnl, 2),
             "is_current": price == round(spot),
             "is_avg": price == round(avg_price),
         })

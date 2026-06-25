@@ -166,10 +166,57 @@ def add_option(symbol: str, opt_type: str, strike: float, expiry: str,
         return row_id
 
 
+def get_option_by_id(option_id: int) -> Optional[dict]:
+    """Получить опцион по id."""
+    rows = execute_query("SELECT * FROM options WHERE id=?", (option_id,))
+    return rows[0] if rows else None
+
+
 def get_option_by_symbol(symbol: str) -> Optional[dict]:
     """Получить опцион по символу."""
     rows = execute_query("SELECT * FROM options WHERE symbol=?", (symbol,))
     return rows[0] if rows else None
+
+
+def get_all_options(layer: str = None, status: str = None) -> list[dict]:
+    """Получить все опционы (вкл. закрытые). Фильтры по layer и status."""
+    query = "SELECT * FROM options WHERE 1=1"
+    if layer:
+        query += f" AND layer='{layer}'"
+    if status:
+        query += f" AND status='{status}'"
+    query += " ORDER BY id DESC"
+    return execute_query(query)
+
+
+def update_option(option_id: int, **kwargs) -> int:
+    """Обновить поля опциона. Возвращает rowcount.
+    
+    Доступные поля: entry_price, qty, notes, layer,
+                     iv_entry, delta_entry, gamma_entry,
+                     theta_entry, vega_entry, status
+    """
+    allowed_fields = {
+        "entry_price", "qty", "notes", "layer",
+        "iv_entry", "delta_entry", "gamma_entry",
+        "theta_entry", "vega_entry", "status",
+        "entry_date", "type", "strike", "expiry",
+        "total_cost", "iv_atm_entry"
+    }
+    invalid = set(kwargs.keys()) - allowed_fields
+    if invalid:
+        raise ValueError(f"Недопустимые поля: {invalid}. Доступные: {allowed_fields}")
+
+    if not kwargs:
+        return 0
+
+    set_parts = ", ".join(f"{k}=?" for k in kwargs)
+    values = tuple(kwargs.values()) + (option_id,)
+
+    return execute_write(
+        f"UPDATE options SET {set_parts} WHERE id=?",
+        values
+    )
 
 
 def get_open_options(layer: str = None) -> list[dict]:
@@ -189,17 +236,25 @@ def close_option(option_id: int, close_price: float,
                  close_reason: str = "manual", notes: str = None) -> None:
     """Закрыть опцион, записать в closed_positions."""
     conn = get_connection()
-    # 1. Закрыть в options
+    # 1. Прочитать данные опциона
+    row = conn.execute("SELECT * FROM options WHERE id=?", (option_id,)).fetchone()
+    if not row:
+        conn.close()
+        return
+    entry_price = float(row["entry_price"] or 0)
+    qty = int(row["qty"])
+    symbol = row["symbol"]
+    pnl = round((close_price - entry_price) * qty, 2)
+
+    # 2. Закрыть в options
     conn.execute("UPDATE options SET status='closed' WHERE id=?", (option_id,))
-    # 2. Записать в closed_positions
+    # 3. Записать в closed_positions
     conn.execute("""
-        INSERT INTO closed_positions (option_id, symbol, close_date, close_price,
-                                       entry_price, pnl, close_reason, notes)
-        SELECT ?, symbol, ?, close_price, entry_price,
-               (close_price - entry_price) * qty, ?, ?
-        FROM options WHERE id=?
-    """, (option_id, date.today().isoformat(), close_price,
-          close_reason, notes, option_id))
+        INSERT INTO closed_positions
+            (option_id, symbol, close_date, close_price, entry_price, pnl, close_reason, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (option_id, symbol, date.today().isoformat(), close_price,
+          entry_price, pnl, close_reason, notes))
     conn.commit()
     conn.close()
 

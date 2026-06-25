@@ -83,6 +83,125 @@ function refreshUI(){
   document.getElementById('headerUpdated').textContent='Загрузка...';
 }
 
+// === Inline editing for entry_price ===
+var editingCell = null;
+
+function makeEditable(cell, currentValue, optionId, optionSymbol) {
+  if (editingCell) cancelEdit();
+  editingCell = cell;
+  var input = document.createElement('input');
+  input.type = 'number';
+  input.step = '0.01';
+  input.min = '0';
+  input.style.width = '70px';
+  input.style.background = 'var(--bg)';
+  input.style.border = '2px solid var(--blue)';
+  input.style.color = 'var(--text)';
+  input.style.padding = '1px 4px';
+  input.style.borderRadius = '3px';
+  input.value = currentValue;
+  cell.innerHTML = '';
+  cell.appendChild(input);
+  input.focus();
+  input.select();
+
+  var saveBtn = document.createElement('button');
+  saveBtn.textContent = '✓';
+  saveBtn.style.cssText = 'background:var(--green);color:#fff;border:none;padding:1px 6px;border-radius:3px;cursor:pointer;margin-left:3px;font-size:12px;';
+  var cancelBtn = document.createElement('button');
+  cancelBtn.textContent = '✕';
+  cancelBtn.style.cssText = 'background:var(--red);color:#fff;border:none;padding:1px 6px;border-radius:3px;cursor:pointer;margin-left:2px;font-size:12px;';
+  cell.appendChild(saveBtn);
+  cell.appendChild(cancelBtn);
+
+  function save() {
+    var newVal = parseFloat(input.value);
+    if (isNaN(newVal) || newVal <= 0) { alert('Введите корректную цену'); return; }
+    fetch(API+'/api/update-option-entry', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({option_id: optionId, entry_price: newVal})
+    }).then(function(r){ return r.json(); }).then(function(res) {
+      if (res.status === 'ok') {
+        cell.innerHTML = '<span style="color:var(--green)">$'+F(newVal,2)+'</span>';
+        editingCell = null;
+        loadAll();
+      } else {
+        alert('Ошибка: ' + res.output);
+        cancelEdit();
+      }
+    }).catch(function(e) {
+      alert('Ошибка: ' + e.message);
+      cancelEdit();
+    });
+  }
+  function cancel() { editingCell = null; cell.innerHTML = '$'+F(currentValue,2); }
+
+  saveBtn.onclick = save;
+  cancelBtn.onclick = cancel;
+  input.onkeydown = function(e) {
+    if (e.key === 'Enter') save();
+    if (e.key === 'Escape') cancel();
+  };
+}
+
+function cancelEdit() {
+  if (!editingCell) return;
+  var oldHtml = editingCell.getAttribute('data-old-html');
+  if (oldHtml) editingCell.innerHTML = oldHtml;
+  editingCell = null;
+}
+
+window.__closeOption = function(optionId, symbol, pnl) {
+  var pnlStr = pnl >= 0 ? ('+' + F(pnl)) : '-' + F(Math.abs(pnl));
+  if (!confirm('Закрыть ' + symbol + '\n\nPnL: ' + pnlStr + '\n\nТекущая цена будет взята из Greeks.')) return;
+  fetch(API+'/api/close-option', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({option_id: optionId, close_reason: 'manual'})
+  }).then(function(r){ return r.json(); }).then(function(res) {
+    if (res.status === 'ok') {
+      alert('✅ ' + res.message);
+      loadAll();
+    } else {
+      alert('❌ ' + res.output);
+    }
+  }).catch(function(e) { alert('Ошибка: ' + e.message); });
+};
+
+var LAYER_CYCLE = ['anchor', 'adaptation', 'active'];
+var LAYER_LABELS = {anchor: 'ANCHOR', adaptation: 'ADAPT', active: 'ACTIVE'};
+var LAYER_COLORS = {anchor: 'var(--purple)', adaptation: 'var(--blue)', active: 'var(--yellow)'};
+
+function cycleLayer(evt, optionId, currentLayer) {
+  var cell = evt.target.closest('td');
+  var idx = LAYER_CYCLE.indexOf(currentLayer);
+  if (idx < 0) { alert('Неизвестный layer: ' + currentLayer); return; }
+  var newLayer = LAYER_CYCLE[(idx + 1) % LAYER_CYCLE.length];
+  fetch(API+'/api/update-option-layer', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({option_id: optionId, layer: newLayer})
+  }).then(function(r){ return r.json(); }).then(function(res) {
+    if (res.status === 'ok') {
+      cell.innerHTML = '<span class="layer-'+newLayer+'" style="cursor:pointer;font-weight:600" onclick="window.__cycleLayer(event,' + optionId + ',\'' + newLayer + '\')">'+LAYER_LABELS[newLayer]+'</span>';
+      cell.setAttribute('title', 'Клик: ' + LAYER_LABELS[newLayer] + ' → ' + LAYER_LABELS[LAYER_CYCLE[(LAYER_CYCLE.indexOf(newLayer)+1)%3]]);
+      loadAll();
+    } else {
+      alert('Ошибка: ' + res.output);
+    }
+  }).catch(function(e) { alert('Ошибка: ' + e.message); });
+}
+
+window.__cycleLayer = function(evt, optionId, currentLayer) {
+  cycleLayer(evt, optionId, currentLayer);
+};
+
+window.__editPrice = function(evt, optionId, symbol, currentPrice) {
+  var cell = evt.target.closest('td');
+  makeEditable(cell, currentPrice, optionId, symbol);
+};
+
 function setBtnAction(id, text, loading){
   var btn=document.querySelector('#refresh'+id+' .btn-action');
   if(!btn)return;
@@ -164,6 +283,7 @@ function api(path){
 
 // === TAB 1: POSITIONS ===
 function renderPositions(pos){
+  posData = pos;
   var posT=document.getElementById("posTable");
   var posS=document.getElementById("posSummary");
   var upd=document.getElementById("headerUpdated");
@@ -233,7 +353,7 @@ function renderPositions(pos){
 function renderOptions(opt, pos){
   var optT=document.getElementById("optTable");
   if(!opt){
-    optT.innerHTML='<tr><td colspan="12" style="color:var(--red);text-align:center">Ошибка загрузки</td></tr>';
+    optT.innerHTML='<tr><td colspan="13" style="color:var(--red);text-align:center">Ошибка загрузки</td></tr>';
     return;
   }
   var t=opt.totals;
@@ -241,12 +361,15 @@ function renderOptions(opt, pos){
   opt.options.forEach(function(o){
     var pc2=clr(o.pnl);
     var ivClr=o.iv_change>=0?"green":"red";
+    var symEsc=o.symbol.replace(/'/g,"\\'");
     rows+='<tr style="text-align:left">';
     rows+='<td>'+o.symbol+'</td>';
-    rows+='<td class="layer-'+o.layer+'">'+o.layer+'</td>';
+    var layerDisplay = o.layer && LAYER_LABELS[o.layer] ? LAYER_LABELS[o.layer] : (o.layer || '—').toUpperCase();
+    var nextLayer = o.layer && LAYER_CYCLE.indexOf(o.layer) >= 0 ? LAYER_LABELS[LAYER_CYCLE[(LAYER_CYCLE.indexOf(o.layer)+1)%3]] : '';
+    rows+='<td class="layer-'+(o.layer||'')+'" style="cursor:pointer;font-weight:600" onclick="window.__cycleLayer(event,' + o.id + ',\'' + (o.layer||'anchor') + '\')" title="Клик: '+layerDisplay+' → '+nextLayer+'">'+layerDisplay+'</td>';
     rows+='<td>'+o.qty+'</td>';
     rows+='<td>$'+o.strike+'</td>';
-    rows+='<td>$'+F(o.entry_price,2)+'</td>';
+    rows+='<td style="cursor:pointer" onclick="window.__editPrice(event,' + o.id + ',\'' + symEsc + '\',' + o.entry_price + ')" title="Клик: редактировать цену">$'+F(o.entry_price,2)+'</td>';
     rows+='<td>$'+F(o.current_price,2)+'</td>';
     rows+='<td class="'+pc2+'">'+U(o.pnl)+'</td>';
     rows+='<td title="Entry: '+F(o.delta_entry,4)+'\nИзменение: '+F(o.delta_change,4)+'">'+F(o.delta,4)+'</td>';
@@ -254,6 +377,7 @@ function renderOptions(opt, pos){
     rows+='<td class="'+pc2+'" title="Entry: '+F(o.theta_entry,4)+'\nНа день: '+F(o.theta_per_day,4)+'">'+F(o.theta_per_day,4)+'</td>';
     rows+='<td title="Entry: '+F(o.iv_entry,4)+'\nИзменение: '+F(o.iv_change,4)+'">'+F(o.iv,4)+'</td>';
     rows+='<td class="'+ivClr+'" title="Входной IV: '+F(o.iv_entry,4)+'\nТекущий IV: '+F(o.iv,4)+'\nИзменение: '+F(o.iv_change,4)+'">'+F(o.iv_change,4)+'</td>';
+    rows+='<td><button class="btn-close" onclick="window.__closeOption(' + o.id + ',\'' + symEsc + '\', ' + o.pnl + ')" title="Закрыть опцион">✕</button></td>';
     rows+='</tr>';
   });
   optT.innerHTML=rows;
@@ -283,28 +407,6 @@ function renderOptions(opt, pos){
       rowsRec+='</tr>';
     });
     optRecEl.innerHTML=rowsRec;
-  }
-
-  // === PnL Ladder (step $1, ±20%) ===
-  var ladderEl=document.getElementById("posLadder");
-  if(ladderEl && pos && pos.positions && pos.positions.length>0){
-    var solLadder=pos.pnl_ladder||[];
-    var combIdx={};
-    ((combinedLadder||{}).ladder||[]).forEach(function(r){combIdx[r.price]=r;});
-    var html="";
-    solLadder.forEach(function(row){
-      var cls=row.is_current?"color:var(--blue);font-weight:700":clr(row.pnl);
-      var icon="";
-      if(row.is_current) icon=" 🔵";
-      else if(row.is_avg) icon=" 📍";
-      else if(row.pnl>=0) icon=" 🟢";
-      else icon=" 🔴";
-      var c=combIdx[row.price];
-      var combPnl=c?c.total_pnl:0;
-      var optPnl=combPnl-row.pnl;
-      html+='<tr><td class="'+cls+'">$'+row.price+icon+'</td><td class="'+cls+'">'+P(row.pnl_pct)+'</td><td class="'+cls+'">'+U(row.pnl)+'</td><td class="'+cls+'">'+U(combPnl)+'</td><td class="'+clr(optPnl)+'">'+U(optPnl)+'</td></tr>';;
-    });
-    ladderEl.innerHTML=html;
   }
 }
 
@@ -389,7 +491,77 @@ function renderSummary(sum, opt){
     '<div class="summary-card"><div class="label">Assets PnL</div><div class="value '+assetsPnl+'">'+U(sum.assets.total_pnl)+'</div><div class="sub '+assetsPnl+'">'+P(sum.assets.total_pnl_pct)+'</div></div>'+
     '<div class="summary-card"><div class="label">Options PnL</div><div class="value '+optPnl+'">'+U(sum.options.total_pnl)+'</div><div class="sub '+optPnl+'">'+P(sum.options.total_pnl_pct)+'</div></div>'+
     '<div class="summary-card"><div class="label">Общий PnL</div><div class="value '+totalPnl+'">'+U(t.total_pnl)+'</div><div class="sub '+totalPnl+'">'+P(t.total_pnl_pct)+'</div></div>';
+
+  // Set ladder range inputs (default ±20% from avg)
+  if(sum.assets && sum.assets.total_cost > 0 && posData && posData.positions && posData.positions.length > 0){
+    var avgP = posData.positions[0].avg_price;
+    var defMin = Math.round(avgP * 0.8);
+    var defMax = Math.round(avgP * 1.2);
+    var minInput = document.getElementById("ladderMin");
+    var maxInput = document.getElementById("ladderMax");
+    if(minInput && maxInput){
+      if(!minInput.value) minInput.value = defMin;
+      if(!maxInput.value) maxInput.value = defMax;
+    }
+  }
 }
+
+function updateLadderRange(){
+  var minInput = document.getElementById("ladderMin");
+  var maxInput = document.getElementById("ladderMax");
+  if(!minInput || !maxInput) { alert('Поля не найдены'); return; }
+  var minVal = parseInt(minInput.value);
+  var maxVal = parseInt(maxInput.value);
+  if(isNaN(minVal) || isNaN(maxVal)){ alert('Введите числа'); return; }
+  fetch(API + "/api/combined-ladder?min_price=" + minVal + "&max_price=" + maxVal)
+    .then(function(r){ return r.json(); })
+    .then(function(comb){
+      if(!comb || !comb.ladder){ alert('Нет данных'); return; }
+      combinedLadder = comb;
+      renderPnnLadderTable(posData || {});
+    })
+    .catch(function(e){ alert('Ошибка: '+e.message); });
+}
+
+function resetLadderRange(){
+  var minInput = document.getElementById("ladderMin");
+  var maxInput = document.getElementById("ladderMax");
+  if(!minInput || !maxInput) return;
+  api("/api/positions").then(function(pos){
+    if(pos && pos.positions && pos.positions.length > 0){
+      var avgP = pos.positions[0].avg_price;
+      minInput.value = Math.round(avgP * 0.8);
+      maxInput.value = Math.round(avgP * 1.2);
+      updateLadderRange();
+    }
+  });
+}
+
+function renderPnnLadderTable(posData){
+  var ladderEl = document.getElementById("posLadder");
+  if(!ladderEl || !combinedLadder || !combinedLadder.ladder) return;
+  var solPnlMap = {};
+  (posData.pnl_ladder || []).forEach(function(row){ solPnlMap[row.price] = row.pnl; });
+  var html = "";
+  combinedLadder.ladder.forEach(function(row){
+    var cls = row.is_current ? "color:var(--blue);font-weight:700" : clr(row.total_pnl);
+    var icon = row.is_current ? " 🔵" : (row.is_avg ? " 📍" : (row.total_pnl >= 0 ? " 🟢" : " 🔴"));
+    // row содержит sol_pnl, opt_pnl, total_pnl из API
+    var solPnl = row.sol_pnl || solPnlMap[row.price] || 0;
+    var optPnl = row.opt_pnl || (row.total_pnl - solPnl);
+    var intrinsic = row.intrinsic_value || 0;
+    html += '<tr><td class="'+cls+'">$'+row.price+icon+'</td>';
+    html += '<td class="'+cls+'">'+P(row.total_pnl_pct)+'</td>';
+    html += '<td class="'+cls+'">'+U(solPnl)+'</td>';
+    html += '<td class="'+cls+'">'+U(row.total_pnl)+'</td>';
+    html += '<td class="'+clr(optPnl)+'">'+U(optPnl)+'</td>';
+    html += '<td class="'+clr(intrinsic)+'">'+U(intrinsic)+'</td></tr>';
+  });
+  ladderEl.innerHTML = html;
+}
+
+// Keep global posData reference for renderPnnLadderTable
+var posData = null;
 
 // === LAYER TABS ===
 var layerFilterParams={distant:"",mid:"",near:""};
@@ -721,6 +893,7 @@ function loadAll(){
     renderRecommendations(results[2]);
     renderSummary(results[3], results[1]);
     renderLayers(results[4]);
+    renderPnnLadderTable(results[0]);
     layerData_distant=results[6];
     layerData_mid=results[7];
     layerData_near=results[8];

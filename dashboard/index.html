@@ -25,6 +25,7 @@ td{padding:8px 12px;border-bottom:1px solid var(--border)}
 tr:hover td{background:rgba(88,166,255,.05)}
 .badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600}
 .badge-close{background:rgba(248,81,73,.15);color:var(--red)}
+.btn-close{background:var(--red);color:#fff;border:none;padding:3px 10px;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600;white-space:nowrap}
 .badge-roll{background:rgba(210,153,34,.15);color:var(--yellow)}
 .badge-hold{background:rgba(63,185,80,.15);color:var(--green)}
 .badge-high{background:rgba(248,81,73,.25);color:var(--red)}
@@ -91,7 +92,7 @@ tr:hover td{background:rgba(88,166,255,.05)}
 <div class="tab-content" id="tab-options">
 <div class="refresh-bar" id="refresh2"><span id="cd2"></span><button class="btn-action" onclick="updateOptions()">⚡ Обновить греки</button></div>
 <div class="card" style="margin-bottom:16px"><h2>Текущие опционные позиции</h2>
-<table><thead><tr><th>Символ</th><th>Layer</th><th>Кол-во</th><th>Strike</th><th>Entry</th><th>Current</th><th>PnL</th><th>Δ</th><th>Γ</th><th>Θ</th><th>IV</th><th>ΔIV</th></tr></thead>
+<table><thead><tr><th>Символ</th><th>Layer</th><th>Кол-во</th><th>Strike</th><th>Entry</th><th>Current</th><th>PnL</th><th>Δ</th><th>Γ</th><th>Θ</th><th>IV</th><th>ΔIV</th><th></th></tr></thead>
 <tbody id="optTable"></tbody></table></div>
 <div class="card"><h2>Слои защиты</h2><div id="layerCards"></div></div>
 </div>
@@ -158,10 +159,18 @@ tr:hover td{background:rgba(88,166,255,.05)}
 <div class="refresh-bar" id="refresh4"><span id="cd4"></span><button class="btn-action" onclick="updateOptions()">⚡ Обновить данные</button></div>
 <div class="summary-row" id="totalSummary"></div>
 <div class="card"><h2>PnL по цене (шаг $1, ±20% от avg)</h2>
-<div class="ladder-wrap" style="max-height:300px;overflow-y:auto"><table><thead><tr><th>Цена</th><th>PnL%</th><th>PnL</th><th>PnL+опции</th><th>Вклад опционов</th></tr></thead>
+<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+  <span style="color:var(--text-dim);font-size:12px">Интервал:</span>
+  <label style="font-size:12px">Мин $: <input type="number" id="ladderMin" style="width:70px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px 6px;border-radius:4px"></label>
+  <label style="font-size:12px">Макс $: <input type="number" id="ladderMax" style="width:70px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px 6px;border-radius:4px"></label>
+  <button class="btn-action" onclick="updateLadderRange()" style="background:var(--blue);font-size:11px">⚡ Пересчитать</button>
+  <button class="btn-action" onclick="resetLadderRange()" style="background:var(--border);font-size:11px">Сброс</button>
+  <span style="font-size:12px;color:var(--text-dim)">Шаг: $1</span>
+</div>
+<div class="ladder-wrap" style="max-height:300px;overflow-y:auto"><table><thead><tr><th>Цена</th><th>PnL%</th><th>PnL</th><th>PnL+опции</th><th>Вклад опционов</th><th>Intrinsic</th></tr></thead>
 <tbody id="posLadder"></tbody></table></div></div>
 </div>
 </div>
-<script src="app.js?t=20260623_8"></script>
+<script src="app.js?t=20260625_1"></script>
 </body>
 </html>
