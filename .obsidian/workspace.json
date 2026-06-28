@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "2026-06-25.md",
+                "file": "T009-active-layer-selection.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "2026-06-25"
+              "title": "T009-active-layer-selection"
             }
           }
         ]
@@ -186,10 +186,10 @@
   },
   "active": "bd9c837cb873cf31",
   "lastOpenFiles": [
+    "2026-06-25.md",
     "hedge_model.db-shm",
     "hedge_model.db-wal",
     "README.md",
-    "2026-06-25.md",
     "T009-active-layer-selection.md",
     "docs/201-selection-criteria.md",
     "Kanban.md",

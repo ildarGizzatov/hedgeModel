@@ -173,6 +173,61 @@ var LAYER_CYCLE = ['anchor', 'adaptation', 'active'];
 var LAYER_LABELS = {anchor: 'ANCHOR', adaptation: 'ADAPT', active: 'ACTIVE'};
 var LAYER_COLORS = {anchor: 'var(--purple)', adaptation: 'var(--blue)', active: 'var(--yellow)'};
 
+window.__showBuyModal = function() {
+  var modal = document.getElementById('buyModal');
+  modal.style.display = 'flex';
+  fetchBuyOptions();
+};
+
+function fetchBuyOptions() {
+  var layer = document.getElementById('buyLayer').value;
+  var defs = layerDefaults[layer] || {delta_min: 0.05, delta_max: 0.7, dte_min: 1, dte_max: 99999};
+  fetch(API+'/api/buy-options?layer='+layer+'&delta_min='+defs.delta_min+'&delta_max='+defs.delta_max+'&dte_min='+defs.dte_min+'&dte_max='+defs.dte_max)
+    .then(function(r){ return r.json(); })
+    .then(function(res) {
+      var el = document.getElementById('buyResult');
+      if(!res.options || res.options.length === 0) {
+        el.innerHTML = '<div style="padding:12px;color:var(--text-dim)">Нет доступных опционов</div>';
+        return;
+      }
+      var html = '<table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border)"><th style="text-align:left;padding:3px 4px">Symbol</th><th style="padding:3px 4px;text-align:right">Strike</th><th style="padding:3px 4px;text-align:right">DTE</th><th style="padding:3px 4px;text-align:right">Δ</th><th style="padding:3px 4px;text-align:right">IV</th><th style="padding:3px 4px;text-align:right">Price</th><th style="padding:3px 4px;text-align:center">Действие</th></tr></thead><tbody>';
+      res.options.forEach(function(o) {
+        html+='<tr><td style="padding:2px 4px;font-weight:bold">'+o.symbol+'</td>';
+        html+='<td style="padding:2px 4px;text-align:right">$'+o.strike+'</td>';
+        html+='<td style="padding:2px 4px;text-align:right">'+o.dte+'</td>';
+        html+='<td style="padding:2px 4px;text-align:right">'+F(o.delta,4)+'</td>';
+        html+='<td style="padding:2px 4px;text-align:right">'+F(o.iv,4)+'</td>';
+        html+='<td style="padding:2px 4px;text-align:right">$'+F(o.price,4)+'</td>';
+        html+='<td style="padding:2px 4px;text-align:center"><button class="btn-buy" onclick="window.__buyOpt(\''+o.symbol+'\')">Купить</button></td></tr>';
+      });
+      html+='</tbody></table>';
+      el.innerHTML = html;
+    }).catch(function(e) { alert('Ошибка загрузки: '+e.message); });
+}
+
+window.__buyOpt = function(symbol) {
+  var qty = parseInt(document.getElementById('buyQty').value) || 1;
+  var layer = document.getElementById('buyLayer').value;
+  fetch(API+'/api/buy-option', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({symbol: symbol, qty: qty, layer: layer})
+  }).then(function(r){ return r.json(); })
+    .then(function(res) {
+      if(res.status === 'ok') {
+        alert('✅ Куплено: '+res.symbol+' | Price: $'+F(res.price,4)+' | Total: $'+res.total+' | ID: '+res.id);
+        document.getElementById('buyModal').style.display = 'none';
+        loadAll();
+      } else {
+        alert('❌ '+res.output);
+      }
+    }).catch(function(e) { alert('Ошибка: '+e.message); });
+};
+
+document.addEventListener('DOMContentLoaded', function() {
+  document.getElementById('buyLayer').addEventListener('change', fetchBuyOptions);
+});
+
 function cycleLayer(evt, optionId, currentLayer) {
   var cell = evt.target.closest('td');
   var idx = LAYER_CYCLE.indexOf(currentLayer);
@@ -281,6 +336,64 @@ function api(path){
   return fetch(API+path).then(function(r){return r.json();}).catch(function(e){return null;});
 }
 
+// === OPTION BOARD ===
+function loadOptionBoard(){
+  fetch(API+"/api/available-options")
+    .then(function(r){return r.json();})
+    .then(function(data){
+      if(!data || !data.options || data.options.length===0){
+        document.getElementById("optionBoard").innerHTML='<tr><td colspan="10" style="color:var(--text-dim);text-align:center">Нет данных</td></tr>';
+        return;
+      }
+      var infoEl=document.getElementById("optionBoardInfo");
+      if(infoEl){
+        var src=data.data_source||"unknown";
+        var age=data.data_age_minutes>=0?" («"+data.data_age_minutes+" мин назад»)":"";
+        var spot=data.spot_price!=null?'Spot: $'+F(data.spot_price,2)+" | ":"";
+        infoEl.textContent=spot+"Всего: "+data.count+" | Источник: "+src+age;
+      }
+      // Find closest strikes to spot price
+      var spot=data.spot_price || 0;
+      var strikes=[];
+      var strikeSet={};
+      data.options.forEach(function(o){
+        var k=o.strike;
+        if(!strikeSet[k]){strikeSet[k]=true;strikes.push(k);}
+      });
+      strikes.sort(function(a,b){return a-b;});
+      var closest2=[];
+      // Find strike index just below or equal to spot
+      var idx=0;
+      for(var i=0;i<strikes.length;i++){
+        if(strikes[i]<=spot) idx=i;
+      }
+      if(idx<strikes.length) closest2.push(strikes[idx]);
+      if(idx+1<strikes.length) closest2.push(strikes[idx+1]);
+      var html="";
+      data.options.forEach(function(o){
+        var isClose=closest2.indexOf(o.strike)!==-1;
+        var rowCls=isClose?' style="background:rgba(0,136,204,0.15);font-weight:700"':'';
+        var strikeCell=isClose?'<b style="color:var(--blue)" title="Ближайший к spot">🎯 $'+F(o.strike,2)+'🎯</b>':'$'+F(o.strike,2);
+        // Drop% = (spot - strike) / spot * 100
+        var dropPct = spot > 0 ? Math.max(0, (spot - o.strike) / spot * 100) : 0;
+        html+='<tr'+rowCls+'><td>'+o.symbol+'</td>';
+        html+='<td>'+strikeCell+'</td>';
+        html+='<td class="'+clr(-dropPct)+'">'+P(-dropPct)+'</td>';
+        html+='<td>'+o.dte+'</td>';
+        html+='<td>$'+F(o.price,2)+'</td>';
+        html+='<td>'+F(o.delta,4)+'</td>';
+        html+='<td>'+F(o.gamma,4)+'</td>';
+        html+='<td>'+F(o.iv,4)+'</td>';
+        html+='<td>'+F(o.theta,4)+'</td>';
+        html+='</tr>';
+      });
+      document.getElementById("optionBoard").innerHTML=html;
+    })
+    .catch(function(e){
+      document.getElementById("optionBoard").innerHTML='<tr><td colspan="10" style="color:var(--red);text-align:center">Ошибка: '+e.message+'</td></tr>';
+    });
+}
+
 // === TAB 1: POSITIONS ===
 function renderPositions(pos){
   posData = pos;
@@ -298,6 +411,11 @@ function renderPositions(pos){
     '<div class="summary-card"><div class="label">Current Value</div><div class="value">$'+F(t.total_value)+'</div></div>'+
     '<div class="summary-card"><div class="label">PnL</div><div class="value '+pc+'">'+U(t.total_pnl)+'</div><div class="sub '+pc+'">'+P(t.total_pnl_pct)+'</div></div>';
   upd.textContent="Обновлено: "+pos.updated;
+  var headerSpot=document.getElementById("headerSpot");
+  if(headerSpot && pos.positions && pos.positions.length>0){
+    var sol=pos.positions.find(function(p){return p.symbol==='SOL';});
+    if(sol) headerSpot.textContent="SOL: $"+F(sol.current_price,2);
+  }
   var rows="";
   pos.positions.forEach(function(p){
     var pc2=clr(p.pnl);
@@ -367,6 +485,7 @@ function renderOptions(opt, pos){
     var layerDisplay = o.layer && LAYER_LABELS[o.layer] ? LAYER_LABELS[o.layer] : (o.layer || '—').toUpperCase();
     var nextLayer = o.layer && LAYER_CYCLE.indexOf(o.layer) >= 0 ? LAYER_LABELS[LAYER_CYCLE[(LAYER_CYCLE.indexOf(o.layer)+1)%3]] : '';
     rows+='<td class="layer-'+(o.layer||'')+'" style="cursor:pointer;font-weight:600" onclick="window.__cycleLayer(event,' + o.id + ',\'' + (o.layer||'anchor') + '\')" title="Клик: '+layerDisplay+' → '+nextLayer+'">'+layerDisplay+'</td>';
+    rows+='<td>'+o.dte+'</td>';
     rows+='<td>'+o.qty+'</td>';
     rows+='<td>$'+o.strike+'</td>';
     rows+='<td style="cursor:pointer" onclick="window.__editPrice(event,' + o.id + ',\'' + symEsc + '\',' + o.entry_price + ')" title="Клик: редактировать цену">$'+F(o.entry_price,2)+'</td>';
@@ -375,7 +494,7 @@ function renderOptions(opt, pos){
     rows+='<td title="Entry: '+F(o.delta_entry,4)+'\nИзменение: '+F(o.delta_change,4)+'">'+F(o.delta,4)+'</td>';
     rows+='<td title="Entry: '+F(o.gamma_entry,4)+'\nИзменение: '+F(o.gamma_change,4)+'">'+F(o.gamma,4)+'</td>';
     rows+='<td class="'+pc2+'" title="Entry: '+F(o.theta_entry,4)+'\nНа день: '+F(o.theta_per_day,4)+'">'+F(o.theta_per_day,4)+'</td>';
-    rows+='<td title="Entry: '+F(o.iv_entry,4)+'\nИзменение: '+F(o.iv_change,4)+'">'+F(o.iv,4)+'</td>';
+    rows+='<td title="Entry: '+F(o.iv_entry,4)+'\nТекущий IV: '+F(o.iv,4)+'">'+F(o.iv,4)+'</td>';
     rows+='<td class="'+ivClr+'" title="Входной IV: '+F(o.iv_entry,4)+'\nТекущий IV: '+F(o.iv,4)+'\nИзменение: '+F(o.iv_change,4)+'">'+F(o.iv_change,4)+'</td>';
     rows+='<td><button class="btn-close" onclick="window.__closeOption(' + o.id + ',\'' + symEsc + '\', ' + o.pnl + ')" title="Закрыть опцион">✕</button></td>';
     rows+='</tr>';
@@ -385,7 +504,7 @@ function renderOptions(opt, pos){
   var tEl=document.getElementById("optTable");
   if(tEl){
     tEl.insertAdjacentHTML("beforeend",
-      '<tr style="background:var(--surface);border-top:2px solid var(--border);font-weight:700"><td colspan="3" style="color:var(--blue);font-size:15px">Итого</td><td></td><td></td><td></td><td style="'+clr(t.total_pnl)+';font-size:15px">'+U(t.total_pnl)+'</td><td style="font-size:15px">'+F(t.net_delta,4)+'</td><td style="font-size:15px">'+F(t.net_gamma,4)+'</td><td style="font-size:15px">'+F(t.net_theta,4)+'</td><td style="font-size:15px">'+F(t.net_vega,4)+'</td><td></td></tr>');
+      '<tr style="background:var(--surface);border-top:2px solid var(--border);font-weight:700"><td colspan="4" style="color:var(--blue);font-size:15px">Итого</td><td></td><td></td><td></td><td style="'+clr(t.total_pnl)+';font-size:15px">'+U(t.total_pnl)+'</td><td style="font-size:15px">'+F(t.net_delta,4)+'</td><td style="font-size:15px">'+F(t.net_gamma,4)+'</td><td style="font-size:15px">'+F(t.net_theta,4)+'</td><td></td><td></td></tr>');
   }
 
   // === Duplicate options table for Recommendations tab (with DTE) ===
@@ -894,6 +1013,7 @@ function loadAll(){
     renderSummary(results[3], results[1]);
     renderLayers(results[4]);
     renderPnnLadderTable(results[0]);
+    loadOptionBoard();
     layerData_distant=results[6];
     layerData_mid=results[7];
     layerData_near=results[8];

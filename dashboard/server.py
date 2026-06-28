@@ -142,37 +142,155 @@ def api_refresh_prices() -> dict:
         return {"status": "error", "output": str(e)}
 
 
-@app.post("/api/update-option-entry")
-async def api_update_option_entry(request: Request) -> dict:
-    """Обновляет entry_price (и/qty) опциона."""
+@app.get("/api/buy-options")
+async def api_buy_options(request: Request) -> dict:
+    """Возвращает доступные PUT-опционы для покупки."""
+    try:
+        q = request.query_params
+        layer = q.get("layer", "active")
+        delta_min = float(q.get("delta_min", 0.1))
+        delta_max = float(q.get("delta_max", 0.7))
+        dte_min = int(q.get("dte_min", 1))
+        dte_max = int(q.get("dte_max", 99999))
+
+        import requests
+        url = "https://api.bybit.com/v5/market/tickers"
+        params = {"category": "option", "baseCoin": "SOL"}
+        r = requests.get(url, params=params, timeout=30)
+        r.raise_for_status()
+        data = r.json()
+
+        puts = []
+        for item in data.get("result", {}).get("list", []):
+            sym = item.get("symbol", "")
+            if not sym.endswith("-P-USDT"):
+                continue
+            try:
+                parts = sym.split("-")
+                strike = float(parts[2])
+                delta = float(item.get("delta", 0))
+                if abs(delta) < delta_min or abs(delta) > delta_max:
+                    continue
+                date_part = parts[1]
+                expiry_dt = datetime.strptime(date_part, "%d%b%y")
+                dte = (expiry_dt - datetime.now()).days
+                if dte < dte_min or dte > dte_max:
+                    continue
+                mark = float(item.get("markPrice", 0))
+                last = float(item.get("lastPrice", 0))
+                price = last if last > 0 else mark
+                puts.append({
+                    "symbol": sym,
+                    "strike": strike,
+                    "delta": round(delta, 4),
+                    "gamma": round(float(item.get("gamma", 0)), 4),
+                    "theta": round(float(item.get("theta", 0)), 4),
+                    "vega": round(float(item.get("vega", 0)), 4),
+                    "iv": round(float(item.get("markIv", 0)), 4),
+                    "price": round(price, 4),
+                    "dte": dte,
+                    "expiry": expiry_dt.strftime("%Y-%m-%d"),
+                })
+            except (ValueError, KeyError):
+                continue
+
+        puts.sort(key=lambda x: (x["dte"], x["strike"]))
+        return {"options": puts, "count": len(puts), "layer": layer}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"status": "error", "output": str(e)}
+
+
+@app.post("/api/buy-option")
+async def api_buy_option(request: Request) -> dict:
+    """Покупка опциона с записью в БД."""
     try:
         data = await request.json()
-        option_id = data.get("option_id")
-        entry_price = data.get("entry_price")
-        qty = data.get("qty")
+        symbol = data.get("symbol")
+        layer = data.get("layer", "active")
+        qty = int(data.get("qty", 1))
 
-        if option_id is None:
-            return {"status": "error", "output": "Не указан option_id"}
+        import requests
+        url = "https://api.bybit.com/v5/market/tickers"
+        r = requests.get(url, params={"category": "option", "baseCoin": "SOL"}, timeout=30)
+        r.raise_for_status()
+        chain = r.json().get("result", {}).get("list", [])
+        opt = None
+        for item in chain:
+            if item.get("symbol") == symbol:
+                parts = symbol.split("-")
+                strike = float(parts[2])
+                date_part = parts[1]
+                expiry_dt = datetime.strptime(date_part, "%d%b%y")
+                dte = (expiry_dt - datetime.now()).days
+                delta = float(item.get("delta", 0))
+                gamma = float(item.get("gamma", 0))
+                theta = float(item.get("theta", 0))
+                vega = float(item.get("vega", 0))
+                iv = float(item.get("markIv", 0))
+                mark = float(item.get("markPrice", 0))
+                last = float(item.get("lastPrice", 0))
+                price = last if last > 0 else mark
+                opt = {
+                    "symbol": symbol,
+                    "strike": strike,
+                    "expiry": expiry_dt.strftime("%Y-%m-%d"),
+                    "dte": dte,
+                    "delta": delta,
+                    "gamma": gamma,
+                    "theta": theta,
+                    "vega": vega,
+                    "iv": iv,
+                    "mark_price": price,
+                }
+                break
 
-        row = get_option_by_id(option_id)
-        if not row:
-            return {"status": "error", "output": f"Опцион id={option_id} не найден"}
+        if not opt:
+            return {"status": "error", "output": f"Опцион {symbol} не найден в Bybit chain"}
 
-        if row["status"] == "closed":
-            return {"status": "error", "output": "Опцион закрыт, редактирование запрещено"}
-
-        updates = {}
-        if entry_price is not None:
-            updates["entry_price"] = float(entry_price)
-        if qty is not None:
-            updates["qty"] = int(qty)
-
-        if not updates:
-            return {"status": "error", "output": "Нет данных для обновления"}
-
-        updated = update_option(option_id, **updates)
-        return {"status": "ok", "updated": updated, "option_id": option_id}
+        new_id = add_option(
+            symbol=opt["symbol"],
+            opt_type="PUT",
+            strike=opt["strike"],
+            expiry=opt["expiry"],
+            qty=qty,
+            layer=layer,
+            entry_date=date.today().isoformat(),
+            entry_price=opt["mark_price"],
+            iv_entry=opt["iv"],
+            iv_atm_entry=opt["iv"],
+            delta_entry=opt["delta"],
+            gamma_entry=opt["gamma"],
+            theta_entry=opt["theta"],
+            vega_entry=opt["vega"],
+            notes=f"Bought via dashboard {date.today().isoformat()}",
+        )
+        record_greeks(
+            option_id=new_id,
+            option_symbol=opt["symbol"],
+            current_price=opt["mark_price"],
+            delta=opt["delta"],
+            gamma=opt["gamma"],
+            theta=opt["theta"],
+            vega=opt["vega"],
+            iv=opt["iv"],
+            iv_atm=opt["iv"],
+            dte=opt["dte"],
+            intrinsic_value=max(opt["strike"] - 66.0, 0),
+            unrealized_pnl=0.0,
+            timestamp=datetime.now().strftime("%Y-%m-%d %H:%M"),
+        )
+        return {
+            "status": "ok",
+            "id": new_id,
+            "symbol": opt["symbol"],
+            "price": opt["mark_price"],
+            "total": round(opt["mark_price"] * qty, 2),
+        }
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return {"status": "error", "output": str(e)}
 
 
