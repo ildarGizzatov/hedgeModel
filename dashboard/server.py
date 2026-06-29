@@ -32,6 +32,7 @@ from src.db import (
     get_buy_history, get_closed_positions, table_stats,
     get_pending_recommendations, execute_query, update_position_prices,
     get_latest_chain_snapshot, get_option_by_id, update_option,
+    add_option, record_greeks,
 )
 
 # ==========================================
@@ -53,7 +54,7 @@ _LADDER_UP = round(_TARGET_DD / 100, 2)   # 0.20
 LAYER_DEFAULTS = {
     "distant": {"delta_min": 0.05, "delta_max": 0.20, "dte_min": 25, "dte_max": 99999, "label": "Дальний слой (Anchor / Tail Risk)"},
     "mid": {"delta_min": 0.20, "delta_max": 0.40, "dte_min": 10, "dte_max": 25, "label": "Средний слой (Adaptation)"},
-    "near": {"delta_min": 0.38, "delta_max": 0.55, "dte_min": 5, "dte_max": 10, "label": "Ближний слой (Active / Hedging)"},
+    "near": {"delta_min": 0.25, "delta_max": 0.50, "dte_min": 3, "dte_max": 99, "label": "Ближний слой (Active / Hedging)"},
 }
 
 def _check_layer_match(d: float, dt: int) -> bool:
@@ -138,6 +139,40 @@ def api_refresh_prices() -> dict:
         }
     except subprocess.TimeoutExpired:
         return {"status": "error", "output": "Timeout after 60s"}
+    except Exception as e:
+        return {"status": "error", "output": str(e)}
+
+
+@app.post("/api/update-option-entry")
+async def api_update_option_entry(request: Request) -> dict:
+    """Обновляет entry_price (и/qty) опциона."""
+    try:
+        data = await request.json()
+        option_id = data.get("option_id")
+        entry_price = data.get("entry_price")
+        qty = data.get("qty")
+
+        if option_id is None:
+            return {"status": "error", "output": "Не указан option_id"}
+
+        row = get_option_by_id(option_id)
+        if not row:
+            return {"status": "error", "output": f"Опцион id={option_id} не найден"}
+
+        if row["status"] == "closed":
+            return {"status": "error", "output": "Опцион закрыт, редактирование запрещено"}
+
+        updates = {}
+        if entry_price is not None:
+            updates["entry_price"] = float(entry_price)
+        if qty is not None:
+            updates["qty"] = int(qty)
+
+        if not updates:
+            return {"status": "error", "output": "Нет данных для обновления"}
+
+        updated = update_option(option_id, **updates)
+        return {"status": "ok", "updated": updated, "option_id": option_id}
     except Exception as e:
         return {"status": "error", "output": str(e)}
 
@@ -1021,6 +1056,21 @@ def api_black_scholes() -> dict[str, Any]:
 
 
 # ==========================================
+# SPOT PRICE
+# ==========================================
+
+@app.get("/api/spot")
+def api_spot() -> dict:
+    """Текущая цена SOL."""
+    row = execute_query(
+        "SELECT spot_price, timestamp FROM option_chain_snapshot ORDER BY timestamp DESC LIMIT 1"
+    )
+    if row and row[0]:
+        return {"spot": float(row[0]["spot_price"]), "ts": row[0]["timestamp"]}
+    return {"spot": 0, "ts": None}
+
+
+# ==========================================
 # STATISTICS
 # ==========================================
 
@@ -1092,7 +1142,8 @@ def _build_layer_response(layer, criteria, puts, spot_price, layer_defaults, dat
         dte = p.get("dte", 0)
         if abs_delta < criteria["delta_min"] or abs_delta > criteria["delta_max"]:
             continue
-        if dte < criteria["dte_min"] or dte > criteria["dte_max"]:
+        dte_max = criteria["dte_max"]
+        if dte < criteria["dte_min"] or (dte_max != "all" and dte > dte_max):
             continue
         is_match = (
             abs_delta >= layer_defaults["delta_min"]
@@ -1119,7 +1170,10 @@ def _build_layer_response(layer, criteria, puts, spot_price, layer_defaults, dat
             "dte": p.get("dte", 0),
             "price": round(p.get("mark_price", 0), 4),
             "open_interest": p.get("open_interest", 0),
+            "volume": p.get("volume", 0) or 0,
+            "spread": round(p.get("ask", 0) - p.get("bid", 0), 4) if (p.get("ask") and p.get("bid")) else None,
             "is_layer_match": is_match,
+            "spot_price": round(spot_price, 2) if spot_price else None,
         })
     return {
         "layer": layer,
@@ -1140,12 +1194,23 @@ def api_layer(name: str, request: Request):
     """Параметризованный эндпоинт слоёв (distant, mid, near)."""
     layer_defaults = LAYER_DEFAULTS[name]
     q = request.query_params
-    criteria = {
-        "delta_min": float(q.get("delta_min", layer_defaults["delta_min"])),
-        "delta_max": float(q.get("delta_max", layer_defaults["delta_max"])),
-        "dte_min": int(q.get("dte_min", layer_defaults["dte_min"])),
-        "dte_max": int(q.get("dte_max", layer_defaults["dte_max"])),
-    }
+    all_mode = q.get("all", "0") == "1"
+    if all_mode:
+        # Показать все опционы без фильтров
+        criteria = {
+            "delta_min": 0,
+            "delta_max": 1,
+            "dte_min": 1,
+            "dte_max": 99999,
+        }
+        criteria["dte_max"] = "all"
+    else:
+        criteria = {
+            "delta_min": float(q.get("delta_min", layer_defaults["delta_min"])),
+            "delta_max": float(q.get("delta_max", layer_defaults["delta_max"])),
+            "dte_min": int(q.get("dte_min", layer_defaults["dte_min"])),
+            "dte_max": int(q.get("dte_max", layer_defaults["dte_max"])),
+        }
     puts, spot_price, source, ts = _fetch_chain_from_bybit()
     if not puts:
         puts, spot_price, source, ts = _fetch_chain_from_db()
@@ -1203,6 +1268,14 @@ def api_available_options(request: Request):
         # Normalize price field (mark_price → price for frontend compatibility)
         if "price" not in opt:
             opt["price"] = opt.get("mark_price", 0)
+        # Add spread if available
+        if "spread" not in opt:
+            bid = opt.get("bid")
+            ask = opt.get("ask")
+            if bid and ask:
+                opt["spread"] = round(ask - bid, 4)
+            else:
+                opt["spread"] = None
     
     return {
         "options": filtered,

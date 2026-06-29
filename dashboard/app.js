@@ -683,9 +683,9 @@ function renderPnnLadderTable(posData){
 var posData = null;
 
 // === LAYER TABS ===
-var layerFilterParams={distant:"",mid:"",near:""};
+var layerFilterParams={distant:"all=1",mid:"all=1",near:"all=1"};
 var selectedOption={distant:null,mid:null,near:null};
-var layerDefaults={distant:{delta_min:0.05,delta_max:0.20,dte_min:25,dte_max:99999},mid:{delta_min:0.20,delta_max:0.40,dte_min:10,dte_max:25},near:{delta_min:0.38,delta_max:0.55,dte_min:5,dte_max:10}};
+var layerDefaults={distant:{delta_min:0.05,delta_max:0.20,dte_min:25,dte_max:99999},mid:{delta_min:0.20,delta_max:0.40,dte_min:10,dte_max:25},near:{delta_min:0.25,delta_max:0.50,dte_min:3,dte_max:99}};
 var purchasedOptions={distant:[],mid:[],near:[]};
 var globalPurchasedSymbols={};
 
@@ -706,7 +706,7 @@ window.__as = function(layer,symbol){
     }
   }
   if(found){
-    selectedOption[layer]={symbol:symbol, strike:found.strike, dte:found.dte, iv:found.iv, price:found.price, delta:found.delta, gamma:found.gamma, theta:found.theta, vega:found.vega};
+    selectedOption[layer]={symbol:symbol, strike:found.strike, dte:found.dte, iv:found.iv, price:found.price, delta:found.delta, gamma:found.gamma, theta:found.theta, vega:found.vega, spot_at_entry:found.spot_price};
   } else {
     selectedOption[layer]={symbol:symbol};
   }
@@ -722,32 +722,61 @@ function renderLayer(data){
   if(!el) return;
   // Don't overwrite static HTML headers
   // if(t) t.textContent=data.label;
-  var purchasedCount=0;
-  var html='<div style="margin-bottom:8px;font-size:13px;color:var(--text-dim)">Delta '+data.criteria.delta_min+'–'+data.criteria.delta_max+' | DTE '+(data.criteria.dte_max==="all"?"all":data.criteria.dte_min+'–'+data.criteria.dte_max)+' | '+(data.spot_price?'Spot: $'+F(data.spot_price,2)+' ':'')+'Всего: <b>'+data.count+'</b></div>';
+  var html='<div style="margin-bottom:8px;font-size:13px;color:var(--text-dim)">Delta '+data.criteria.delta_min+'–'+data.criteria.delta_max+' | DTE '+(data.criteria.dte_max==="all"?"Все":data.criteria.dte_min+'–'+data.criteria.dte_max)+' | '+(data.spot_price?'Spot: $'+F(data.spot_price,2)+' ':'')+'Всего: <b>'+data.count+'</b></div>';
   var opts=data.options||[];
   if(opts.length===0){html+='<div style="padding:12px;color:var(--text-dim)">Нет опционов</div>';el.innerHTML=html;return;}
+  // Sort by layer type
+  opts.sort(function(a,b){
+    if(layer==='near'){
+      if(Math.abs(a.delta)-Math.abs(b.delta)>0.0001) return Math.abs(b.delta)-Math.abs(a.delta);
+      return a.dte-b.dte;
+    }
+    // distant and mid: DTE desc, delta asc
+    if(a.dte-b.dte!==0) return b.dte-a.dte;
+    return Math.abs(a.delta)-Math.abs(b.delta);
+  });
+  // Find closest strikes to spot price
+  var spot=data.spot_price || 0;
+  var strikes=[];
+  var strikeSet={};
+  opts.forEach(function(o){
+    var k=o.strike;
+    if(!strikeSet[k]){strikeSet[k]=true;strikes.push(k);}
+  });
+  strikes.sort(function(a,b){return a-b;});
+  var closest2=[];
+  var idx=0;
+  for(var i=0;i<strikes.length;i++){
+    if(strikes[i]<=spot) idx=i;
+  }
+  if(idx<strikes.length) closest2.push(strikes[idx]);
+  if(idx+1<strikes.length) closest2.push(strikes[idx+1]);
   // Build purchased symbols lookup
   var purchSymbols={};
   (purchasedOptions[layer]||[]).forEach(function(p){purchSymbols[p.symbol]=p.qty;});
   
-  html+='<div style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0">';
-  html+='<th style="text-align:left;padding:3px 6px">Символ</th><th style="padding:3px 6px;text-align:right">Strike</th><th style="padding:3px 6px;text-align:center">DTE</th><th style="padding:3px 6px;text-align:right">Δ</th><th style="padding:3px 6px;text-align:right">IV</th><th style="padding:3px 6px;text-align:right">Θ</th><th style="padding:3px 6px;text-align:right">ν</th><th style="padding:3px 6px;text-align:right">Price</th><th style="padding:3px 6px;text-align:center">Метка</th></tr></thead><tbody>';
+  html+='<div style="max-height:400px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0">';
+  html+='<th style="text-align:left;padding:3px 6px">Символ</th><th style="padding:3px 6px;text-align:right">Strike</th><th style="padding:3px 6px;text-align:center">DTE</th><th style="padding:3px 6px;text-align:right">Premium</th><th style="padding:3px 6px;text-align:right">Δ</th><th style="padding:3px 6px;text-align:right">Γ</th><th style="padding:3px 6px;text-align:right">Θ</th><th style="padding:3px 6px;text-align:right">IV</th><th style="padding:3px 6px;text-align:right">OI</th><th style="padding:3px 6px;text-align:right">Volume</th><th style="padding:3px 6px;text-align:right">Spread</th></tr></thead><tbody>';
   opts.forEach(function(o){
-    var rowCls=o.is_layer_match?'background:rgba(63,185,80,0.12);':'';
+    var rowCls="";
     var sym=o.symbol.replace(/'/g,"\\'");
     var title='Один клик: выделить, двойной: добавить | IV ATM: '+F(o.iv_atm,4);
     var purchased=purchSymbols[o.symbol];
-    if(purchased){rowCls+='background:rgba(255,200,0,0.1);';title+=' | 📌 Куплено: '+purchased;}
+    if(purchased) title+=' | 📌 Куплено: '+purchased;
     html+='<tr style="text-align:left;height:24px;cursor:pointer;'+rowCls+' onclick="window.__so(\''+layer+'\',\''+sym+'\')" ondblclick="event.preventDefault();event.stopPropagation();window.__as(\''+layer+'\',\''+sym+'\')" title="'+title+'">';
     html+='<td style="padding:2px 6px;font-weight:bold">'+o.symbol+(purchased?'<span style="color:#f0ad4e">📌'+purchased+'</span>':'')+'</td>';
-    html+='<td style="padding:2px 6px;text-align:right">$'+o.strike+'</td>';
+    var strikeCell='';
+    if(closest2.indexOf(o.strike)!==-1){strikeCell='<b style="color:var(--blue)" title="Ближайший к spot">🎯 $'+o.strike+'</b>';}else{strikeCell='$'+o.strike;}
+    html+='<td style="padding:2px 6px;text-align:right">'+strikeCell+'</td>';
     html+='<td style="padding:2px 6px;text-align:center">'+o.dte+'</td>';
-    html+='<td style="padding:2px 6px;text-align:right">'+F(o.delta,4)+'</td>';
-    html+='<td style="padding:2px 6px;text-align:right">'+F(o.iv,4)+'</td>';
-    html+='<td style="padding:2px 6px;text-align:right">'+F(o.theta,4)+'</td>';
-    html+='<td style="padding:2px 6px;text-align:right">'+F(o.vega,4)+'</td>';
     html+='<td style="padding:2px 6px;text-align:right">$'+F(o.price,4)+'</td>';
-    html+='<td style="padding:2px 6px;text-align:center">'+(o.is_layer_match?'<span style="color:var(--green);font-weight:bold">✓</span>':'<span style="color:var(--text-dim)">·</span>')+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right">'+F(o.delta,4)+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right">'+F(o.gamma,4)+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right">'+F(o.theta,4)+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right">'+F(o.iv,4)+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right">'+(o.open_interest||0)+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right">'+(o.volume||o.open_interest||0)+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right">'+(o.spread||'—')+'</td>';
     html+='</tr>';
   });
   html+='</tbody></table></div>';
@@ -757,16 +786,16 @@ function renderLayer(data){
 function selectOption(layer,symbol,o){
   try {
     if(o){
-      selectedOption[layer]={symbol:symbol, strike:o.strike, dte:o.dte, iv:o.iv, price:o.price, delta:o.delta, gamma:o.gamma, theta:o.theta, vega:o.vega};
+      selectedOption[layer]={symbol:symbol, strike:o.strike, dte:o.dte, iv:o.iv, price:o.price, delta:o.delta, gamma:o.gamma, theta:o.theta, vega:o.vega, spot_at_entry:o.spot_price};
     } else if(layerData_distant&&layerData_distant.options&&layer==='distant'){
       var f=layerData_distant.options.find(function(x){return x.symbol===symbol});
-      selectedOption[layer]=f?{symbol:symbol, strike:f.strike, dte:f.dte, iv:f.iv, price:f.price, delta:f.delta, gamma:f.gamma, theta:f.theta, vega:f.vega}:{symbol:symbol};
+      selectedOption[layer]=f?{symbol:symbol, strike:f.strike, dte:f.dte, iv:f.iv, price:f.price, delta:f.delta, gamma:f.gamma, theta:f.theta, vega:f.vega, spot_at_entry:f.spot_price}:{symbol:symbol};
     } else if(layerData_mid&&layerData_mid.options&&layer==='mid'){
       var f=layerData_mid.options.find(function(x){return x.symbol===symbol});
-      selectedOption[layer]=f?{symbol:symbol, strike:f.strike, dte:f.dte, iv:f.iv, price:f.price, delta:f.delta, gamma:f.gamma, theta:f.theta, vega:f.vega}:{symbol:symbol};
+      selectedOption[layer]=f?{symbol:symbol, strike:f.strike, dte:f.dte, iv:f.iv, price:f.price, delta:f.delta, gamma:f.gamma, theta:f.theta, vega:f.vega, spot_at_entry:f.spot_price}:{symbol:symbol};
     } else if(layerData_near&&layerData_near.options&&layer==='near'){
       var f=layerData_near.options.find(function(x){return x.symbol===symbol});
-      selectedOption[layer]=f?{symbol:symbol, strike:f.strike, dte:f.dte, iv:f.iv, price:f.price, delta:f.delta, gamma:f.gamma, theta:f.theta, vega:f.vega}:{symbol:symbol};
+      selectedOption[layer]=f?{symbol:symbol, strike:f.strike, dte:f.dte, iv:f.iv, price:f.price, delta:f.delta, gamma:f.gamma, theta:f.theta, vega:f.vega, spot_at_entry:f.spot_price}:{symbol:symbol};
     } else {
       selectedOption[layer]={symbol:symbol};
     }
@@ -824,55 +853,82 @@ function renderSelectedLayer(layer){
   });
   if(all.length===0){el.innerHTML='<div style="color:var(--text-dim);padding:12px;text-align:center">Нет выбранных</div>';return;}
   
+  // Fetch current spot for delta recalculation
+  api('/api/spot').then(function(spotData){
+    renderSelectedLayerInner(layer,all,el,spotData.spot);
+  }).catch(function(){
+    renderSelectedLayerInner(layer,all,el,0);
+  });
+}
+
+function renderSelectedLayerInner(layer,all,el,currentSpot){
   // Calculate totals
   var totalCost=0, totalPnl=0, totalDelta=0, totalGamma=0, totalTheta=0;
   var totalQty=0;
+  var totalIV=0;
+  var currentDeltaTotals={};
   all.forEach(function(entry){
     var item=entry.data;
     var q=item.qty||1;
     var p=Number(item.entry_price||item.price)||0;
     totalCost+=p*q;
     totalQty+=q;
-    var delta=Number(item.delta||0)*q;
     var gamma=Number(item.gamma||0)*q;
     var theta=Number(item.theta||0)*q;
-    totalDelta+=delta; totalGamma+=gamma; totalTheta+=theta;
+    var iv=Number(item.iv||0);
+    totalGamma+=gamma; totalTheta+=theta; totalIV+=iv*q;
     // PnL: current_price from purchasedOptions or fallback
     var current=item.current_price||p;
     totalPnl+=(current-p)*q;
   });
   var pnlCls=totalPnl>=0?'color:var(--green)':'color:#d32f2f';
   
-  var html='<div style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:var(--bg);border-bottom:1px solid var(--border)"><th style="text-align:left;padding:3px 4px">Символ</th><th style="padding:3px 4px;text-align:right">DTE</th><th style="padding:3px 4px;text-align:right">Qty</th><th style="padding:3px 4px;text-align:right">Price</th><th style="padding:3px 4px;text-align:right">Cost</th><th style="padding:3px 4px;text-align:right">Δ</th><th style="padding:3px 4px;text-align:right">Γ</th><th style="padding:3px 4px;text-align:right">Θ</th><th style="padding:3px 4px;text-align:center">Действия</th></tr></thead><tbody>';
+  var filterInfo='';
+  if(layer==='distant') filterInfo='<div style="font-size:11px;color:var(--text-dim);margin-bottom:4px">Фильтр: Δ '+layerDefaults.distant.delta_min+'–'+layerDefaults.distant.delta_max+' | DTE '+layerDefaults.distant.dte_min+'–'+(layerDefaults.distant.dte_max==99999?'∞':layerDefaults.distant.dte_max)+'</div>';
+  var html=filterInfo+'<div style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:var(--bg);border-bottom:1px solid var(--border)"><th style="text-align:left;padding:3px 4px">Символ</th><th style="padding:3px 4px;text-align:right">DTE</th><th style="padding:3px 4px;text-align:right">Qty</th><th style="padding:3px 4px;text-align:right">Price</th><th style="padding:3px 4px;text-align:right">Cost</th><th style="padding:3px 4px;text-align:right">Δ (текущ)</th><th style="padding:3px 4px;text-align:right">Γ</th><th style="padding:3px 4px;text-align:right">Θ</th><th style="padding:3px 4px;text-align:right">IV</th><th style="padding:3px 4px;text-align:center">Действия</th></tr></thead><tbody>';
   all.forEach(function(entry,i){
     var item=entry.data;
     var isPurch=entry.type==='purch';
     var qty=item.qty||1;
     var priceNum=Number(item.entry_price||item.price)||0;
     var cost=(priceNum*qty).toFixed(2);
-    var delta=(Number(item.delta||0)*qty).toFixed(4);
+    var entryDelta=Number(item.delta||0);
     var gamma=(Number(item.gamma||0)*qty).toFixed(4);
     var theta=(Number(item.theta||0)*qty).toFixed(4);
+    // Recalculate current delta: entry_delta + gamma * (spot_change / spot_at_entry)
+    var currentDelta=entryDelta;
+    if(currentSpot>0 && item.spot_at_entry>0){
+      var spotChange=(currentSpot-item.spot_at_entry)/item.spot_at_entry;
+      currentDelta=entryDelta*(1+spotChange);
+    }
+    currentDeltaTotals[i]=currentDelta*qty;
+    var deltaStr=currentDelta.toFixed(4);
+    var deltaColor=currentDelta>=0?'var(--green)':'var(--red)';
     var rowBg=isPurch?'background:rgba(255,200,0,0.08);':'';
     html+='<tr style="'+rowBg+'"><td style="padding:2px 4px;font-weight:bold">'+item.symbol+'</td>';
     html+='<td style="padding:2px 4px;text-align:right">'+item.dte+'</td>';
     html+='<td style="padding:2px 4px;text-align:right">'+qty+'</td>';
     html+='<td style="padding:2px 4px;text-align:right">'+priceNum.toFixed(4)+'</td>';
     html+='<td style="padding:2px 4px;text-align:right">'+cost+'</td>';
-    html+='<td style="padding:2px 4px;text-align:right">'+delta+'</td>';
+    html+='<td style="padding:2px 4px;text-align:right;color:'+deltaColor+'"><b>'+deltaStr+'</b></td>';
     html+='<td style="padding:2px 4px;text-align:right">'+gamma+'</td>';
     html+='<td style="padding:2px 4px;text-align:right">'+theta+'</td>';
+    html+='<td style="padding:2px 4px;text-align:right">'+(item.iv?Number(item.iv).toFixed(4):'—')+'</td>';
     html+='<td style="padding:2px 4px;text-align:center"><button onclick="removeSelected(\''+layer+'\','+i+','+isPurch+')" style="background:#d32f2f;color:#fff;border:none;padding:2px 6px;border-radius:4px;cursor:pointer;font-size:11px">✕</button></td></tr>';
   });
+  // Recalculate total delta with current values
+  var totalCurrentDelta=0;
+  for(var k in currentDeltaTotals) totalCurrentDelta+=currentDeltaTotals[k];
   html+='<tr style="border-top:2px solid var(--border);background:var(--bg);font-weight:bold"><td colspan="2" style="padding:4px 4px">Итого</td>'
     +'<td style="padding:4px 4px;text-align:right">'+totalQty+'</td>'
     +'<td style="padding:4px 4px;text-align:right"></td>'
     +'<td style="padding:4px 4px;text-align:right">$'+totalCost.toFixed(2)+'</td>'
-    +'<td style="padding:4px 4px;text-align:right">'+totalDelta.toFixed(4)+'</td>'
+    +'<td style="padding:4px 4px;text-align:right">'+totalCurrentDelta.toFixed(4)+'</td>'
     +'<td style="padding:4px 4px;text-align:right">'+totalGamma.toFixed(4)+'</td>'
     +'<td style="padding:4px 4px;text-align:right">'+totalTheta.toFixed(4)+'</td>'
+    +'<td style="padding:4px 4px;text-align:right">'+(totalQty>0?(totalIV/totalQty).toFixed(4):'—')+'</td>'
     +'<td style="padding:4px 4px;text-align:center"></td></tr>';
-  html+='<tr class="'+pnlCls+'"><td colspan="9" style="padding:4px 4px;text-align:right"><b>PnL:</b> $'+totalPnl.toFixed(2)+'</td></tr>';
+  html+='<tr class="'+pnlCls+'"><td colspan="10" style="padding:4px 4px;text-align:right"><b>PnL:</b> $'+totalPnl.toFixed(2)+'</td></tr>';
   html+='</tbody></table></div>';
   el.innerHTML=html;
 }

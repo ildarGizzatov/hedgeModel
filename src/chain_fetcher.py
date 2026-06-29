@@ -45,6 +45,8 @@ def fetch_and_filter_chain(base_coin: str = "SOL") -> tuple[list[dict], float]:
         else:
             if delta <= 0.01 or delta > 0.70:
                 continue
+        bid = parsed.get("bid") or 0
+        ask = parsed.get("ask") or 0
         rows.append({
             "symbol": parsed["symbol"],
             "strike": parsed["strike"],
@@ -53,6 +55,8 @@ def fetch_and_filter_chain(base_coin: str = "SOL") -> tuple[list[dict], float]:
             "gamma": parsed["gamma"],
             "vega": parsed["vega"],
             "theta": parsed["theta"],
+            "bid": bid if bid > 0 else None,
+            "ask": ask if ask > 0 else None,
             "mark_price": parsed["mark_price"],
             "iv": parsed["iv"],
             "dte": dte,

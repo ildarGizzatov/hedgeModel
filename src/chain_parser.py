@@ -46,6 +46,8 @@ def parse_option(ticker: dict) -> dict | None:
             "vega": float(ticker.get("vega") or 0),
             "mark_price": float(ticker.get("markPrice") or 0),
             "last_price": float(ticker.get("lastPrice") or 0),
+            "bid": float(ticker.get("bid1Price") or 0),
+            "ask": float(ticker.get("ask1Price") or 0),
             "iv": float(ticker.get("markIv") or 0),
             "underlying_price": float(ticker.get("underlyingPrice") or 0),
         }
