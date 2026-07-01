@@ -479,7 +479,7 @@ function renderOptions(opt, pos){
   opt.options.forEach(function(o){
     var pc2=clr(o.pnl);
     var ivClr=o.iv_change>=0?"green":"red";
-    var symEsc=o.symbol.replace(/'/g,"\\'");
+    var symEsc=o.symbol.replace(/'/g,"\'");
     rows+='<tr style="text-align:left">';
     rows+='<td>'+o.symbol+'</td>';
     var layerDisplay = o.layer && LAYER_LABELS[o.layer] ? LAYER_LABELS[o.layer] : (o.layer || '—').toUpperCase();
@@ -505,27 +505,6 @@ function renderOptions(opt, pos){
   if(tEl){
     tEl.insertAdjacentHTML("beforeend",
       '<tr style="background:var(--surface);border-top:2px solid var(--border);font-weight:700"><td colspan="4" style="color:var(--blue);font-size:15px">Итого</td><td></td><td></td><td></td><td style="'+clr(t.total_pnl)+';font-size:15px">'+U(t.total_pnl)+'</td><td style="font-size:15px">'+F(t.net_delta,4)+'</td><td style="font-size:15px">'+F(t.net_gamma,4)+'</td><td style="font-size:15px">'+F(t.net_theta,4)+'</td><td></td><td></td></tr>');
-  }
-
-  // === Duplicate options table for Recommendations tab (with DTE) ===
-  var optRecEl=document.getElementById("optTableRec");
-  if(optRecEl && opt.options.length>0){
-    var rowsRec="";
-    opt.options.forEach(function(o){
-      var pc2=clr(o.pnl);
-      rowsRec+='<tr style="text-align:left">';
-      rowsRec+='<td>'+o.symbol+'</td>';
-      rowsRec+='<td>'+F(o.entry_price*o.qty,2)+'</td>';
-      rowsRec+='<td class="'+pc2+'">'+U(o.pnl)+'</td>';
-      rowsRec+='<td class="layer-'+o.layer+'">'+o.layer+'</td>';
-      rowsRec+='<td>'+o.dte+'</td>';
-      rowsRec+='<td title="Entry: '+F(o.delta_entry,4)+'\nИзменение: '+F(o.delta_change,4)+'">'+F(o.delta,4)+'</td>';
-      rowsRec+='<td title="Entry: '+F(o.gamma_entry,4)+'\nИзменение: '+F(o.gamma_change,4)+'">'+F(o.gamma,4)+'</td>';
-      rowsRec+='<td class="'+pc2+'" title="Entry: '+F(o.theta_entry,4)+'\nНа день: '+F(o.theta_per_day,4)+'">'+F(o.theta_per_day,4)+'</td>';
-      rowsRec+='<td title="Entry: '+F(o.iv_entry,4)+'\nИзменение: '+F(o.iv_change,4)+'">'+F(o.iv,4)+'</td>';
-      rowsRec+='</tr>';
-    });
-    optRecEl.innerHTML=rowsRec;
   }
 }
 
@@ -684,8 +663,10 @@ var posData = null;
 
 // === LAYER TABS ===
 var layerFilterParams={distant:"all=1",mid:"all=1",near:"all=1"};
-var selectedOption={distant:null,mid:null,near:null};
-var layerDefaults={distant:{delta_min:0.05,delta_max:0.20,dte_min:25,dte_max:99999},mid:{delta_min:0.20,delta_max:0.40,dte_min:10,dte_max:25},near:{delta_min:0.25,delta_max:0.50,dte_min:3,dte_max:99}};
+var selectedOption={distant:[],mid:[],near:[]};
+
+
+var layerDefaults={distant:{delta_min:0.05,delta_max:0.20,dte_min:25,dte_max:99999},mid:{delta_min:0.20,delta_max:0.40,dte_min:10,dte_max:25},near:{delta_min:0.25,delta_max:0.45,dte_min:5,dte_max:25}};
 var purchasedOptions={distant:[],mid:[],near:[]};
 var globalPurchasedSymbols={};
 
@@ -694,7 +675,7 @@ window.__so = function(layer,symbol){
 };
 
 window.__as = function(layer,symbol){
-  // Double-click: populate selectedOption even if click didn't fire
+  // Double-click: add to selectedOption array
   var data;
   if(layer==='distant') data=layerData_distant;
   else if(layer==='mid') data=layerData_mid;
@@ -706,12 +687,18 @@ window.__as = function(layer,symbol){
     }
   }
   if(found){
-    selectedOption[layer]={symbol:symbol, strike:found.strike, dte:found.dte, iv:found.iv, price:found.price, delta:found.delta, gamma:found.gamma, theta:found.theta, vega:found.vega, spot_at_entry:found.spot_price};
+    selectedOption[layer].push({symbol:symbol, strike:found.strike, dte:found.dte, iv:found.iv, price:found.price, delta:found.delta, gamma:found.gamma, theta:found.theta, vega:found.vega, spot_at_entry:found.spot_price, spot_price:found.spot_price});
   } else {
-    selectedOption[layer]={symbol:symbol};
+    selectedOption[layer].push({symbol:symbol});
   }
   console.log('__as: selectedOption='+JSON.stringify(selectedOption[layer]));
   addSelected(layer,symbol);
+  
+  // Create dynamic sub-tab for this option
+  if(found && layer==='near') {
+    createOptionTab(layer, found);
+    createAggregatorTab(layer);
+  }
 };
 
 function renderLayer(data){
@@ -722,7 +709,13 @@ function renderLayer(data){
   if(!el) return;
   // Don't overwrite static HTML headers
   // if(t) t.textContent=data.label;
-  var html='<div style="margin-bottom:8px;font-size:13px;color:var(--text-dim)">Delta '+data.criteria.delta_min+'–'+data.criteria.delta_max+' | DTE '+(data.criteria.dte_max==="all"?"Все":data.criteria.dte_min+'–'+data.criteria.dte_max)+' | '+(data.spot_price?'Spot: $'+F(data.spot_price,2)+' ':'')+'Всего: <b>'+data.count+'</b></div>';
+  var spot=data.spot_price||0;
+  // Hedging range: % drop from spot
+  var hedges={near:{min:3,max:10},mid:{min:8,max:15},distant:{min:15,max:30}};
+  var h=hedges[layer]||{min:5,max:20};
+  var lowStrike=spot*(1-h.max/100);
+  var highStrike=spot*(1-h.min/100);
+  var html='<div style="margin-bottom:8px;font-size:15px;font-weight:bold">Хедж: '+h.min+'–'+h.max+'% просадка | Strike $'+F(lowStrike,1)+'–$'+F(highStrike,1)+' | Всего: <b>'+data.count+'</b></div>';
   var opts=data.options||[];
   if(opts.length===0){html+='<div style="padding:12px;color:var(--text-dim)">Нет опционов</div>';el.innerHTML=html;return;}
   // Sort by layer type
@@ -756,15 +749,19 @@ function renderLayer(data){
   (purchasedOptions[layer]||[]).forEach(function(p){purchSymbols[p.symbol]=p.qty;});
   
   html+='<div style="max-height:400px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0">';
-  html+='<th style="text-align:left;padding:3px 6px">Символ</th><th style="padding:3px 6px;text-align:right">Strike</th><th style="padding:3px 6px;text-align:center">DTE</th><th style="padding:3px 6px;text-align:right">Premium</th><th style="padding:3px 6px;text-align:right">Δ</th><th style="padding:3px 6px;text-align:right">Γ</th><th style="padding:3px 6px;text-align:right">Θ</th><th style="padding:3px 6px;text-align:right">IV</th><th style="padding:3px 6px;text-align:right">OI</th><th style="padding:3px 6px;text-align:right">Volume</th><th style="padding:3px 6px;text-align:right">Spread</th></tr></thead><tbody>';
+  html+='<th style="text-align:left;padding:3px 6px">Символ</th><th style="padding:3px 6px;text-align:center">Drop%</th><th style="padding:3px 6px;text-align:right">Strike</th><th style="padding:3px 6px;text-align:center">DTE</th><th style="padding:3px 6px;text-align:right">Premium</th><th style="padding:3px 6px;text-align:right">Δ</th><th style="padding:3px 6px;text-align:right">Γ</th><th style="padding:3px 6px;text-align:right">Θ</th><th style="padding:3px 6px;text-align:right">IV</th><th style="padding:3px 6px;text-align:right">OI</th><th style="padding:3px 6px;text-align:right">Volume</th><th style="padding:3px 6px;text-align:right">Spread</th></tr></thead><tbody>';
   opts.forEach(function(o){
     var rowCls="";
     var sym=o.symbol.replace(/'/g,"\\'");
+    var dropPct=spot>0?((spot-o.strike)/spot*100):0;
+    var dropCls=dropPct>=0?'color:var(--green)':'color:#d32f2f';
+    var dropStr=(dropPct>=0?'+':'')+F(dropPct,2)+'%';
     var title='Один клик: выделить, двойной: добавить | IV ATM: '+F(o.iv_atm,4);
     var purchased=purchSymbols[o.symbol];
     if(purchased) title+=' | 📌 Куплено: '+purchased;
     html+='<tr style="text-align:left;height:24px;cursor:pointer;'+rowCls+' onclick="window.__so(\''+layer+'\',\''+sym+'\')" ondblclick="event.preventDefault();event.stopPropagation();window.__as(\''+layer+'\',\''+sym+'\')" title="'+title+'">';
     html+='<td style="padding:2px 6px;font-weight:bold">'+o.symbol+(purchased?'<span style="color:#f0ad4e">📌'+purchased+'</span>':'')+'</td>';
+    html+='<td style="padding:2px 6px;text-align:center;color:'+dropCls+'"><b>'+dropStr+'</b></td>';
     var strikeCell='';
     if(closest2.indexOf(o.strike)!==-1){strikeCell='<b style="color:var(--blue)" title="Ближайший к spot">🎯 $'+o.strike+'</b>';}else{strikeCell='$'+o.strike;}
     html+='<td style="padding:2px 6px;text-align:right">'+strikeCell+'</td>';
@@ -786,18 +783,18 @@ function renderLayer(data){
 function selectOption(layer,symbol,o){
   try {
     if(o){
-      selectedOption[layer]={symbol:symbol, strike:o.strike, dte:o.dte, iv:o.iv, price:o.price, delta:o.delta, gamma:o.gamma, theta:o.theta, vega:o.vega, spot_at_entry:o.spot_price};
+      selectedOption[layer].push({symbol:symbol, strike:o.strike, dte:o.dte, iv:o.iv, price:o.price, delta:o.delta, gamma:o.gamma, theta:o.theta, vega:o.vega, spot_at_entry:o.spot_price});
     } else if(layerData_distant&&layerData_distant.options&&layer==='distant'){
       var f=layerData_distant.options.find(function(x){return x.symbol===symbol});
-      selectedOption[layer]=f?{symbol:symbol, strike:f.strike, dte:f.dte, iv:f.iv, price:f.price, delta:f.delta, gamma:f.gamma, theta:f.theta, vega:f.vega, spot_at_entry:f.spot_price}:{symbol:symbol};
+      selectedOption[layer].push(f?{symbol:symbol, strike:f.strike, dte:f.dte, iv:f.iv, price:f.price, delta:f.delta, gamma:f.gamma, theta:f.theta, vega:f.vega, spot_at_entry:f.spot_price}:{symbol:symbol});
     } else if(layerData_mid&&layerData_mid.options&&layer==='mid'){
       var f=layerData_mid.options.find(function(x){return x.symbol===symbol});
-      selectedOption[layer]=f?{symbol:symbol, strike:f.strike, dte:f.dte, iv:f.iv, price:f.price, delta:f.delta, gamma:f.gamma, theta:f.theta, vega:f.vega, spot_at_entry:f.spot_price}:{symbol:symbol};
+      selectedOption[layer].push(f?{symbol:symbol, strike:f.strike, dte:f.dte, iv:f.iv, price:f.price, delta:f.delta, gamma:f.gamma, theta:f.theta, vega:f.vega, spot_at_entry:f.spot_price}:{symbol:symbol});
     } else if(layerData_near&&layerData_near.options&&layer==='near'){
       var f=layerData_near.options.find(function(x){return x.symbol===symbol});
-      selectedOption[layer]=f?{symbol:symbol, strike:f.strike, dte:f.dte, iv:f.iv, price:f.price, delta:f.delta, gamma:f.gamma, theta:f.theta, vega:f.vega, spot_at_entry:f.spot_price}:{symbol:symbol};
+      selectedOption[layer].push(f?{symbol:symbol, strike:f.strike, dte:f.dte, iv:f.iv, price:f.price, delta:f.delta, gamma:f.gamma, theta:f.theta, vega:f.vega, spot_at_entry:f.spot_price}:{symbol:symbol});
     } else {
-      selectedOption[layer]={symbol:symbol};
+      selectedOption[layer].push({symbol:symbol});
     }
     console.log('selectOption:', layer, selectedOption[layer]);
   } catch(e){ console.error('selectOption error:',e); }
@@ -807,8 +804,9 @@ function selectOption(layer,symbol,o){
 
 function addSelected(layer,symbol){
   try {
-    var sel=selectedOption[layer];
-    if(!sel||!sel.symbol){alert('Сначала кликните на опцион');return;}
+    var selArr=selectedOption[layer];
+    if(!selArr||!selArr.length){alert('Сначала кликните на опцион');return;}
+    var sel=selArr[selArr.length-1];
     var selList=JSON.parse(localStorage.getItem('selectedOptions')||'{}');
     if(!selList[layer]) selList[layer]=[];
     if(!selList[layer].find(function(x){return x.symbol===sel.symbol})){
@@ -820,118 +818,701 @@ function addSelected(layer,symbol){
     } else {
       alert('Уже добавлен: '+sel.symbol);
     }
-    renderSelectedLayer(layer);
   } catch(e){ console.error('addSelected error:',e); }
 }
 
-function removeSelected(layer,index,isPurch){
-  if(isPurch) return; // не удаляем купленные из БД
-  var selList=JSON.parse(localStorage.getItem('selectedOptions')||'{}');
-  if(!selList[layer]) return;
-  // build combined list to find which localStorage index to remove
-  var all=[],selIdx=0;
-  selList[layer].forEach(function(s){all.push({type:'sel',data:s,idx:selIdx++});});
-  (purchasedOptions[layer]||[]).forEach(function(p){all.push({type:'purch',data:p,idx:-1});});
-  if(index<all.length && all[index].type==='sel'){
-    selList[layer].splice(all[index].idx,1);
-    localStorage.setItem('selectedOptions',JSON.stringify(selList));
-  }
-  renderSelectedLayer(layer);
-}
-
-function renderSelectedLayer(layer){
-  var el=document.getElementById('selectedContent-'+layer);
-  if(!el) return;
-  var selList=JSON.parse(localStorage.getItem('selectedOptions')||'{}');
-  var selItems=selList[layer]||[];
-  var purchItems=purchasedOptions[layer]||[];
-  // Combine: localStorage items + purchased from DB, each as separate row
-  var all=[];
-  selItems.forEach(function(s){all.push({type:'sel',data:s});});
-  purchItems.forEach(function(p){
-    all.push({type:'purch',data:p});
-  });
-  if(all.length===0){el.innerHTML='<div style="color:var(--text-dim);padding:12px;text-align:center">Нет выбранных</div>';return;}
-  
-  // Fetch current spot for delta recalculation
-  api('/api/spot').then(function(spotData){
-    renderSelectedLayerInner(layer,all,el,spotData.spot);
-  }).catch(function(){
-    renderSelectedLayerInner(layer,all,el,0);
-  });
-}
-
-function renderSelectedLayerInner(layer,all,el,currentSpot){
-  // Calculate totals
-  var totalCost=0, totalPnl=0, totalDelta=0, totalGamma=0, totalTheta=0;
-  var totalQty=0;
-  var totalIV=0;
-  var currentDeltaTotals={};
-  all.forEach(function(entry){
-    var item=entry.data;
-    var q=item.qty||1;
-    var p=Number(item.entry_price||item.price)||0;
-    totalCost+=p*q;
-    totalQty+=q;
-    var gamma=Number(item.gamma||0)*q;
-    var theta=Number(item.theta||0)*q;
-    var iv=Number(item.iv||0);
-    totalGamma+=gamma; totalTheta+=theta; totalIV+=iv*q;
-    // PnL: current_price from purchasedOptions or fallback
-    var current=item.current_price||p;
-    totalPnl+=(current-p)*q;
-  });
-  var pnlCls=totalPnl>=0?'color:var(--green)':'color:#d32f2f';
-  
-  var filterInfo='';
-  if(layer==='distant') filterInfo='<div style="font-size:11px;color:var(--text-dim);margin-bottom:4px">Фильтр: Δ '+layerDefaults.distant.delta_min+'–'+layerDefaults.distant.delta_max+' | DTE '+layerDefaults.distant.dte_min+'–'+(layerDefaults.distant.dte_max==99999?'∞':layerDefaults.distant.dte_max)+'</div>';
-  var html=filterInfo+'<div style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:var(--bg);border-bottom:1px solid var(--border)"><th style="text-align:left;padding:3px 4px">Символ</th><th style="padding:3px 4px;text-align:right">DTE</th><th style="padding:3px 4px;text-align:right">Qty</th><th style="padding:3px 4px;text-align:right">Price</th><th style="padding:3px 4px;text-align:right">Cost</th><th style="padding:3px 4px;text-align:right">Δ (текущ)</th><th style="padding:3px 4px;text-align:right">Γ</th><th style="padding:3px 4px;text-align:right">Θ</th><th style="padding:3px 4px;text-align:right">IV</th><th style="padding:3px 4px;text-align:center">Действия</th></tr></thead><tbody>';
-  all.forEach(function(entry,i){
-    var item=entry.data;
-    var isPurch=entry.type==='purch';
-    var qty=item.qty||1;
-    var priceNum=Number(item.entry_price||item.price)||0;
-    var cost=(priceNum*qty).toFixed(2);
-    var entryDelta=Number(item.delta||0);
-    var gamma=(Number(item.gamma||0)*qty).toFixed(4);
-    var theta=(Number(item.theta||0)*qty).toFixed(4);
-    // Recalculate current delta: entry_delta + gamma * (spot_change / spot_at_entry)
-    var currentDelta=entryDelta;
-    if(currentSpot>0 && item.spot_at_entry>0){
-      var spotChange=(currentSpot-item.spot_at_entry)/item.spot_at_entry;
-      currentDelta=entryDelta*(1+spotChange);
+function removeOptionTab(symbol){
+  // Find and remove from selectedOption in all layers
+  var foundLayer=null;
+  for(var lay in selectedOption){
+    for(var i=0;i<selectedOption[lay].length;i++){
+      if(selectedOption[lay][i].symbol===symbol){
+        selectedOption[lay].splice(i,1);
+        foundLayer=lay;
+        break;
+      }
     }
-    currentDeltaTotals[i]=currentDelta*qty;
-    var deltaStr=currentDelta.toFixed(4);
-    var deltaColor=currentDelta>=0?'var(--green)':'var(--red)';
-    var rowBg=isPurch?'background:rgba(255,200,0,0.08);':'';
-    html+='<tr style="'+rowBg+'"><td style="padding:2px 4px;font-weight:bold">'+item.symbol+'</td>';
-    html+='<td style="padding:2px 4px;text-align:right">'+item.dte+'</td>';
-    html+='<td style="padding:2px 4px;text-align:right">'+qty+'</td>';
-    html+='<td style="padding:2px 4px;text-align:right">'+priceNum.toFixed(4)+'</td>';
-    html+='<td style="padding:2px 4px;text-align:right">'+cost+'</td>';
-    html+='<td style="padding:2px 4px;text-align:right;color:'+deltaColor+'"><b>'+deltaStr+'</b></td>';
-    html+='<td style="padding:2px 4px;text-align:right">'+gamma+'</td>';
-    html+='<td style="padding:2px 4px;text-align:right">'+theta+'</td>';
-    html+='<td style="padding:2px 4px;text-align:right">'+(item.iv?Number(item.iv).toFixed(4):'—')+'</td>';
-    html+='<td style="padding:2px 4px;text-align:center"><button onclick="removeSelected(\''+layer+'\','+i+','+isPurch+')" style="background:#d32f2f;color:#fff;border:none;padding:2px 6px;border-radius:4px;cursor:pointer;font-size:11px">✕</button></td></tr>';
-  });
-  // Recalculate total delta with current values
-  var totalCurrentDelta=0;
-  for(var k in currentDeltaTotals) totalCurrentDelta+=currentDeltaTotals[k];
-  html+='<tr style="border-top:2px solid var(--border);background:var(--bg);font-weight:bold"><td colspan="2" style="padding:4px 4px">Итого</td>'
-    +'<td style="padding:4px 4px;text-align:right">'+totalQty+'</td>'
-    +'<td style="padding:4px 4px;text-align:right"></td>'
-    +'<td style="padding:4px 4px;text-align:right">$'+totalCost.toFixed(2)+'</td>'
-    +'<td style="padding:4px 4px;text-align:right">'+totalCurrentDelta.toFixed(4)+'</td>'
-    +'<td style="padding:4px 4px;text-align:right">'+totalGamma.toFixed(4)+'</td>'
-    +'<td style="padding:4px 4px;text-align:right">'+totalTheta.toFixed(4)+'</td>'
-    +'<td style="padding:4px 4px;text-align:right">'+(totalQty>0?(totalIV/totalQty).toFixed(4):'—')+'</td>'
-    +'<td style="padding:4px 4px;text-align:center"></td></tr>';
-  html+='<tr class="'+pnlCls+'"><td colspan="10" style="padding:4px 4px;text-align:right"><b>PnL:</b> $'+totalPnl.toFixed(2)+'</td></tr>';
-  html+='</tbody></table></div>';
-  el.innerHTML=html;
+  }
+  
+  var btn=document.querySelector('[data-opttab="'+symbol+'"]');
+  if(btn) btn.remove();
+  var content=document.getElementById('content-'+symbol);
+  if(content) content.remove();
+  
+  // Re-render aggregator if it exists
+  if(foundLayer){
+    var aggBtn=document.querySelector('[data-opttab="aggregator"]');
+    var aggContent=document.getElementById('content-aggregator');
+    if(aggBtn && aggContent) renderAggregatorGreeks(foundLayer);
+  }
+  
+  // If no tabs left, show a message
+  if(document.querySelectorAll('[data-opttab]').length===0){
+    var msg=document.getElementById('dynamicOptionContent');
+    if(msg) msg.innerHTML='';
+  } else {
+    // Activate first remaining tab
+    var first=document.querySelector('[data-opttab]');
+    if(first){
+      first.classList.add('active');
+      first.style.cssText='padding:4px 8px;cursor:pointer;font-weight:bold;border-bottom:2px solid var(--blue);margin-bottom:-2px;color:var(--blue);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px;';
+      var firstId=first.getAttribute('data-opttab');var fc=document.getElementById('content-'+firstId);if(fc)fc.style.display='flex';
+    }
+  }
 }
+
+function createOptionTab(layer, opt){
+  // Check if tab already exists
+  if(document.getElementById('content-'+opt.symbol)) return;
+  
+  var tabBar=document.getElementById('dynamicOptionTabs');
+  var contentArea=document.getElementById('dynamicOptionContent');
+  
+  // Create tab button
+  var btn=document.createElement('div');
+  btn.className='layer-subtab';
+  btn.setAttribute('data-opttab', opt.symbol);
+  btn.style.cssText='padding:4px 8px;cursor:pointer;font-weight:bold;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-dim);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px;';
+  var label=document.createElement('span');
+  label.textContent=opt.symbol;
+  label.style.cssText='overflow:hidden;text-overflow:ellipsis;max-width:180px;';
+  var xbtn=document.createElement('span');
+  xbtn.textContent='✕';
+  xbtn.style.cssText='cursor:pointer;color:var(--text-dim);font-size:14px;line-height:1;';
+  xbtn.onclick=function(e){e.stopPropagation();removeOptionTab(opt.symbol);};
+  btn.appendChild(label);
+  btn.appendChild(xbtn);
+  btn.onclick=function(){
+    document.querySelectorAll('[data-opttab]').forEach(function(t){
+      t.classList.remove('active');
+      t.style.cssText='padding:4px 8px;cursor:pointer;font-weight:bold;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-dim);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px;';
+    });
+    btn.classList.add('active');
+    btn.style.cssText='padding:4px 8px;cursor:pointer;font-weight:bold;border-bottom:2px solid var(--blue);margin-bottom:-2px;color:var(--blue);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px;';
+    document.querySelectorAll('.option-content').forEach(function(c){c.style.display='none';});
+    document.getElementById('content-'+opt.symbol).style.display='flex';
+  };
+  tabBar.appendChild(btn);
+  
+  // Create content div
+  var content=document.createElement('div');
+  content.className='option-content';
+  content.id='content-'+opt.symbol;
+  content.style.cssText='margin-top:8px;';
+  content.innerHTML='<div style="color:var(--text-dim);padding:12px;text-align:center">Загрузка...</div>';
+  contentArea.appendChild(content);
+  
+  // Activate first tab
+  if(document.querySelectorAll('[data-opttab]').length===1){
+    btn.classList.add('active');
+    btn.style.cssText='padding:4px 8px;cursor:pointer;font-weight:bold;border-bottom:2px solid var(--blue);margin-bottom:-2px;color:var(--blue);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px;';
+    content.style.display='flex';
+  }
+  
+  // Fetch BS Greeks
+  api('/api/bs-greeks?symbol='+encodeURIComponent(opt.symbol)+'&strike='+opt.strike+'&dte='+opt.dte+'&iv='+opt.iv+'&spot='+opt.spot_price+'&premium='+opt.price+'&layer='+layer)
+    .then(function(d){renderOptionGreeks(d, layer);})
+    .catch(function(e){
+      content.innerHTML='<div style="color:#d32f2f;padding:12px;text-align:center">Ошибка: '+e+'</div>';
+    });
+}
+
+var aggregatorCache={};
+
+function createAggregatorTab(layer){
+  var tabBar=document.getElementById('dynamicOptionTabs');
+  var contentArea=document.getElementById('dynamicOptionContent');
+  
+  // Create tab button if not exists
+  var btn=document.querySelector('[data-opttab="aggregator"]');
+  if(!btn){
+    btn=document.createElement('div');
+    btn.className='layer-subtab';
+    btn.setAttribute('data-opttab', 'aggregator');
+    btn.style.cssText='padding:4px 8px;cursor:pointer;font-weight:bold;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-dim);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px;background:rgba(139,92,246,0.15);';
+    var label=document.createElement('span');
+    label.textContent='📊 Суммарный';
+    label.style.cssText='overflow:hidden;text-overflow:ellipsis;';
+    var xbtn=document.createElement('span');
+    xbtn.textContent='✕';
+    xbtn.style.cssText='cursor:pointer;color:var(--text-dim);font-size:14px;line-height:1;';
+    xbtn.onclick=function(e){e.stopPropagation();removeAggregatorTab();};
+    btn.appendChild(label);
+    btn.appendChild(xbtn);
+    btn.onclick=function(){
+      document.querySelectorAll('[data-opttab]').forEach(function(t){
+        t.classList.remove('active');
+        t.style.cssText='padding:4px 8px;cursor:pointer;font-weight:bold;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-dim);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px;';
+      });
+      btn.classList.add('active');
+      btn.style.cssText='padding:4px 8px;cursor:pointer;font-weight:bold;border-bottom:2px solid var(--purple);margin-bottom:-2px;color:#a78bfa;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px;background:rgba(139,92,246,0.2);';
+      document.querySelectorAll('.option-content').forEach(function(c){c.style.display='none';});
+      document.getElementById('content-aggregator').style.display='flex';
+    };
+    // Insert aggregator tab at END (after all option tabs)
+    var lastTab=tabBar.querySelector('[data-opttab]');
+    if(lastTab) tabBar.insertBefore(btn, lastTab.nextSibling);
+    else tabBar.appendChild(btn);
+  }
+  
+  // Create content div if not exists
+  var content=document.getElementById('content-aggregator');
+  if(!content){
+    content=document.createElement('div');
+    content.className='option-content';
+    content.id='content-aggregator';
+    content.style.cssText='margin-top:8px;';
+    content.innerHTML='<div style="color:var(--text-dim);padding:12px;text-align:center">Выберите опционы двойным кликом</div>';
+    contentArea.appendChild(content);
+  }
+  
+  // Activate aggregator tab
+  btn.classList.add('active');
+  btn.style.cssText='padding:4px 8px;cursor:pointer;font-weight:bold;border-bottom:2px solid var(--purple);margin-bottom:-2px;color:#a78bfa;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px;background:rgba(139,92,246,0.2);';
+  document.querySelectorAll('[data-opttab]').forEach(function(t){
+    if(t!==btn){
+      t.classList.remove('active');
+      t.style.cssText='padding:4px 8px;cursor:pointer;font-weight:bold;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-dim);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px;';
+    }
+  });
+  document.querySelectorAll('.option-content').forEach(function(c){c.style.display='none';});
+  content.style.display='flex';
+  
+  // Render aggregator
+  renderAggregatorGreeks(layer);
+}
+
+function removeAggregatorTab(){
+  var btn=document.querySelector('[data-opttab="aggregator"]');
+  if(btn) btn.remove();
+  var content=document.getElementById('content-aggregator');
+  if(content) content.remove();
+  aggregatorCache={};
+  if(document.querySelectorAll('[data-opttab]').length===0){
+    var msg=document.getElementById('dynamicOptionContent');
+    if(msg) msg.innerHTML='';
+  } else {
+    var first=document.querySelector('[data-opttab]');
+    if(first){
+      first.classList.add('active');
+      first.style.cssText='padding:4px 8px;cursor:pointer;font-weight:bold;border-bottom:2px solid var(--blue);margin-bottom:-2px;color:var(--blue);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px;';
+      var firstId=first.getAttribute('data-opttab');var fc=document.getElementById('content-'+firstId);if(fc)fc.style.display='flex';
+    }
+  }
+}
+
+function renderAggregatorGreeks(layer){
+  layer=layer||'near';
+  var sel=selectedOption[layer]||[];
+  if(sel.length===0){
+    var el=document.getElementById('content-aggregator');
+    if(el) el.innerHTML='<div style="color:var(--text-dim);padding:12px;text-align:center">Нет выбранных опционов</div>';
+    return;
+  }
+  
+  var el=document.getElementById('content-aggregator');
+  el.innerHTML='<div style="color:var(--text-dim);padding:12px;text-align:center">Загрузка...</div>';
+  
+  // Fetch BS for each selected option
+  console.log('renderAggregatorGreeks: selected options:', sel.length, sel);
+  if(sel.length===0){return;}
+  var promises=sel.map(function(opt){
+    var spot=opt.spot_price||opt.spot_at_entry||'';
+    if(!spot){console.warn('No spot for',opt.symbol);return Promise.resolve(null);}
+    var url='/api/bs-greeks?symbol='+encodeURIComponent(opt.symbol)+'&strike='+opt.strike+'&dte='+opt.dte+'&iv='+opt.iv+'&spot='+spot+'&premium='+opt.price+'&layer='+layer;
+    console.log('API call:', url);
+    return api(url)
+      .then(function(d){console.log('OK',opt.symbol,d.rows?d.rows.length:'NO_ROWS','rows');return d;})
+      .catch(function(e){console.error('ERR',opt.symbol,e);return null;});
+  });
+  
+  Promise.all(promises).then(function(results){
+  console.log('All results:', results.map(function(r){return r?r.symbol:'NULL';}));
+    var validResults=results.filter(function(r){return r&&r.rows&&r.rows.length>0;});
+    if(validResults.length===0){
+      el.innerHTML='<div style="color:#d32f2f;padding:12px;text-align:center">Не удалось загрузить данные</div>';
+      return;
+    }
+    
+    // Aggregate all rows by price
+    var priceMap={};
+    var spot=validResults[0].spot||validResults[0].rows[0].price;
+    var allStrikes=[];
+    var allHedgeRanges=[];
+    
+    validResults.forEach(function(d){
+      allStrikes.push(d.strike);
+      allHedgeRanges.push(d.hedge_range);
+      
+      d.rows.forEach(function(r){
+        if(!priceMap[r.price]){
+          priceMap[r.price]={price:r.price, delta:0, gamma:0, theta:0, vega:0, bs_price:0, count:0};
+        }
+        priceMap[r.price].delta+=r.delta;
+        priceMap[r.price].gamma+=r.gamma;
+        priceMap[r.price].theta+=r.theta;
+        priceMap[r.price].vega+=r.vega;
+        priceMap[r.price].bs_price+=r.bs_price;
+        priceMap[r.price].count++;
+      });
+    });
+    
+    // Sort by price
+    var aggregated=Object.values(priceMap).sort(function(a,b){return b.price-a.price;});
+    
+    // Filter to working window (aggregate filtered ranges)
+    var aggFiltered=[];
+    aggregated.forEach(function(r){
+      var absD=Math.abs(r.delta);
+      if(absD >= 0.5 && absD <= 0.85){
+        aggFiltered.push(r);
+      }
+    });
+    
+    // Filter to hedge range ± 2 steps
+    var displayStart=avgHedgeLow-2, displayEnd=avgHedgeHigh+2;
+    var displayRows=aggregated.filter(function(r){return r.price>=displayStart && r.price<=displayEnd;});
+    
+    // Find max gamma within display rows
+    var maxGamma=-1;
+    displayRows.forEach(function(r){
+      if(r.gamma>maxGamma){maxGamma=r.gamma;}
+    });
+    
+    // Map display index to find max gamma highlight
+    var maxGammaPrice=-1;
+    displayRows.forEach(function(r){
+      if(Math.abs(r.gamma-maxGamma)<0.000001 && maxGammaPrice===-1){maxGammaPrice=r.price;}
+    });
+    
+    // Average hedge range
+    var avgHedgeLow=0, avgHedgeHigh=0;
+    allHedgeRanges.forEach(function(hr){
+      avgHedgeLow+=hr.low;
+      avgHedgeHigh+=hr.high;
+    });
+    avgHedgeLow=Math.round(avgHedgeLow/allHedgeRanges.length);
+    avgHedgeHigh=Math.round(avgHedgeHigh/allHedgeRanges.length);
+    
+    // Coverage calc
+    var priceDelta50=aggFiltered.length>0?aggFiltered[0].price:0;
+    var priceDelta85=aggFiltered.length>0?aggFiltered[aggFiltered.length-1].price:0;
+    var windowLen=Math.round(Math.abs(priceDelta50-priceDelta85));
+    var hedgeLen=Math.abs(avgHedgeHigh-avgHedgeLow);
+    var overlapLow=Math.max(priceDelta85, avgHedgeLow);
+    var overlapHigh=Math.min(priceDelta50, avgHedgeHigh);
+    var overlapLen=Math.max(0, overlapHigh-overlapLow);
+    var coverage=hedgeLen>0?overlapLen/hedgeLen:0;
+    var accuracy=windowLen>0?overlapLen/windowLen:0;
+    
+    // Sum delta delta
+    var sumDeltaDD=0;
+    for(var i=1;i<aggFiltered.length;i++){
+      if(aggFiltered[i].price>=overlapLow && aggFiltered[i].price<=overlapHigh){
+        sumDeltaDD+=aggFiltered[i-1].delta-aggFiltered[i].delta;
+      }
+    }
+    
+    // Compute summary Greeks (sum of all selected options' Greeks)
+    var totalDelta=0, totalGamma=0, totalTheta=0, totalVega=0;
+    var totalPnl=0;
+    sel.forEach(function(s){
+      totalDelta+=s.delta||0;
+      totalGamma+=s.gamma||0;
+      totalTheta+=s.theta||0;
+      totalVega+=s.vega||0;
+      var entryP=s.entry_price||s.price||0;
+      var curP=s.price||entryP;
+      totalPnl+=(curP-entryP)*100*(s.qty||1);
+    });
+    var avgStrike=Math.round(allStrikes.reduce(function(a,b){return a+b;},0)/allStrikes.length);
+    
+    // Filter to hedge range ± 2 steps
+    var displayStart=avgHedgeLow-2, displayEnd=avgHedgeHigh+2;
+    var displayRows=aggregated.filter(function(r){return r.price>=displayStart && r.price<=displayEnd;});
+    
+    // Find max gamma within display rows
+    var maxGamma=-1;
+    displayRows.forEach(function(r){
+      if(r.gamma>maxGamma){maxGamma=r.gamma;}
+    });
+    
+    // Map display index to find max gamma highlight
+    var maxGammaPrice=-1;
+    displayRows.forEach(function(r){
+      if(Math.abs(r.gamma-maxGamma)<0.000001 && maxGammaPrice===-1){maxGammaPrice=r.price;}
+    });
+    
+    // Build price-based table (like individual tabs)
+    var html='<div style="display:flex;gap:24px;align-items:flex-start">';
+    html+='<div style="max-height:400px;overflow-y:auto;border:1px solid var(--border);border-radius:6px"><table style="width:auto;border-collapse:collapse;font-size:11px;font-weight:600"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0">';
+    html+='<th style="text-align:left;padding:3px 4px;font-size:11px">Цена</th>';
+    html+='<th style="padding:3px 4px;text-align:right;font-size:11px">ΣΔ</th>';
+    html+='<th style="padding:3px 4px;text-align:right;font-size:11px">ΣΓ</th>';
+    html+='<th style="padding:3px 4px;text-align:right;font-size:11px">PnL</th>';
+    html+='<th style="padding:3px 4px;text-align:right;font-size:11px">Вн.стоимость</th>';
+    html+='<th style="padding:3px 4px;text-align:right;font-size:11px">Врем.стоимость</th>';
+    html+='</tr></thead><tbody>';
+    
+    var avgEntry=sel.reduce(function(a,s){return a+(s.entry_price||s.price||0);},0)/sel.length;
+    displayRows.forEach(function(r){
+      var pnl=r.bs_price-avgEntry;
+      var pnlCls=pnl>=0?'color:var(--green)':'color:var(--red)';
+      
+      var rowBg='';
+      if(r.price===maxGammaPrice) rowBg='background:rgba(88,166,255,0.15);';
+      if(r.price>=avgHedgeLow && r.price<=avgHedgeHigh){
+        rowBg+='background:rgba(63,185,80,0.15);';
+      }
+      
+      var intrinsic=Math.max(0, avgStrike-r.price);
+      var timeValue=r.bs_price-intrinsic;
+      var tvCls=timeValue>=0?'color:var(--green)':'color:var(--red)';
+      var intrinsicCls=intrinsic>0?'color:var(--green)':'color:var(--text-dim)';
+      
+      html+='<tr style="text-align:left;height:28px;'+rowBg+'">' ;
+      html+='<td style="padding:2px 4px;font-weight:bold">$'+r.price+'</td>';
+      html+='<td style="padding:2px 4px;text-align:right">'+F(r.delta,4)+'</td>';
+      html+='<td style="padding:2px 4px;text-align:right">'+F(r.gamma,6)+'</td>';
+      html+='<td style="padding:2px 4px;text-align:right;'+pnlCls+'">'+F(pnl,2)+'</td>';
+      html+='<td style="padding:2px 4px;text-align:right;'+intrinsicCls+'">'+F(intrinsic,2)+'</td>';
+      html+='<td style="padding:2px 4px;text-align:right;'+tvCls+'">'+F(timeValue,2)+'</td>';
+      html+='</tr>';
+    });
+    html+='</tbody></table></div>';
+    
+    // Gamma chart
+    html+='<div style="min-width:580px;flex-shrink:0"><div style="font-size:14px;font-weight:bold;margin-bottom:6px;color:var(--text-dim)">Суммарный Γ</div><div style="border:1px solid var(--border);border-radius:6px;padding:8px;background:var(--surface)"><canvas id="gammaChart-aggregator" width="580" height="380"></canvas></div></div>';
+    html+='</div>';
+    
+    el.innerHTML=html;
+    
+    // Draw aggregator chart
+    setTimeout(function(){
+      drawGammaChart(displayRows, displayRows, avgStrike, avgHedgeLow, avgHedgeHigh, 'gammaChart-aggregator', validResults);
+      var c=document.getElementById('gammaChart-aggregator');
+      if(c) console.log('aggregator chart drawn:', c.width, 'x', c.height);
+    }, 50);
+  });
+}
+
+function drawGammaChart(allRows, filtered, strike, hedgeLow, hedgeHigh, chartId, extraProfiles){
+  extraProfiles=extraProfiles||[];
+  if(!chartId) chartId='gammaChart';
+  console.log('drawGammaChart called:', allRows.length, 'rows, strike=', strike, 'hedge=[', hedgeLow, hedgeHigh, ']');
+  var canvas=document.getElementById(chartId);
+  if(!canvas) { console.log('gammaChart canvas NOT FOUND'); return; }
+  console.log('gammaChart '+chartId+':', canvas.width, 'x', canvas.height);
+  var ctx=canvas.getContext('2d');
+  var W=canvas.width, H=canvas.height;
+  var pad={t:25,r:20,b:60,l:55};
+  var cW=W-pad.l-pad.r, cH=H-pad.t-pad.b;
+  
+  ctx.clearRect(0,0,W,H);
+  
+  // Find price range - expand 20% on each side
+  var prices=allRows.map(function(r){return r.price;});
+  var pMin=Math.min.apply(null,prices);
+  var pMax=Math.max.apply(null,prices);
+  var pRange=pMax-pMin;
+  var xMin=pMin-pRange*0.15;
+  var xMax=pMax+pRange*0.15;
+  var xRange=xMax-xMin;
+  
+  // Find gamma range (all positive for puts)
+  var gammas=allRows.map(function(r){return r.gamma;});
+  var gMax=Math.max.apply(null,gammas)*1.1;
+  var gMin=0;
+  var gRange=gMax-gMin;
+  
+  function toX(p){return pad.l+(p-xMin)/xRange*cW;}
+  function toY(g){return pad.t+cH-(g-gMin)/gRange*cH;}
+  
+  // Background
+  ctx.fillStyle='#0d1117';
+  ctx.fillRect(0,0,W,H);
+  
+  // Grid lines
+  ctx.strokeStyle='#21262d';
+  ctx.lineWidth=1;
+  for(var i=0;i<=5;i++){
+    var y=pad.t+cH*(i/5);
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+cW,y);ctx.stroke();
+  }
+  for(var i=0;i<=5;i++){
+    var x=pad.l+cW*(i/5);
+    ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+cH);ctx.stroke();
+  }
+  
+  // Hedge range zone
+  if(hedgeLow && hedgeHigh){
+    var hx1=toX(hedgeLow),hx2=toX(hedgeHigh);
+    ctx.fillStyle='rgba(63,185,80,0.08)';
+    ctx.fillRect(hx1,pad.t,hx2-hx1,cH);
+    ctx.strokeStyle='rgba(63,185,80,0.4)';
+    ctx.lineWidth=1;ctx.setLineDash([4,4]);
+    ctx.beginPath();ctx.moveTo(hx1,pad.t);ctx.lineTo(hx1,pad.t+cH);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(hx2,pad.t);ctx.lineTo(hx2,pad.t+cH);ctx.stroke();
+    ctx.setLineDash([]);
+    // Label
+    ctx.fillStyle='rgba(63,185,80,0.8)';
+    ctx.font='10px monospace';
+    ctx.fillText('Хедж',hx1+2,pad.t+12);
+  }
+  
+  // Working window zone
+  var fwMin=filtered[0]?filtered[0].price:0;
+  var fwMax=filtered[filtered.length-1]?filtered[filtered.length-1].price:0;
+  if(fwMin && fwMax){
+    var fx1=toX(fwMin),fx2=toX(fwMax);
+    ctx.fillStyle='rgba(88,166,255,0.06)';
+    ctx.fillRect(fx1,pad.t,fx2-fx1,cH);
+  }
+  
+  // Draw gamma curve - smooth line
+  ctx.beginPath();
+  ctx.strokeStyle='#f0883e';
+  ctx.lineWidth=2;
+  allRows.forEach(function(r,i){
+    var x=toX(r.price),y=toY(r.gamma);
+    if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+  
+  // Fill under curve
+  ctx.beginPath();
+  allRows.forEach(function(r,i){
+    var x=toX(r.price),y=toY(r.gamma);
+    if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  });
+  ctx.lineTo(toX(allRows[allRows.length-1].price),pad.t+cH);
+  ctx.lineTo(toX(allRows[0].price),pad.t+cH);
+  ctx.closePath();
+  var grad=ctx.createLinearGradient(0,pad.t,0,pad.t+cH);
+  grad.addColorStop(0,'rgba(240,136,62,0.25)');
+  grad.addColorStop(1,'rgba(240,136,62,0.02)');
+  ctx.fillStyle=grad;
+  ctx.fill();
+  
+  // Draw extra profiles (individual option gammas)
+  var colors=['#58a6ff','#f778ba','#7ee787','#d2a8ff','#ff7b72','#79c0ff'];
+  extraProfiles.forEach(function(ep,epIdx){
+    ctx.beginPath();
+    ctx.strokeStyle=colors[epIdx%colors.length];
+    ctx.lineWidth=1.5;
+    ctx.setLineDash([4,4]);
+    var sorted=ep.rows.slice().sort(function(a,b){return b.price-a.price;});
+    var epMax=-1,epMaxPrice=-1;
+    sorted.forEach(function(r,i){
+      var x=toX(r.price),y=toY(r.gamma);
+      if(r.gamma>epMax){epMax=r.gamma;epMaxPrice=r.price;}
+      if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // Mark max gamma for this profile
+    var mx=toX(epMaxPrice),my=toY(epMax);
+    ctx.beginPath();ctx.arc(mx,my,5,0,Math.PI*2);
+    ctx.fillStyle=colors[epIdx%colors.length];ctx.fill();
+    ctx.beginPath();ctx.arc(mx,my,8,0,Math.PI*2);
+    ctx.strokeStyle=colors[epIdx%colors.length];ctx.lineWidth=2;ctx.stroke();
+  });
+  
+  // Draw data points
+  allRows.forEach(function(r){
+    var x=toX(r.price),y=toY(r.gamma);
+    var isFiltered=false;
+    filtered.forEach(function(f){if(f.price===r.price)isFiltered=true;});
+    var isMax=r.gamma===Math.max.apply(null,gammas);
+    var isInHR=r.price>=hedgeLow && r.price<=hedgeHigh;
+    
+    if(isMax){
+      ctx.beginPath();ctx.arc(x,y,5,0,Math.PI*2);
+      ctx.fillStyle='#58a6ff';ctx.fill();
+      ctx.beginPath();ctx.arc(x,y,8,0,Math.PI*2);
+      ctx.strokeStyle='#58a6ff';ctx.lineWidth=2;ctx.stroke();
+    }
+    ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);
+    ctx.fillStyle=isMax?'#58a6ff':'#f0883e';
+    ctx.fill();
+    if(isInHR){
+      ctx.beginPath();ctx.arc(x,y,5,0,Math.PI*2);
+      ctx.strokeStyle='rgba(63,185,80,0.6)';ctx.lineWidth=1.5;ctx.stroke();
+    }
+  });
+  
+  // Strike line
+  var sx=toX(strike||0);
+  if(sx>pad.l && sx<pad.l+cW){
+    ctx.strokeStyle='rgba(255,255,255,0.3)';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(sx,pad.t);ctx.lineTo(sx,pad.t+cH);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='rgba(255,255,255,0.5)';ctx.font='10px monospace';
+    ctx.fillText('K='+strike,sx+3,pad.t+12);
+  }
+  
+  // X axis line
+  ctx.strokeStyle='#30363d';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(pad.l,pad.t+cH);ctx.lineTo(pad.l+cW,pad.t+cH);ctx.stroke();
+  
+  // Price labels
+  ctx.fillStyle='#e6edf3';ctx.font='bold 12px monospace';ctx.textAlign='center';
+  allRows.forEach(function(r){
+    var x=toX(r.price);
+    // vertical tick
+    ctx.strokeStyle='#484f58';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(x,pad.t+cH);ctx.lineTo(x,pad.t+cH+6);ctx.stroke();
+    // Background box
+    var text='$'+r.price;
+    var tw=ctx.measureText(text).width;
+    ctx.fillStyle='rgba(13,17,23,0.95)';
+    ctx.fillRect(x-tw/2-3, pad.t+cH+6, tw+6, 16);
+    ctx.strokeStyle='#30363d';ctx.lineWidth=1;
+    ctx.strokeRect(x-tw/2-3, pad.t+cH+6, tw+6, 16);
+    ctx.fillStyle='#e6edf3';
+    ctx.fillText(text,x,pad.t+cH+19);
+  });
+  
+  // Y axis labels
+  ctx.textAlign='right';
+  for(var i=0;i<=5;i++){
+    var val=gMin+gRange*(1-i/5);
+    var y=pad.t+cH*(i/5);
+    ctx.fillText(val.toFixed(3),pad.l-5,y+4);
+  }
+  ctx.save();
+  ctx.translate(12,pad.t+cH/2);
+  ctx.rotate(-Math.PI/2);
+  ctx.textAlign='center';
+  ctx.fillText('Γ',0,0);
+  ctx.restore();
+  
+  // Legend - below prices area
+  var ly=pad.t+cH+50;
+  ctx.textAlign='left';ctx.font='10px monospace';
+  ctx.fillStyle='#f0883e';ctx.fillRect(pad.l,ly,10,10);
+  ctx.fillStyle='#8b949e';ctx.fillText('Γ',pad.l+14,ly+9);
+  if(hedgeLow){
+    ctx.fillStyle='rgba(63,185,80,0.6)';ctx.fillRect(pad.l+50,ly,10,10);
+    ctx.fillStyle='#8b949e';ctx.fillText('Хедж-зона',pad.l+64,ly+9);
+  }
+  ctx.fillStyle='#58a6ff';ctx.beginPath();ctx.arc(pad.l+150,ly+5,4,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#8b949e';ctx.fillText('Макс Γ',pad.l+158,ly+9);
+  ly+=15;
+}
+
+function renderOptionGreeks(data, layer){
+  var el=document.getElementById('content-'+data.symbol);
+  if(!el) return;
+  if(!data || !data.rows || data.rows.length===0){
+    el.innerHTML='<div style="color:var(--text-dim);padding:12px;text-align:center">Нет данных</div>';
+    return;
+  }
+  
+  // Filter rows: 0.5 <= |delta| <= 0.85
+  var filtered=[];
+  data.rows.forEach(function(r){
+    var absD=Math.abs(r.delta);
+    if(absD >= 0.5 && absD <= 0.85){
+      filtered.push(r);
+    }
+  });
+  if(filtered.length===0){
+    el.innerHTML='<div style="color:var(--text-dim);padding:12px;text-align:center">Нет строк в диапазоне Δ 0.5–0.85</div>';
+    return;
+  }
+  
+  // Compute working window and intersection
+  var priceDelta50 = filtered[0].price;  // price at delta ~0.5
+  var priceDelta85 = filtered[filtered.length-1].price;  // price at delta ~0.85
+  var windowLen = Math.round(Math.abs(priceDelta50 - priceDelta85));  // length of working window (rounded)
+  
+  // Hedge range from API
+  var hedgeRange = data.hedge_range;
+  var hedgeLow = hedgeRange.low;
+  var hedgeHigh = hedgeRange.high;
+  var hedgeLen = Math.abs(hedgeHigh - hedgeLow);
+  
+  // Intersection: overlap between [priceDelta85, priceDelta50] and [hedgeLow, hedgeHigh]
+  var overlapLow = Math.max(priceDelta85, hedgeLow);
+  var overlapHigh = Math.min(priceDelta50, hedgeHigh);
+  var overlapLen = Math.max(0, overlapHigh - overlapLow);
+  
+  // Coverage: intersection / hedge range length
+  var coverage = hedgeLen > 0 ? overlapLen / hedgeLen : 0;
+  
+  // Accuracy: intersection / working window length
+  var accuracy = windowLen > 0 ? overlapLen / windowLen : 0;
+  
+  // Sum of delta changes only for rows that fall within the intersection
+  var sumDeltaDD = 0;
+  for (var i = 1; i < filtered.length; i++) {
+    if (filtered[i].price >= overlapLow && filtered[i].price <= overlapHigh) {
+      sumDeltaDD += filtered[i-1].delta - filtered[i].delta;
+    }
+  }
+  
+  // Find max gamma
+  var maxGammaIdx=-1, maxGamma=-1;
+  filtered.forEach(function(r, idx){
+    if(r.gamma > maxGamma) { maxGamma=r.gamma; maxGammaIdx=idx; }
+  });
+  
+  var html='<div style="display:flex;gap:24px;align-items:flex-start">';
+  html+='<div style="max-height:380px;overflow-y:auto;border:1px solid var(--border);border-radius:6px"><table style="width:540px;border-collapse:collapse;font-size:13px;font-weight:600"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0">';
+  html+='<th style="text-align:left;padding:4px 6px;font-size:13px">Цена</th><th style="padding:4px 6px;text-align:right;font-size:13px">Δ</th><th style="padding:4px 6px;text-align:right;font-size:13px">Γ</th><th style="padding:4px 6px;text-align:right;font-size:13px">PnL</th><th style="padding:4px 6px;text-align:right;font-size:13px">Вн.стоимость</th><th style="padding:4px 6px;text-align:right;font-size:13px">Врем.стоимость</th></tr></thead><tbody>';
+  filtered.forEach(function(r, idx){
+    var pnl = r.bs_price - data.entry_premium;
+    var pnlCls = pnl >= 0 ? 'color:var(--green)' : 'color:var(--red)';
+    
+    var rowBg = '';
+    // Highlight max gamma
+    if(idx===maxGammaIdx) rowBg='background:rgba(88,166,255,0.15);';
+    // Highlight in hedge range
+    if(r.price >= hedgeLow && r.price <= hedgeHigh) {
+      rowBg += 'background:rgba(63,185,80,0.15);';
+    }
+    
+    var intrinsic = Math.max(0, data.strike - r.price);
+    var timeValue = r.bs_price - intrinsic;
+    var tvCls = timeValue >= 0 ? 'color:var(--green)' : 'color:var(--red)';
+    var intrinsicCls = intrinsic > 0 ? 'color:var(--green)' : 'color:var(--text-dim)';
+    
+    html+='<tr style="text-align:left;height:28px;'+rowBg+'">';
+    html+='<td style="padding:2px 4px;font-weight:bold">$'+r.price+'</td>';
+    html+='<td style="padding:2px 4px;text-align:right">'+F(r.delta,4)+'</td>';
+    html+='<td style="padding:2px 4px;text-align:right">'+F(r.gamma,6)+'</td>';
+    html+='<td style="padding:2px 4px;text-align:right;'+pnlCls+'">'+F(pnl,2)+'</td>';
+    html+='<td style="padding:2px 4px;text-align:right;'+intrinsicCls+'">'+F(intrinsic,2)+'</td>';
+    html+='<td style="padding:2px 4px;text-align:right;'+tvCls+'">'+F(timeValue,2)+'</td>';
+    html+='</tr>';
+  });
+  html+='</tbody></table></div>';
+  html+='<div style="padding:16px 24px;background:var(--surface);border-radius:10px;border:1px solid var(--border);font-size:18px;white-space:nowrap">';
+  html+='<div style="margin-bottom:4px"><span style="color:var(--text-dim);font-weight:600">Покрытие:</span> <b style="color:var(--blue)">'+(coverage*100).toFixed(0)+'%</b></div>';
+  html+='<div style="margin-bottom:4px"><span style="color:var(--text-dim);font-weight:600">Точность покрытия:</span> <b style="color:var(--purple)">'+(accuracy*100).toFixed(0)+'%</b></div>';
+  html+='<div><span style="color:var(--text-dim);font-weight:600">ΣΔΔ пересечение:</span> <b style="color:var(--green)">'+F(sumDeltaDD,4)+'</b></div>';
+  html+='</div>';
+  html+='<div style="width:620px;flex-shrink:0"><div style="font-size:14px;font-weight:bold;margin-bottom:6px;color:var(--text-dim)">Профиль Γ</div><div style="border:1px solid var(--border);border-radius:6px;padding:8px;background:var(--surface)"><canvas id="gammaChart-'+(data.symbol.replace(/[^a-zA-Z0-9]/g,'_'))+'" width="580" height="380"></canvas></div></div>';
+  html+='</div>';
+  
+  el.innerHTML=html;
+  
+  // Draw gamma chart
+  var chartId='gammaChart-'+data.symbol.replace(/[^a-zA-Z0-9]/g,'_');
+  setTimeout(function(){
+    drawGammaChart(data.rows, filtered, data.strike, hedgeLow, hedgeHigh, chartId);
+    var c=document.getElementById(chartId);
+    if(c) console.log('gammaChart drawn:', chartId, c.width, 'x', c.height);
+  }, 50);
+}
+
+
+
+
+
+
+
 
 // === Global Available Options Table ===
 function renderGlobalLayer(data){
@@ -974,7 +1555,7 @@ function applyFilters(layer){
   if(inputs[3]) p.dte_max=inputs[3].value;
   var qs=Object.keys(p).length?"?"+Object.entries(p).map(function(e){return e[0]+"="+e[1]}).join("&"):"";
   layerFilterParams[layer]=qs;
-  api("/api/layer/"+layer+qs).then(function(data){renderLayer(data);renderSelectedLayer(layer);});
+  api("/api/layer/"+layer+qs).then(function(data){renderLayer(data);});
 }
 
 function resetFilters(layer){
@@ -988,14 +1569,14 @@ function resetFilters(layer){
   if(inputs[3]) inputs[3].value=defs.dte_max;
   var qs="?delta_min="+defs.delta_min+"&delta_max="+defs.delta_max+"&dte_min="+defs.dte_min+"&dte_max="+defs.dte_max;
   layerFilterParams[layer]=qs;
-  api("/api/layer/"+layer+qs).then(function(data){renderLayer(data);renderSelectedLayer(layer);});
+  api("/api/layer/"+layer+qs).then(function(data){renderLayer(data);});
 }
 
 function refreshLayers(layer){
   var params=layerFilterParams[layer]?"?"+layerFilterParams[layer]:"";
   if(params&&!params.includes("refresh=1")) params+="&refresh=1";
   if(!params) params="?refresh=1";
-  api("/api/layer/"+layer+params).then(function(data){renderLayer(data);renderSelectedLayer(layer);});
+  api("/api/layer/"+layer+params).then(function(data){renderLayer(data);});
 }
 
 // === Load all ===
@@ -1079,9 +1660,7 @@ function loadAll(){
       renderLayer(results[6]);
       renderLayer(results[7]);
       renderLayer(results[8]);
-      renderSelectedLayer('distant');
-      renderSelectedLayer('mid');
-      renderSelectedLayer('near');
+
       // Build global purchased symbols lookup
       globalPurchasedSymbols={};
       (purchasedOptions.distant||[]).forEach(function(x){globalPurchasedSymbols[x.symbol]=x.qty;});

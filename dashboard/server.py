@@ -54,7 +54,7 @@ _LADDER_UP = round(_TARGET_DD / 100, 2)   # 0.20
 LAYER_DEFAULTS = {
     "distant": {"delta_min": 0.05, "delta_max": 0.20, "dte_min": 25, "dte_max": 99999, "label": "Дальний слой (Anchor / Tail Risk)"},
     "mid": {"delta_min": 0.20, "delta_max": 0.40, "dte_min": 10, "dte_max": 25, "label": "Средний слой (Adaptation)"},
-    "near": {"delta_min": 0.25, "delta_max": 0.50, "dte_min": 3, "dte_max": 99, "label": "Ближний слой (Active / Hedging)"},
+    "near": {"delta_min": 0.25, "delta_max": 0.45, "dte_min": 5, "dte_max": 25, "label": "Ближний слой (Active / Hedging)"},
 }
 
 def _check_layer_match(d: float, dt: int) -> bool:
@@ -1068,6 +1068,59 @@ def api_spot() -> dict:
     if row and row[0]:
         return {"spot": float(row[0]["spot_price"]), "ts": row[0]["timestamp"]}
     return {"spot": 0, "ts": None}
+
+
+def _get_hedge_range(layer, spot):
+    hedges = {"near": (3, 10), "mid": (8, 15), "distant": (15, 30)}
+    h = hedges.get(layer, (5, 20))
+    min_pct, max_pct = h
+    low_strike = int(spot * (1 - max_pct / 100))
+    high_strike = int(spot * (1 - min_pct / 100))
+    return {"low": low_strike, "high": high_strike, "min_pct": min_pct, "max_pct": max_pct}
+
+@app.get("/api/bs-greeks")
+def api_bs_greeks(symbol: str = None, strike: float = None, dte: float = None, iv: float = None, spot: float = None, premium: float = None, layer: str = None) -> dict:
+    """BS греки для Put-опциона (от текущей спот вниз до |delta| >= 0.85)."""
+    if spot is None or strike is None or dte is None or iv is None:
+        return {"error": "missing params"}
+    
+    # Import real BS calculator
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+    from black_scholes import put as bs_put
+    
+    rows = []
+    
+    for price in range(int(math.ceil(spot)), 0, -1):
+        T = max(dte / 365.0, 1.0 / 365.0)
+        sigma = iv  # IV уже в десятичном формате (0.76 = 76%)
+        
+        g = bs_put(price, strike, T, sigma)
+        
+        drop_pct = round((price - spot) / spot * 100, 2)
+        rows.append({
+            "price": price,
+            "bs_price": round(g.price, 4),
+            "delta": round(g.delta, 4),
+            "gamma": round(g.gamma, 6),
+            "theta": round(g.theta, 4),
+            "vega": round(g.vega, 4),
+            "drop_pct": drop_pct,
+        })
+        
+        # Stop when |delta| >= 0.85
+        if abs(g.delta) >= 0.85:
+            break
+    
+    return {
+        "symbol": symbol or "SOL-PUT-UNKNOWN",
+        "strike": strike,
+        "spot": spot,
+        "dte": dte,
+        "iv": iv,
+        "entry_premium": premium or 0,
+        "rows": rows,
+        "hedge_range": _get_hedge_range(layer, spot),
+    }
 
 
 # ==========================================
