@@ -4,9 +4,17 @@ const API="http://localhost:8083";
 document.querySelectorAll(".tab").forEach(function(t){
   t.addEventListener("click",function(){
     document.querySelectorAll(".tab").forEach(function(x){x.classList.remove("active")});
-    document.querySelectorAll(".tab-content").forEach(function(x){x.classList.remove("active")});
+    document.querySelectorAll(".tab-content").forEach(function(x){x.style.display="none"; x.classList.remove("active")});
     t.classList.add("active");
-    document.getElementById("tab-"+t.dataset.tab).classList.add("active");
+    var tabEl=document.getElementById("tab-"+t.dataset.tab);
+    console.log('🔘 tab clicked:', t.dataset.tab, 'tabEl:', tabEl);
+    if(tabEl){
+      tabEl.classList.add("active");
+      tabEl.style.display="block";
+      tabEl.style.setProperty("display","block","important");
+      console.log('🔘 tabEl display set to block, computed:', window.getComputedStyle(tabEl).display);
+    }
+
   });
 });
 
@@ -153,6 +161,7 @@ function cancelEdit() {
 }
 
 window.__closeOption = function(optionId, symbol, pnl) {
+  console.log('🔘 __closeOption: id=' + optionId + ' type=' + typeof optionId + ' symbol=' + symbol);
   var pnlStr = pnl >= 0 ? ('+' + F(pnl)) : '-' + F(Math.abs(pnl));
   if (!confirm('Закрыть ' + symbol + '\n\nPnL: ' + pnlStr + '\n\nТекущая цена будет взята из Greeks.')) return;
   fetch(API+'/api/close-option', {
@@ -160,6 +169,7 @@ window.__closeOption = function(optionId, symbol, pnl) {
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({option_id: optionId, close_reason: 'manual'})
   }).then(function(r){ return r.json(); }).then(function(res) {
+    console.log('🔘 close-option response:', res);
     if (res.status === 'ok') {
       alert('✅ ' + res.message);
       loadAll();
@@ -509,6 +519,84 @@ function renderPositions(pos){
     }
     dropEl.innerHTML=rows;
   }
+}
+
+// === TAB 1: PORTFOLIO ===
+function loadPortfolio(){
+  console.log('📡 loadPortfolio called');
+  fetch(API+"/api/portf")
+    .then(function(r){return r.json();})
+    .then(function(d){
+      console.log('📡 loadPortfolio got data:', d);
+      renderPortfolio(d);
+    })
+    .catch(function(e){console.error('📡 loadPortfolio error:', e);});
+}
+
+// === Портфель: ручной ввод текущей цены ===
+window._portfManualPrices = {};
+
+window.__editPortfPrice = function(token){
+  var td = event.target;
+  var val = td.textContent.replace(/[^0-9.]/g,'');
+  var oldPrice = parseFloat(val) || 0;
+  var manual = window._portfManualPrices[token] || oldPrice;
+  td.innerHTML='<input type="number" step="0.01" min="0" value="'+F(manual,2)+'" style="width:70px;background:var(--bg);border:1px solid var(--blue);color:var(--text);padding:1px 4px;border-radius:3px;text-align:right" onblur="window.__savePortfPrice(\''+token+'\',this)" onkeydown="if(event.key===\'Enter\')this.blur();if(event.key===\'Escape\'){this.value=\''+F(oldPrice,2)+'\';this.blur()}" autofocus>';
+  td.querySelector('input').focus();
+  td.querySelector('input').select();
+};
+
+window.__savePortfPrice = function(token, input){
+  var newPrice = parseFloat(input.value);
+  if(isNaN(newPrice) || newPrice <= 0) return;
+  window._portfManualPrices[token] = newPrice;
+  loadPortfolio();
+};
+
+function renderPortfolio(data){
+  console.log('>>> renderPortfolio', data);
+  var portT=document.getElementById("portTable");
+  console.log('>>> portT', portT);
+  if(!portT){ console.error('portTable NOT FOUND'); return; }
+  if(!data || !data.positions || data.positions.length===0){
+    portT.innerHTML='<tr><td colspan="8" style="color:red">Нет данных</td></tr>';
+    console.log('>>> no data');
+    return;
+  }
+  var rows="";
+  var totalInvest=0,totalCap=0,totalDiff=0;
+  data.positions.forEach(function(p){
+    // Используем ручную цену если задана
+    var current = window._portfManualPrices[p.token] || p.current_price;
+    var invest = p.avg_price * p.qty;
+    var cap = current * p.qty;
+    var diff = cap - invest;
+    var yield_ = invest > 0 ? (diff / invest * 100) : 0;
+    var yieldColor = yield_ >= 0 ? 'green' : 'red';
+    var diffColor = diff >= 0 ? 'green' : 'red';
+    var isManual = window._portfManualPrices.hasOwnProperty(p.token);
+    var currentStyle = isManual ? 'border-bottom:1px dashed var(--blue);cursor:pointer' : 'cursor:pointer';
+    var currentTitle = isManual ? '📝 Ручная цена. Клик: изменить' : 'Клик: изменить';
+    rows+='<tr><td><b>'+p.token+'</b></td><td>'+F(p.qty,2)+'</td>';
+    rows+='<td>$'+F(p.avg_price)+'</td><td style="'+currentStyle+'" title="'+currentTitle+'" onclick="window.__editPortfPrice(\''+p.token+'\')">$'+F(current,2)+'</td>';
+    rows+='<td>$'+F(invest)+'</td><td>$'+F(cap)+'</td>';
+    rows+='<td style="color:'+diffColor+'">$'+F(diff)+'</td>';
+    rows+='<td style="color:'+yieldColor+'">'+P(yield_)+'</td></tr>';
+    totalInvest+=invest;
+    totalCap+=cap;
+    totalDiff+=diff;
+  });
+  var diffColor=totalDiff>=0?'green':'red';
+  rows+='<tr style="font-weight:bold;border-top:2px solid var(--border)"><td colspan="4">Итого</td>';
+  rows+='<td>$'+F(totalInvest)+'</td><td>$'+F(totalCap)+'</td>';
+  rows+='<td style="color:'+diffColor+'">$'+F(totalDiff)+'</td>';
+  var totalYield=totalInvest>0?(totalDiff/totalInvest*100):0;
+  rows+='<td style="color:'+diffColor+'">'+P(totalYield)+'</td></tr>';
+  console.log('>>> setting innerHTML, length:', rows.length);
+  portT.innerHTML=rows;
+  // Force reflow for hidden tab
+  void portT.offsetHeight;
+  console.log('>>> DONE, innerHTML:', portT.innerHTML.substring(0,100));
 }
 
 // === TAB 2: OPTIONS ===
@@ -1697,6 +1785,7 @@ function loadAll(){
     window._lastOptionsData = results[1] || {};
     updateDataSourceBadge(results[1] ? results[1].data_source : null);
     renderPositions(results[0]);
+    loadPortfolio();
     renderOptions(results[1], results[0]);
     renderRecommendations(results[2]);
     renderSummary(results[3], results[1]);

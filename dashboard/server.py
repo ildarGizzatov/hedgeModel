@@ -460,8 +460,7 @@ async def api_close_option(request: Request) -> dict:
 
             # Берём текущую цену из greeks
             all_greeks, _ = _get_live_greeks()
-            greeks_idx = {g["option_symbol"]: g for g in all_greeks}
-            greek = greeks_idx.get(row["symbol"], {})
+            greek = all_greeks.get(row["symbol"], {})
             current_price = float(greek.get("current_price") or row["entry_price"])
             qty = int(row["qty"])
             entry_price = float(row["entry_price"] or 0)
