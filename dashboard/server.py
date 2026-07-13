@@ -28,15 +28,75 @@ PROJECT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_DIR))
 
 from src.db import (
-    get_all_open_options, get_all_latest_greeks,
+    get_all_open_options,
     get_buy_history, get_closed_positions, table_stats,
     get_pending_recommendations, execute_query,
     get_latest_chain_snapshot, get_option_by_id, update_option,
     add_option, record_greeks, get_portfolio_position, sell,
     get_all_portfolio_symbols, get_portfolio_all,
 )
-from src.bybit_api import fetch_spot_price
+from src.bybit_api import fetch_spot_price, fetch_option_chain
 import time
+
+# --- Кэширование Greeks из Bybit API ---
+_greeks_cache = {"data": None, "ts": 0, "bybit_ok": True}
+_GREKS_TTL = 30  # секунд
+
+def _get_live_greeks() -> tuple[dict, bool]:
+    """Загружает Greeks из Bybit API с кэшированием.
+    Возвращает (greeks_dict, is_fresh).
+    greeks_dict: {symbol: {current_price, delta, gamma, theta, iv, dte}}
+    """
+    now = time.time()
+    if _greeks_cache["data"] and (now - _greeks_cache["ts"]) < _GREKS_TTL:
+        return _greeks_cache["data"], _greeks_cache["bybit_ok"]
+
+    greeks_idx = {}
+    bybit_ok = True
+    try:
+        chain = fetch_option_chain("SOL")
+        spot = None
+        for o in chain:
+            sym = o.get("symbol", "")
+            mark = o.get("markPrice")
+            if mark is None:
+                continue
+            mark_f = float(mark)
+            d = o.get("delta")
+            g = o.get("gamma")
+            t = o.get("theta")
+            iv = o.get("markIv")
+            greeks_idx[sym] = {
+                "current_price": mark_f,
+                "delta": float(d) if d else 0,
+                "gamma": float(g) if g else 0,
+                "theta": float(t) if t else 0,
+                "iv": float(iv) if iv else 0,
+            }
+            # spot — последний underlyingPrice из чейна
+            if o.get("underlyingPrice"):
+                spot = float(o["underlyingPrice"])
+        if not greeks_idx:
+            bybit_ok = False
+    except Exception as e:
+        bybit_ok = False
+        print(f"⚠️ Bybit API error (greeks): {e}", file=sys.stderr)
+
+    _greeks_cache["data"] = greeks_idx
+    _greeks_cache["ts"] = now
+    _greeks_cache["bybit_ok"] = bybit_ok
+    return greeks_idx, bybit_ok
+
+
+def _get_greeks_status() -> str:
+    """Статус источника данных: live / stale / offline."""
+    now = time.time()
+    if _greeks_cache["ts"] == 0:
+        return "offline"
+    age = now - _greeks_cache["ts"]
+    if age < _GREKS_TTL:
+        return "live" if _greeks_cache["bybit_ok"] else "offline"
+    return "stale"
 
 # Cache Bybit spot price for 5 seconds to avoid rate limits
 _spot_cache = {"price": 0, "ts": 0}
@@ -399,7 +459,7 @@ async def api_close_option(request: Request) -> dict:
                 return {"status": "error", "output": "Опцион уже закрыт"}
 
             # Берём текущую цену из greeks
-            all_greeks = get_all_latest_greeks()
+            all_greeks, _ = _get_live_greeks()
             greeks_idx = {g["option_symbol"]: g for g in all_greeks}
             greek = greeks_idx.get(row["symbol"], {})
             current_price = float(greek.get("current_price") or row["entry_price"])
@@ -659,8 +719,9 @@ def api_other_positions() -> dict[str, Any]:
 def api_purchased_options() -> dict[str, Any]:
     """Купленные опционы сгруппированные по слоям."""
     open_opts = get_all_open_options()
-    latest_greeks = get_all_latest_greeks()
-    greeks_idx = {g["option_symbol"]: g for g in latest_greeks}
+    latest_greeks, _ = _get_live_greeks()
+    # latest_greeks уже dict {symbol: {...}} из Bybit
+    greeks_idx = latest_greeks
 
     by_layer = {"distant": [], "mid": [], "near": []}
 
@@ -712,15 +773,19 @@ def api_purchased_options() -> dict[str, Any]:
                 "pnl": round((current_price - entry_price) * qty, 2),
             })
 
-    return {"distant": by_layer["distant"], "mid": by_layer["mid"], "near": by_layer["near"]}
+    return {
+        "distant": by_layer["distant"], "mid": by_layer["mid"], "near": by_layer["near"],
+        "data_source": _get_greeks_status(),
+    }
 
 
 @app.get("/api/options")
 def api_options() -> dict[str, Any]:
     """Опционные позиции с Greeks и метриками."""
     open_opts = get_all_open_options()
-    latest_greeks = get_all_latest_greeks()
-    greeks_idx = {g["option_symbol"]: g for g in latest_greeks}
+    latest_greeks, _ = _get_live_greeks()
+    # latest_greeks уже dict {symbol: {...}} из Bybit
+    greeks_idx = latest_greeks
 
     options = []
     total_opt_cost = 0.0
@@ -809,6 +874,7 @@ def api_options() -> dict[str, Any]:
             "net_theta": round(sum(o["theta"] * o["qty"] for o in options), 4),
             "net_vega": round(sum(o["vega"] * o["qty"] for o in options), 4),
         },
+        "data_source": _get_greeks_status(),
         "updated": date.today().strftime("%Y-%m-%d"),
     }
 
@@ -839,7 +905,7 @@ def api_layers() -> dict:
 
     # Факт по слоям из БД
     open_opts = get_all_open_options()
-    latest_greeks = {g["option_symbol"]: g for g in get_all_latest_greeks()}
+    latest_greeks = {g: d for g, d in _get_live_greeks()[0].items()}
 
     spent = {}
     opts_by_layer = {}
@@ -887,6 +953,7 @@ def api_layers() -> dict:
         "position_size": round(position_size, 2),
         "total_budget": round(total_budget, 2),
         "free_budget": round(total_budget - total_spent, 2),
+        "data_source": _get_greeks_status(),
         "updated": date.today().strftime("%Y-%m-%d"),
     }
 
@@ -941,7 +1008,7 @@ def api_recommendations() -> dict[str, Any]:
 
     # --- Рекомендации от monitor_options логики ---
     open_opts = get_all_open_options()
-    latest_greeks = {g["option_symbol"]: g for g in get_all_latest_greeks()}
+    latest_greeks = {g: d for g, d in _get_live_greeks()[0].items()}
 
     for opt in open_opts:
         symbol = opt["symbol"].strip()
@@ -1004,6 +1071,7 @@ def api_recommendations() -> dict[str, Any]:
     return {
         "anchor": recommendations,
         "suggestions": suggestions,
+        "data_source": _get_greeks_status(),
         "updated": date.today().strftime("%Y-%m-%d"),
     }
 
@@ -1068,6 +1136,7 @@ def api_summary() -> dict[str, Any]:
             "monthly_theta_estimate": round(daily_theta * 30, 4),
             "note": f"Theta: ${daily_theta:.2f}/день (≈ ${daily_theta*30:.2f}/месяц)",
         },
+        "data_source": _get_greeks_status(),
         "updated": date.today().strftime("%Y-%m-%d"),
     }
 
@@ -1117,8 +1186,9 @@ def api_combined_ladder(request: Request, min_price: int = None, max_price: int 
             dte = calc_dte(expiry)
             T_years = max(dte / 365.0, 1 / 365.0)
 
-            latest_greeks = get_all_latest_greeks()
-            greeks_idx = {g["option_symbol"]: g for g in latest_greeks}
+            latest_greeks, _ = _get_live_greeks()
+            # latest_greeks уже dict {symbol: {...}} из Bybit
+            greeks_idx = latest_greeks
             greek = greeks_idx.get(opt["symbol"], {})
             iv = float(greek.get("iv") or 0)
 
@@ -1146,7 +1216,7 @@ def api_combined_ladder(request: Request, min_price: int = None, max_price: int 
             "is_avg": price == round(avg_price),
         })
 
-    return {"ladder": ladder, "updated": date.today().strftime("%Y-%m-%d")}
+    return {"ladder": ladder, "data_source": _get_greeks_status(), "updated": date.today().strftime("%Y-%m-%d")}
 
 
 # ==========================================
@@ -1181,8 +1251,9 @@ def api_black_scholes() -> dict[str, Any]:
     qty = int(opt["qty"])
     dte = calc_dte(expiry)
 
-    latest_greeks = get_all_latest_greeks()
-    greeks_idx = {g["option_symbol"]: g for g in latest_greeks}
+    latest_greeks, _ = _get_live_greeks()
+    # latest_greeks уже dict {symbol: {...}} из Bybit
+    greeks_idx = latest_greeks
     greek = greeks_idx.get(opt["symbol"], {})
 
     spot = float(greek.get("current_price") or 0)
@@ -1232,6 +1303,7 @@ def api_black_scholes() -> dict[str, Any]:
         "avg_entry": avg_entry,
         "strike": strike,
         "ladder": ladder,
+        "data_source": _get_greeks_status(),
     }
 
 
@@ -1300,6 +1372,7 @@ def api_bs_greeks(symbol: str = None, strike: float = None, dte: float = None, i
         "entry_premium": premium or 0,
         "rows": rows,
         "hedge_range": _get_hedge_range(layer, spot),
+        "data_source": _get_greeks_status(),
     }
 
 

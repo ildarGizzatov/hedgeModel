@@ -86,6 +86,8 @@ def execute_query(query: str, params: tuple = ()) -> list[dict]:
         cursor = conn.execute(query, params)
         rows = cursor.fetchall()
         return [dict(row) for row in rows]
+    except Exception:
+        return []  # при ошибке БД — пустой список (graceful degradation)
     finally:
         conn.close()
 

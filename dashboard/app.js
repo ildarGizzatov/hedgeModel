@@ -172,6 +172,7 @@ window.__closeOption = function(optionId, symbol, pnl) {
 var LAYER_CYCLE = ['anchor', 'adaptation', 'active'];
 var LAYER_LABELS = {anchor: 'ANCHOR', adaptation: 'ADAPT', active: 'ACTIVE'};
 var LAYER_COLORS = {anchor: 'var(--purple)', adaptation: 'var(--blue)', active: 'var(--yellow)'};
+var _data_source = 'live';
 
 window.__showBuyModal = function() {
   var modal = document.getElementById('buyModal');
@@ -336,6 +337,44 @@ function api(path){
   return fetch(API+path).then(function(r){return r.json();}).catch(function(e){return null;});
 }
 
+// === DATA SOURCE BADGE ===
+function updateDataSourceBadge(ds){
+  if(ds === undefined || ds === null) ds = 'live';
+  _data_source = ds;
+  var badge = document.getElementById('ds-badge');
+  if(!badge) return;
+  var label, cls;
+  if(ds==='live'){label='🟢 live';cls='ds-live';}
+  else if(ds==='stale'){label='🟡 stale';cls='ds-stale';}
+  else{label='🔴 offline';cls='ds-offline';}
+  badge.className=cls;
+  badge.textContent=label;
+  // Banner
+  var banner=document.getElementById('dataStatusBanner');
+  if(!banner) return;
+  if(ds==='offline'){
+    banner.style.display='block';
+    banner.style.background='rgba(248,81,73,.15)';
+    banner.style.border='1px solid var(--red)';
+    banner.style.borderRadius='6px';
+    banner.style.padding='8px 16px';
+    banner.style.fontSize='13px';
+    banner.style.color='var(--red)';
+    banner.innerHTML='⚠️ <b>Bybit недоступен</b> — показаны данные из кэша. Опционы могут не совпадать с реальностью.';
+  } else if(ds==='stale'){
+    banner.style.display='block';
+    banner.style.background='rgba(210,153,34,.15)';
+    banner.style.border='1px solid var(--yellow)';
+    banner.style.borderRadius='6px';
+    banner.style.padding='8px 16px';
+    banner.style.fontSize='13px';
+    banner.style.color='var(--yellow)';
+    banner.innerHTML='⚠️ Данные обновляются с задержкой.';
+  } else {
+    banner.style.display='none';
+  }
+}
+
 // === OPTION BOARD ===
 function loadOptionBoard(){
   fetch(API+"/api/available-options")
@@ -420,7 +459,7 @@ function renderPositions(pos){
   pos.positions.forEach(function(p){
     var pc2=clr(p.pnl);
     var z=p.avg_price>p.current_price?'<span style="color:var(--red)">Просадка</span>':'<span style="color:var(--green)">Прибыль</span>';
-    rows+='<tr><td><b>'+p.symbol+'</b></td><td>'+F(p.qty,2)+'</td><td>$'+F(p.avg_price)+'</td><td>$'+F(p.current_price)+'</td><td class="'+pc2+'">'+U(p.pnl)+'</td><td class="'+pc2+'">'+P(p.pnl_pct)+'</td><td>'+z+'</td></tr>';
+    rows+='<tr style="font-size:15px"><td><b>'+p.symbol+'</b></td><td>'+F(p.qty,2)+'</td><td>$'+F(p.avg_price)+'</td><td>$'+F(p.current_price)+'</td><td class="'+pc2+'">'+U(p.pnl)+'</td><td class="'+pc2+'">'+P(p.pnl_pct)+'</td><td>'+z+'</td></tr>';
   });
   posT.innerHTML=rows;
 
@@ -446,19 +485,24 @@ function renderPositions(pos){
   if(dropEl && pos.positions.length>0){
     var p=pos.positions[0];
     var current=p.current_price;
-    var low20=Math.round(current*0.80);
+    var low25=Math.round(current*0.75);
     var rows="";
-    for(var price=low20;price<=current;price++){
+    for(var price=low25;price<=current;price++){
       var dPnl=(price-p.avg_price)*p.qty;
       var dPnlPct=((price-p.avg_price)/p.avg_price*100);
       var dropPct=((price-current)/current*100);
       var cls=clr(dPnl);
       var icon="";
+      var rowBg="";
+      var absDrop=Math.abs(dropPct);
+      if(absDrop<=10){rowBg='background:rgba(210,153,34,.15)';}  // жёлтый
+      else if(absDrop<=20){rowBg='background:rgba(30,80,220,.15)';}  // синий
+      else{rowBg='background:rgba(46,204,113,.15)';}  // зелёный
       if(price===Math.round(current)) icon=" 🔵";
       else if(price===Math.round(p.avg_price)) icon=" 📍";
       else if(dPnl>=0) icon=" 🟢";
       else icon=" 🔴";
-      rows+='<tr><td class="'+cls+'">$'+price+icon+'</td>';
+      rows+='<tr style="'+rowBg+'"><td class="'+cls+'">$'+price+icon+'</td>';
       rows+='<td class="'+cls+'">'+U(dPnl)+'</td>';
       rows+='<td class="'+cls+'">'+P(dPnlPct)+'</td>';
       rows+='<td class="'+cls+'">'+P(dropPct)+'</td></tr>';
@@ -1588,6 +1632,11 @@ function showDataStatus(){
     layerData_mid,
     layerData_near
   ];
+  // Also check main options endpoint
+  if(window._lastOptionsData && window._lastOptionsData.data_source){
+    var src = window._lastOptionsData.data_source;
+    if(src !== "live") { worstSource = src; worstAge = 0; }
+  }
   var worstSource = "live";
   var worstAge = -1;
   for(var i=0; i<sources.length; i++){
@@ -1644,6 +1693,9 @@ function loadAll(){
     api("/api/layer/near"+nearQ)
   ]).then(function(results){
     combinedLadder=results[5]||{ladder:[]};
+    // Store options data for status check
+    window._lastOptionsData = results[1] || {};
+    updateDataSourceBadge(results[1] ? results[1].data_source : null);
     renderPositions(results[0]);
     renderOptions(results[1], results[0]);
     renderRecommendations(results[2]);

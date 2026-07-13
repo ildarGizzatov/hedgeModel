@@ -42,12 +42,17 @@ tr:hover td{background:rgba(88,166,255,.05)}
 .rec-item{display:flex;gap:12px;padding:12px;border-left:3px solid var(--border);margin-bottom:8px;border-radius:0 6px 6px 0;background:rgba(255,255,255,.02)}
 .rec-item.action-close{border-left-color:var(--red)}.rec-item.action-roll{border-left-color:var(--yellow)}.rec-item.action-hold{border-left-color:var(--green)}
 .chart-box{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:16px;margin-bottom:16px;height:260px;position:relative}
-.refresh-bar{font-size:12px;color:var(--text-dim);margin-bottom:12px}
+.refresh-bar{font-size:12px;color:var(--text-dim);margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.ds-live{color:#2ecc71;font-weight:600}
+.ds-stale{color:#f39c12;font-weight:600}
+.ds-offline{color:#e74c3c;font-weight:600}
+.data-status-banner{display:none;background:rgba(248,81,73,.15);border:1px solid var(--red);border-radius:6px;padding:8px 16px;margin-bottom:12px;font-size:13px;color:var(--red)}
 .countdown{color:var(--blue);font-weight:600}
 .progress-bar{height:6px;background:var(--border);border-radius:3px;overflow:hidden}
 .progress-fill{height:100%;border-radius:3px;transition:width .2s}
 .layer-anchor{color:var(--purple)}.layer-adaptation{color:var(--blue)}.layer-active{color:var(--yellow)}
 .ladder-wrap::-webkit-scrollbar{width:6px}
+#posDrop td{padding:3px 8px!important}
 .ladder-wrap::-webkit-scrollbar-track{background:var(--bg)}
 .ladder-wrap::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
 .ladder-wrap::-webkit-scrollbar-thumb:hover{background:var(--text-dim)}
@@ -67,16 +72,10 @@ tr:hover td{background:rgba(88,166,255,.05)}
 </style>
 </head>
 <body>
-<div class="header"><h1>HedgeModel Dashboard</h1><div style="display:flex;align-items:center;gap:12px"><span id="headerSpot" style="color:var(--blue);font-weight:600"></span><button class="btn-action" onclick="loadAll()">🔄 Обновить</button><div id="headerUpdated" style="color:var(--text-dim);font-size:12px">Загрузка...</div></div></div>
-<div id="dataStatusBanner" class="data-status-banner" style="display:none"></div>
-<div class="tabs" style="padding:0 24px">
-<div class="tab active" data-tab="positions">Позиции</div>
-<div class="tab" data-tab="options">Опционы</div>
-<div class="tab" data-tab="distant">Дальний</div>
-<div class="tab" data-tab="mid">Средний</div>
-<div class="tab" data-tab="near">Ближний</div>
-<div class="tab" data-tab="recommendations">Рекомендации</div>
-<div class="tab" data-tab="summary">Сводка</div>
+<div class="header"><h1>HedgeModel Dashboard</h1><div style="display:flex;align-items:center;gap:12px"><span id="headerSpot" style="color:var(--blue);font-weight:600"></span><button class="btn-action" onclick="loadAll()">🔄 Обновить</button><span id="ds-badge" class="ds-live" style="font-size:12px">🟢 live</span><div id="headerUpdated" style="color:var(--text-dim);font-size:12px">Загрузка...</div></div></div>
+<div id="dataStatusBanner" style="display:none"></div>
+<div class="tabs" style="padding:0 24px;display:flex;align-items:center;justify-content:space-between">
+<div style="display:flex;gap:0"><div class="tab active" data-tab="positions">Позиции</div><div class="tab" data-tab="options">Опционы</div><div class="tab" data-tab="distant">Дальний</div><div class="tab" data-tab="mid">Средний</div><div class="tab" data-tab="near">Ближний</div><div class="tab" data-tab="recommendations">Рекомендации</div><div class="tab" data-tab="summary">Сводка</div></div>
 </div>
 <div style="padding:20px 24px">
 <div class="tab-content active" id="tab-positions">
@@ -86,7 +85,7 @@ tr:hover td{background:rgba(88,166,255,.05)}
 <table><thead><tr><th>Символ</th><th>Кол-во</th><th>Avg Price</th><th>Current</th><th>PnL</th><th>PnL%</th><th>Зона</th></tr></thead>
 <tbody id="posTable"></tbody></table></div>
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-<div class="card"><h2>🔴 Просадка −20% от текущей (шаг $1)</h2>
+<div class="card" style="max-height:550px;overflow-y:auto"><h2>🔴 Просадка −25% от текущей (шаг $1)</h2>
 <table><thead><tr><th>Цена</th><th>PnL</th><th>PnL%</th><th>Просадка</th></tr></thead>
 <tbody id="posDrop"></tbody></table></div>
 <div class="card"><h2>История покупок</h2>
@@ -180,7 +179,7 @@ tr:hover td{background:rgba(88,166,255,.05)}
 <div id="dynamicOptionContent" style="min-width:1300px"></div>
 </div>
 <div class="tab-content" id="tab-recommendations">
-<div class="refresh-bar" id="refresh3"><span id="cd3"></span><button class="btn-action" onclick="runAnchor()">🎯 Anchor Layer</button></div>
+<div class="refresh-bar" id="refresh3"><span id="cd3"></span></div>
 <div class="card"><h2>Anchor Layer (T006)</h2><div id="anchorInfo"></div></div>
 <div class="card"><h2>Рекомендации</h2><div id="recList"></div></div>
 <div class="card"><h2>Опционные позиции</h2>
