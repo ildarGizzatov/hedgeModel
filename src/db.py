@@ -32,16 +32,50 @@ def get_connection(db_path: Optional[str] = None) -> sqlite3.Connection:
 
 
 def init_db(db_path: Optional[str] = None) -> sqlite3.Connection:
-    """Инициализация БД: создание таблиц из schema.sql."""
+    """Инициализация БД: создание таблиц из schema.sql + миграции."""
     conn = get_connection(db_path)
     if SCHEMA_PATH.exists():
         conn.executescript(SCHEMA_PATH.read_text())
-        tables = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        ).fetchall()
-        print(f"✅ БД инициализирована ({len(tables)} таблиц)")
-    else:
-        raise FileNotFoundError(f"Схема не найдена: {SCHEMA_PATH}")
+    migrate_db(conn)
+    tables = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'"
+    ).fetchall()
+    print(f"✅ БД инициализирована ({len(tables)} таблиц)")
+    conn.close()
+    return conn
+
+
+def migrate_db(conn: sqlite3.Connection) -> None:
+    """Миграции БД: добавление новых столбцов."""
+    tables = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'"
+    ).fetchall()
+    table_names = [t[0] for t in tables]
+    
+    # buy_history: добавить closed=1 если таблица есть
+    if "buy_history" in table_names:
+        cols = conn.execute("PRAGMA table_info(buy_history)").fetchall()
+        col_names = [c[1] for c in cols]
+        if "closed" not in col_names:
+            conn.execute("ALTER TABLE buy_history ADD COLUMN closed INTEGER NOT NULL DEFAULT 0")
+            print("  → Добавлен столбец buy_history.closed")
+        else:
+            # Установить все существующие строки как open=0
+            conn.execute("UPDATE buy_history SET closed=0 WHERE closed IS NULL")
+    
+    # Portf: создать если нет
+    if "Portf" not in table_names:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS Portf (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                token           TEXT NOT NULL,
+                qty             REAL NOT NULL,
+                avg_price       REAL NOT NULL,
+                notes           TEXT
+            )
+        """)
+        print("  → Создана таблица Portf")
+    
     return conn
 
 
@@ -68,56 +102,112 @@ def execute_write(query: str, params: tuple = ()) -> int:
 
 
 # ============================================================
-# POSITIONS (open positions CSV replacement)
+# POSITIONS — агрегация из buy_history
 # ============================================================
 
-def get_position(symbol: str = "SOL") -> Optional[dict]:
-    """Получить текущую позицию."""
+def get_portfolio_position(symbol: str = "SOL") -> Optional[dict]:
+    """Получить текущую позицию, агрегированную из buy_history (только open записи)."""
     rows = execute_query(
-        "SELECT * FROM positions WHERE symbol=? ORDER BY updated DESC LIMIT 1",
+        "SELECT * FROM buy_history WHERE symbol=? AND closed=0 ORDER BY buy_date DESC",
         (symbol,)
     )
-    return rows[0] if rows else None
+    if not rows:
+        return None
+    total_qty = sum(float(r["qty"]) for r in rows)
+    total_cost = sum(float(r["total"]) for r in rows)
+    if total_qty <= 0:
+        return None
+    return {
+        "symbol": symbol,
+        "qty": total_qty,
+        "avg_price": round(total_cost / total_qty, 4),
+        "total_cost": round(total_cost, 2),
+    }
 
 
-def upsert_position(symbol: str, qty: float, avg_price: float,
-                    total_cost: float, current_price: float = None,
-                    total_value: float = None, pnl: float = None,
-                    updated: Optional[str] = None) -> int:
-    """Добавить или обновить позицию SOL."""
-    updated = updated or date.today().isoformat()
-    if total_value is None and current_price is not None:
-        total_value = round(qty * current_price, 2)
-    if pnl is None and current_price is not None:
-        pnl = round((current_price - avg_price) * qty, 2)
-
+def sell(symbol: str, qty: float, price: float, notes: str = "") -> Optional[dict]:
+    """Продать часть/всю позицию. Записывает отрицательный qty в buy_history."""
+    if qty <= 0:
+        return None
+    
+    existing = get_portfolio_position(symbol)
+    if not existing:
+        return None
+    
+    if qty > existing["qty"]:
+        print(f"  ⚠️ Продажа {qty} > текущая позиция {existing['qty']}")
+        return None
+    
+    total = round(qty * price, 2)
     conn = get_connection()
     conn.execute(
-        "INSERT INTO positions (symbol, qty, avg_price, total_cost, current_price, "
-        "total_value, pnl, updated) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (symbol, qty, avg_price, total_cost, current_price, total_value, pnl, updated)
+        "INSERT INTO buy_history (buy_date, qty, price, total, symbol, notes, closed) "
+        "VALUES (?, ?, ?, ?, ?, ?, 0)",
+        (date.today().isoformat(), -qty, price, -total, symbol, notes or "продажа")
     )
+    
+    # Если позиция закрыта полностью — пометить все записи closed=1
+    new_qty = existing["qty"] - qty
+    if new_qty <= 0:
+        conn.execute(
+            "UPDATE buy_history SET closed=1 WHERE symbol=? AND closed=0",
+            (symbol,)
+        )
+    
     conn.commit()
     conn.close()
-    return 1
+    return get_portfolio_position(symbol)  # Вернуть новую позицию
 
 
-def update_position_prices(symbol: str, spot_price: float) -> None:
-    """Обновить current_price, total_value, pnl для позиции SOL."""
-    pos = get_position(symbol)
-    if not pos:
-        return
-    qty = float(pos["qty"])
-    avg = float(pos["avg_price"])
-    current_value = round(qty * spot_price, 2)
-    pnl = round((spot_price - avg) * qty, 2)
-
-    conn = get_connection()
-    conn.execute(
-        "UPDATE positions SET current_price=?, total_value=?, pnl=?, updated=? "
-        "WHERE symbol=? ORDER BY updated DESC LIMIT 1",
-        (spot_price, current_value, pnl, date.today().isoformat(), symbol)
+def get_buy_history_all(symbol: str = "SOL") -> list[dict]:
+    """Получить все записи buy_history для символа (вкл. closed)."""
+    return execute_query(
+        "SELECT * FROM buy_history WHERE symbol=? ORDER BY buy_date DESC",
+        (symbol,)
     )
+
+
+def get_all_portfolio_symbols() -> list[str]:
+    """Получить все символы с открытыми позициями."""
+    rows = execute_query(
+        "SELECT DISTINCT symbol FROM buy_history WHERE closed=0 AND qty > 0 ORDER BY symbol"
+    )
+    return [r["symbol"] for r in rows]
+
+
+# ============================================================
+# PORTFOLIO (не-SOL активы из таблицы Portf)
+# ============================================================
+
+def get_portfolio_all() -> list[dict]:
+    """Получить все позиции из таблицы Portf."""
+    return execute_query(
+        "SELECT * FROM Portf ORDER BY token"
+    )
+
+
+def update_portfolio(token: str, qty: float, avg_price: float, notes: str = "") -> None:
+    """Добавить/обновить позицию в Portf."""
+    existing = execute_query("SELECT * FROM Portf WHERE token=?", (token,))
+    conn = get_connection()
+    if existing:
+        conn.execute(
+            "UPDATE Portf SET qty=?, avg_price=?, notes=? WHERE token=?",
+            (qty, avg_price, notes, token)
+        )
+    else:
+        conn.execute(
+            "INSERT INTO Portf (token, qty, avg_price, notes) VALUES (?, ?, ?, ?)",
+            (token, qty, avg_price, notes)
+        )
+    conn.commit()
+    conn.close()
+
+
+def delete_portfolio(token: str) -> None:
+    """Удалить позицию из Portf."""
+    conn = get_connection()
+    conn.execute("DELETE FROM Portf WHERE token=?", (token,))
     conn.commit()
     conn.close()
 
@@ -455,7 +545,7 @@ def get_closed_positions() -> list[dict]:
 def table_stats() -> dict:
     """Статистика по всем таблицам (кол-во строк)."""
     tables = [
-        "positions", "options", "option_chain_snapshot",
+        "options", "option_chain_snapshot",
         "option_greeks_history", "closed_positions",
         "buy_history", "recommendations"
     ]

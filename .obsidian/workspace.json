@@ -11,20 +11,14 @@
             "id": "bd9c837cb873cf31",
             "type": "leaf",
             "state": {
-              "type": "kanban",
+              "type": "markdown",
               "state": {
-                "file": "Kanban.md",
-                "kanbanViewState": {
-                  "kanban-plugin": "board",
-                  "list-collapse": [
-                    false,
-                    null,
-                    null
-                  ]
-                }
+                "file": "docs/204-active-layer-selection.md",
+                "mode": "source",
+                "source": false
               },
-              "icon": "lucide-trello",
-              "title": "Kanban"
+              "icon": "lucide-file",
+              "title": "204-active-layer-selection"
             }
           }
         ]
@@ -192,41 +186,40 @@
   },
   "active": "bd9c837cb873cf31",
   "lastOpenFiles": [
-    "hedge_model.db-wal",
-    "hedge_model.db-shm",
-    "dashboard/sedQtxV3S",
-    "dashboard/sedDG5LK4",
-    "dashboard/sedxvOmfR",
-    "dashboard/sed3SwG01",
-    "dashboard/sedFV4gOL",
-    "dashboard/sed3xwXpq",
-    "dashboard/sedRlzJDg",
-    "dashboard/sedOkspLQ",
-    "T009-active-layer-selection.md",
-    "docs/204-active-layer-selection.md",
     "docs/203-anchor-selection-algorithm.md",
+    "dashboard/sedRNWSqy",
+    "dashboard/sed5jMJK8",
+    "hedge_model.db-shm",
+    "hedge_model.db-wal",
+    "src/__pycache__/buy_sol.cpython-312.pyc",
+    "docs/201-selection-criteria.md",
+    "docs/101-anchor-layer.md",
+    "T001-conditions-closing.md",
+    "T004-monitor-open-options.md",
+    "docs/200-budget-allocation.md",
+    "tools/excel/lu2289024uda.tmp",
+    "docs/204-active-layer-selection.md",
+    "T009-active-layer-selection.md",
+    "Kanban.md",
+    "dashboard/sedCOTeft",
+    "dashboard/sedb75c06",
+    "dashboard/sedxNa5M6",
+    "dashboard/sedzWs3tm",
     "docs/210-active-layer-selection.md",
     "T006-anchor-selection.md",
     "T003-roll-economics.md",
     "2026-06-30.md",
     "docs/103-active-layer.md",
     "docs/102-adaptation-layer.md",
-    "docs/101-anchor-layer.md",
-    "docs/201-selection-criteria.md",
     "2026-06-29.md",
-    "src/__pycache__/black_scholes.cpython-312.pyc",
     "2026-06-25.md",
     "README.md",
-    "Kanban.md",
-    "docs/200-budget-allocation.md",
     "T007-dashboard.md",
     "docs/104-active-closing-rules.md",
     "T008-conditions-active-closing.md",
     "AGENTS.md",
     "venv/lib/python3.12/site-packages/numpy-2.4.6.dist-info/licenses/numpy/random/src/pcg64/LICENSE.md",
-    "T001-conditions-closing.md",
     "2026-06-22.md",
-    "docs/901-project-setup.md",
-    "docs/202-formulas.md"
+    "docs/901-project-setup.md"
   ]
 }

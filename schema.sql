@@ -9,22 +9,7 @@
 -- ============================================================
 
 -- ----------------------------------------
--- 1. SOL-позиции (текущее состояние)
--- ----------------------------------------
-CREATE TABLE IF NOT EXISTS positions (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    symbol          TEXT NOT NULL DEFAULT 'SOL',
-    qty             REAL NOT NULL,
-    avg_price       REAL NOT NULL,
-    total_cost      REAL NOT NULL,
-    current_price   REAL,
-    total_value     REAL,
-    pnl             REAL,
-    updated         TEXT NOT NULL  -- ISO date
-);
-
--- ----------------------------------------
--- 2. Опционы (реестр, справочник)
+-- 1. Опционы (реестр, справочник)
 -- ----------------------------------------
 CREATE TABLE IF NOT EXISTS options (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -48,7 +33,7 @@ CREATE TABLE IF NOT EXISTS options (
 );
 
 -- ----------------------------------------
--- 3. Опционный чейн (полный снимок рынка по каждому fetch)
+-- 2. Опционный чейн (полный снимок рынка по каждому fetch)
 -- ----------------------------------------
 CREATE TABLE IF NOT EXISTS option_chain_snapshot (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -83,7 +68,7 @@ CREATE TABLE IF NOT EXISTS option_chain_snapshot (
 );
 
 -- ----------------------------------------
--- 4. История Greeks (инкрементная, для LLM-анализа)
+-- 3. История Greeks (инкрементная, для LLM-анализа)
 -- ----------------------------------------
 CREATE TABLE IF NOT EXISTS option_greeks_history (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -108,7 +93,7 @@ CREATE TABLE IF NOT EXISTS option_greeks_history (
 );
 
 -- ----------------------------------------
--- 5. Закрытые позиции опционов
+-- 4. Закрытые позиции опционов
 -- ----------------------------------------
 CREATE TABLE IF NOT EXISTS closed_positions (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -127,20 +112,32 @@ CREATE TABLE IF NOT EXISTS closed_positions (
 );
 
 -- ----------------------------------------
--- 6. История покупок SOL
+-- 5. История покупок SOL
 -- ----------------------------------------
 CREATE TABLE IF NOT EXISTS buy_history (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     buy_date        TEXT NOT NULL,            -- ISO date
-    qty             REAL NOT NULL,
+    qty             REAL NOT NULL,            -- >0 покупка, <0 продажа
     price           REAL NOT NULL,
     total           REAL NOT NULL,
     symbol          TEXT NOT NULL DEFAULT 'SOL',
+    notes           TEXT,
+    closed          INTEGER NOT NULL DEFAULT 0 -- 0=open, 1=closed (soft delete)
+);
+
+-- ----------------------------------------
+-- 5b. Портфель других активов (JUPSOL и т.д.)
+-- ----------------------------------------
+CREATE TABLE IF NOT EXISTS Portf (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    token           TEXT NOT NULL,
+    qty             REAL NOT NULL,
+    avg_price       REAL NOT NULL,
     notes           TEXT
 );
 
 -- ----------------------------------------
--- 7. Рекомендации LLM
+-- 6. Рекомендации LLM
 -- ----------------------------------------
 CREATE TABLE IF NOT EXISTS recommendations (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -1,11 +1,9 @@
-"""prices_step.py — Обновить только цены (spot + позиции в БД)."""
+"""prices_step.py — Обновить только цены (spot price из API)."""
 
 from src.chain_fetcher import fetch_and_filter_chain
-from src.db import update_position_prices
 
 
 def main():
-    print("[1/1] PRICES — обновление цен...")
+    print("[1/1] PRICES — получение spot price...")
     _, spot_price = fetch_and_filter_chain("SOL")
-    update_position_prices("SOL", spot_price)
-    print(f"  ✅ Позиция SOL обновлена: ${spot_price:.2f}")
+    print(f"  SOL: ${spot_price:.2f}")

@@ -28,12 +28,31 @@ PROJECT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_DIR))
 
 from src.db import (
-    get_position, get_all_open_options, get_all_latest_greeks,
+    get_all_open_options, get_all_latest_greeks,
     get_buy_history, get_closed_positions, table_stats,
-    get_pending_recommendations, execute_query, update_position_prices,
+    get_pending_recommendations, execute_query,
     get_latest_chain_snapshot, get_option_by_id, update_option,
-    add_option, record_greeks,
+    add_option, record_greeks, get_portfolio_position, sell,
+    get_all_portfolio_symbols, get_portfolio_all,
 )
+from src.bybit_api import fetch_spot_price
+import time
+
+# Cache Bybit spot price for 5 seconds to avoid rate limits
+_spot_cache = {"price": 0, "ts": 0}
+
+def _get_spot_price(symbol="SOL"):
+    """Get spot price from Bybit API, cached for 5s."""
+    now = time.time()
+    cache_key = symbol
+    if now - _spot_cache.get(cache_key, {}).get("ts", 0) > 5:
+        try:
+            price = float(fetch_spot_price(symbol))
+            if price > 0:
+                _spot_cache[cache_key] = {"price": price, "ts": now}
+        except Exception:
+            pass
+    return _spot_cache.get(cache_key, {}).get("price", 0)
 
 # ==========================================
 # CONFIG
@@ -410,24 +429,30 @@ async def api_close_option(request: Request) -> dict:
 
 @app.get("/api/positions")
 def api_positions() -> dict[str, Any]:
-    """Позиции по активам (акции/крипта)."""
-    pos = get_position("SOL")
-    if not pos:
+    """Позиции по активам. qty/avg_price из buy_history, current_price из positions."""
+    buy_rows = get_buy_history()
+    total_qty = 0
+    total_cost = 0
+    for b in buy_rows:
+        total_qty += float(b["qty"])
+        total_cost += float(b["total"])
+    if total_qty <= 0:
         return {
             "positions": [],
             "totals": {"total_cost": 0, "total_value": 0, "total_pnl": 0, "total_pnl_pct": 0},
+            "buy_history": [],
+            "pnl_ladder": [],
             "updated": date.today().strftime("%Y-%m-%d"),
         }
-
-    qty = float(pos["qty"])
-    avg_price = float(pos["avg_price"])
-    total_cost = float(pos["total_cost"])
-    current_price = float(pos["current_price"] or avg_price)
-    total_value = float(pos["total_value"] or total_cost)
-    pnl = float(pos["pnl"] or 0)
+    avg_price = round(total_cost / total_qty, 2)
+    # current_price из Bybit API (кэшируется 5с)
+    current_price = _get_spot_price()
+    if current_price <= 0:
+        current_price = avg_price
+    total_value = round(total_qty * current_price, 2)
+    pnl = round(total_value - total_cost, 2)
 
     # === История покупок ===
-    buy_rows = get_buy_history()
     buy_records = []
     for b in buy_rows:
         buy_records.append({
@@ -445,7 +470,7 @@ def api_positions() -> dict[str, Any]:
     high = round(avg_price * (1 + DASHBOARD_LADDER_RANGE / 100))
     ladder = []
     for price in range(low, high + 1):
-        pnl_step = (price - avg_price) * qty
+        pnl_step = (price - avg_price) * total_qty
         pnl_pct = ((price - avg_price) / avg_price * 100) if avg_price > 0 else 0
         ladder.append({
             "price": price,
@@ -455,22 +480,46 @@ def api_positions() -> dict[str, Any]:
             "is_avg": price == round(avg_price),
         })
 
-    return {
-        "positions": [{
-            "symbol": pos["symbol"],
-            "qty": qty,
-            "avg_price": avg_price,
-            "total_cost": total_cost,
+    # Агрегируем все символы из buy_history
+    all_symbols = get_all_portfolio_symbols()
+    positions = []
+    total_cost_all = 0
+    total_value_all = 0
+    total_pnl_all = 0
+
+    for sym in all_symbols:
+        pos = get_portfolio_position(sym)
+        if not pos:
+            continue
+
+        current_price = _get_spot_price(sym)
+        if current_price <= 0:
+            current_price = pos["avg_price"]
+        total_value = round(pos["qty"] * current_price, 2)
+        pnl = round(total_value - pos["total_cost"], 2)
+
+        positions.append({
+            "symbol": sym,
+            "qty": round(pos["qty"], 8),
+            "avg_price": pos["avg_price"],
+            "total_cost": round(pos["total_cost"], 2),
             "current_price": current_price,
             "total_value": total_value,
             "pnl": pnl,
-            "pnl_pct": round(pnl / total_cost * 100, 2) if total_cost > 0 else 0,
-        }],
+            "pnl_pct": round(pnl / pos["total_cost"] * 100, 2) if pos["total_cost"] > 0 else 0,
+        })
+
+        total_cost_all += pos["total_cost"]
+        total_value_all += total_value
+        total_pnl_all += pnl
+
+    return {
+        "positions": positions,
         "totals": {
-            "total_cost": round(total_cost, 2),
-            "total_value": round(total_value, 2),
-            "total_pnl": round(pnl, 2),
-            "total_pnl_pct": round(pnl / total_cost * 100, 2) if total_cost > 0 else 0,
+            "total_cost": round(total_cost_all, 2),
+            "total_value": round(total_value_all, 2),
+            "total_pnl": round(total_pnl_all, 2),
+            "total_pnl_pct": round(total_pnl_all / total_cost_all * 100, 2) if total_cost_all > 0 else 0,
         },
         "buy_history": buy_records,
         "pnl_ladder": ladder,
@@ -479,6 +528,130 @@ def api_positions() -> dict[str, Any]:
 
 
 # ==========================================
+# ЭНДПОИНТ: ПРОДАЖА АКТИВА
+# ==========================================
+
+@app.post("/api/sell")
+def api_sell(body: dict[str, Any]) -> dict[str, Any]:
+    """Продать часть/всю позицию SOL (buy_history)."""
+    symbol = body.get("symbol", "SOL")
+    qty = float(body.get("qty", 0))
+    price = float(body.get("price", 0))
+    notes = body.get("notes", "")
+    
+    if symbol != "SOL":
+        return {"error": f"Продажа {symbol} не поддерживается (только SOL)", "status": "error"}
+    
+    existing = get_portfolio_position(symbol)
+    if not existing:
+        return {"error": f"Нет позиции {symbol}", "status": "error"}
+    
+    if qty > existing["qty"]:
+        return {
+            "error": f"Продажа {qty} > позиция {existing['qty']}",
+            "current_qty": existing["qty"],
+            "status": "error"
+        }
+    
+    current_price = _get_spot_price(symbol)
+    if current_price <= 0:
+        current_price = price
+    
+    result = sell(symbol, qty, current_price, notes)
+    
+    if result:
+        return {
+            "symbol": result["symbol"],
+            "qty": result["qty"],
+            "avg_price": result["avg_price"],
+            "total_cost": result["total_cost"],
+            "status": "ok",
+            "message": f"Продано {qty} {symbol}"
+        }
+    else:
+        return {"error": "Ошибка продажи", "status": "error"}
+
+
+# ==========================================
+# ЭНДПОИНТ: ПОРТФЕЛЬ (таблица Portf)
+# ==========================================
+
+@app.get("/api/portf")
+def api_portf() -> dict[str, Any]:
+    """Портфель из таблицы Portf с вычисляемыми полями."""
+    positions = get_portfolio_all()
+    
+    result = []
+    for p in positions:
+        token = p["token"]
+        qty = float(p["qty"])
+        avg_price = float(p["avg_price"])
+        
+        # Текущая цена из Bybit или fallback
+        current_price = _get_spot_price(token)
+        if current_price <= 0:
+            current_price = avg_price
+        
+        # Вычисляемые поля
+        invest = avg_price * qty  # Вложение
+        cap = current_price * qty  # Капитализация
+        diff = cap - invest  # Разница
+        yield_ = (diff / invest * 100) if invest > 0 else 0  # Доходность
+        
+        result.append({
+            "token": token,
+            "qty": qty,
+            "avg_price": avg_price,
+            "current_price": current_price,
+            "invest": round(invest, 2),
+            "cap": round(cap, 2),
+            "diff": round(diff, 2),
+            "yield": round(yield_, 2),
+        })
+    
+    return {
+        "positions": result,
+        "updated": date.today().strftime("%Y-%m-%d"),
+    }
+
+
+# ЭНДПОИНТ: ДРУГИЕ АКТИВЫ
+# ==========================================
+
+@app.get("/api/other-positions")
+def api_other_positions() -> dict[str, Any]:
+    """Все позиции не-SOL активов (JUPSOL и т.д.)."""
+    positions = get_all_other_positions()
+    
+    # Обновить current_price из Bybit (или fallback)
+    for p in positions:
+        current_price = _get_spot_price(p["symbol"])
+        if current_price <= 0:
+            current_price = p["avg_price"]
+        total_value = round(p["qty"] * current_price, 2)
+        pnl = round(total_value - p["total_cost"], 2)
+        p["current_price"] = current_price
+        p["total_value"] = total_value
+        p["pnl"] = pnl
+        p["pnl_pct"] = round(pnl / p["total_cost"] * 100, 2) if p["total_cost"] > 0 else 0
+    
+    # Агрегация
+    total_cost = sum(p.get("total_cost", 0) for p in positions)
+    total_value = sum(p.get("total_value", 0) for p in positions)
+    total_pnl = sum(p.get("pnl", 0) for p in positions)
+    
+    return {
+        "positions": positions,
+        "totals": {
+            "total_cost": round(total_cost, 2),
+            "total_value": round(total_value, 2),
+            "total_pnl": round(total_pnl, 2),
+            "total_pnl_pct": round(total_pnl / total_cost * 100, 2) if total_cost > 0 else 0,
+        },
+        "updated": date.today().strftime("%Y-%m-%d"),
+    }
+
+
 # ЭНДПОИНТ 2: ОПЦИОННЫЕ ПОЗИЦИИ
 # ==========================================
 
@@ -653,12 +826,12 @@ def api_layers() -> dict:
     with open(config_path, "rb") as f:
         config = tomllib.load(f)
 
-    pos = get_position("SOL")
-    if not pos:
+    buy_rows = get_buy_history()
+    sol_qty = sum(float(b["qty"]) for b in buy_rows)
+    sol_total = sum(float(b["total"]) for b in buy_rows)
+    if sol_qty <= 0:
         return {"layers": [], "position_size": 0, "total_budget": 0, "free_budget": 0, "updated": date.today().strftime("%Y-%m-%d")}
-
-    sol_qty = float(pos["qty"])
-    sol_avg = float(pos["avg_price"])
+    sol_avg = round(sol_total / sol_qty, 2)
     position_size = sol_qty * sol_avg
     global_budget_pct = config.get("global_budget_pct", 5)
     total_budget = position_size * global_budget_pct / 100
@@ -734,10 +907,11 @@ def api_recommendations() -> dict[str, Any]:
         with open(cfg_path, "rb") as f:
             config = tomllib.load(f)
 
-        pos = get_position("SOL")
-        if pos:
-            qty = float(pos["qty"])
-            avg_price = float(pos["avg_price"])
+        # qty/avg из buy_history
+        buy_rows = get_buy_history()
+        qty = sum(float(b["qty"]) for b in buy_rows)
+        avg_price = round(sum(float(b["total"]) for b in buy_rows) / qty, 2) if qty > 0 else 0
+        if qty > 0:
             target_dd = config.get("target_dd_pct", 20) / 100
             global_budget = config.get("global_budget_pct", 5) / 100
             anchor_layer_pct = config.get("layer_allocation", {}).get("Anchor", 50) / 100
@@ -905,12 +1079,15 @@ def api_summary() -> dict[str, Any]:
 @app.get("/api/combined-ladder")
 def api_combined_ladder(request: Request, min_price: int = None, max_price: int = None) -> dict[str, Any]:
     """PnL ladder: SOL + все опционы (BS-расчёт для каждого шага)."""
-    pos = get_position("SOL")
-    if not pos:
+    buy_rows = get_buy_history()
+    qty = sum(float(b["qty"]) for b in buy_rows)
+    avg_price = round(sum(float(b["total"]) for b in buy_rows) / qty, 2) if qty > 0 else 0
+    # current_price из Bybit API (кэшируется 5с)
+    current_price = _get_spot_price()
+    if current_price <= 0:
+        current_price = avg_price
+    if qty <= 0:
         return {"ladder": []}
-
-    qty = float(pos["qty"])
-    avg_price = float(pos["avg_price"])
 
     # Custom range from query params
     if min_price is not None and max_price is not None:
@@ -921,7 +1098,7 @@ def api_combined_ladder(request: Request, min_price: int = None, max_price: int 
         high = round(avg_price * (1 + _LADDER_UP))
 
     open_opts = get_all_open_options()
-    spot = float(pos.get("current_price") or avg_price)
+    spot = current_price
 
     r_rf = 0.05
     ladder = []
@@ -1011,16 +1188,19 @@ def api_black_scholes() -> dict[str, Any]:
     spot = float(greek.get("current_price") or 0)
     iv = float(greek.get("iv") or 0)
 
-    # Avg entry спота
-    pos = get_position("SOL")
-    avg_entry = float(pos["avg_price"]) if pos else spot
+    # Avg entry спота из buy_history
+    buy_rows = get_buy_history()
+    if buy_rows:
+        qty_b = sum(float(b["qty"]) for b in buy_rows)
+        cost_b = sum(float(b["total"]) for b in buy_rows)
+        avg_entry = round(cost_b / qty_b, 2) if qty_b > 0 else spot
+    else:
+        avg_entry = spot
 
-    # Spot — из последнего chain snapshot
-    spot_rows = execute_query(
-        "SELECT spot_price FROM option_chain_snapshot ORDER BY timestamp DESC LIMIT 1"
-    )
-    if spot_rows:
-        spot = float(spot_rows[0]["spot_price"])
+    # Spot из Bybit API (кэшируется 5с)
+    spot = _get_spot_price()
+    if spot <= 0:
+        spot = avg_entry
 
     start_price = int(math.ceil(avg_entry))
     end_price = int(math.floor(avg_entry * 0.65))

@@ -27,7 +27,7 @@ import tomllib
 # ============================================================
 # DB IMPORT
 # ============================================================
-from src.db import get_position, add_option, record_greeks, get_connection
+from src.db import get_portfolio_position, add_option, record_greeks, get_connection
 
 # ============================================================
 # CONFIG
@@ -146,7 +146,7 @@ def load_config() -> dict:
 
 def load_portfolio_avg_price() -> float:
     """Загрузить avg_price из БД (позиция SOL)."""
-    pos = get_position("SOL")
+    pos = get_portfolio_position("SOL")
     if pos:
         return float(pos["avg_price"])
     return None

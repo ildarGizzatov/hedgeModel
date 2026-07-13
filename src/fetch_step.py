@@ -1,11 +1,11 @@
 """fetch_step.py — Шаг 1: загрузка чейна с Bybit → БД."""
 
 from src.chain_fetcher import fetch_and_filter_chain
-from src.db import record_chain_snapshot, update_position_prices
+from src.db import record_chain_snapshot
 
 
 def main():
-    print("[1/3] FETCH — загрузка чейна SOL...")
+    print("[1/1] FETCH — загрузка чейна SOL...")
     rows, spot_price = fetch_and_filter_chain("SOL")
 
     if not rows:
@@ -14,6 +14,4 @@ def main():
 
     count = record_chain_snapshot("SOL", spot_price, rows)
     print(f"  ✅ Записано в БД: {count} опционов")
-
-    update_position_prices("SOL", spot_price)
-    print(f"  ✅ SOL позиция обновлена: ${spot_price:.2f}")
+    print(f"  SOL: ${spot_price:.2f}")

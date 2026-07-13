@@ -26,7 +26,7 @@ import tomllib
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_DIR))
 
-from src.db import get_position
+from src.db import get_portfolio_position
 from src.bybit_api import fetch_option_chain, fetch_spot_price
 from src.chain_parser import parse_option, calc_dte
 
@@ -105,7 +105,7 @@ def load_positions():
     """Load SOL position from БД.
     Returns (qty, avg_price) or None on error.
     """
-    pos = get_position("SOL")
+    pos = get_portfolio_position("SOL")
     if not pos:
         print(f"⚠️ Позиция SOL не найдена в БД")
         return None

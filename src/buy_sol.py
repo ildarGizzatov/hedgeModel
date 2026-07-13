@@ -15,7 +15,7 @@ from datetime import date
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_DIR))
 
-from src.db import get_position, add_buy_history, upsert_position
+from src.db import add_buy_history
 
 
 def main():
@@ -41,38 +41,6 @@ def main():
         notes=args.notes,
     )
     print(f"✅ Покупка записана: {args.qty} SOL @ ${args.price} = ${total}")
-
-    # 2. Обновить позицию (усреднить avg_price)
-    existing = get_position("SOL")
-
-    if existing:
-        old_qty = float(existing["qty"])
-        old_avg = float(existing["avg_price"])
-        new_qty = old_qty + args.qty
-        new_avg = round((old_qty * old_avg + args.qty * args.price) / new_qty, 4)
-        new_total_cost = round(new_qty * new_avg, 2)
-
-        from src.db import get_connection
-        conn = get_connection()
-        conn.execute(
-            "UPDATE positions SET qty=?, avg_price=?, total_cost=? WHERE symbol=?",
-            (new_qty, new_avg, new_total_cost, "SOL")
-        )
-        conn.commit()
-        conn.close()
-
-        print(f"  Позиция обновлена: {old_qty} → {new_qty} SOL")
-        print(f"  Avg price: ${old_avg} → ${new_avg}")
-    else:
-        upsert_position(
-            symbol="SOL",
-            qty=args.qty,
-            avg_price=round(args.price, 4),
-            total_cost=total,
-            updated=date.today().isoformat(),
-        )
-        print(f"  Новая позиция: {args.qty} SOL @ ${args.price}")
-
     print("✅ Готово.")
 
 

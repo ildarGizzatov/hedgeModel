@@ -3,7 +3,7 @@ monitor_options.py — Мониторинг открытых опционных 
 
 Заменяет CSV:
   - Чтение registry → БД (get_all_open_options)
-  - Чтение portfolio → БД (get_position)
+  - Чтение portfolio → БД (get_portfolio_position)
   - Запись tracking → БД (record_greeks)
   - Рекомендации → БД (add_recommendation)
 
@@ -23,8 +23,8 @@ sys.path.insert(0, str(PROJECT_DIR))
 from src.bybit_api import fetch_option_chain, fetch_spot_price
 from src.chain_parser import calc_dte, calc_intrinsic
 from src.db import (
-    get_all_open_options, get_position, get_latest_greeks,
-    update_position_prices, record_greeks, add_recommendation,
+    get_all_open_options, get_portfolio_position, get_latest_greeks,
+    record_greeks, add_recommendation,
     get_all_latest_greeks, execute_query
 )
 
@@ -80,7 +80,7 @@ def fetch_spot_price_local() -> float:
 def generate_portfolio_summary(positions: list, chain: list) -> str:
     """Формирует сводку по портфелю + опционам."""
     # === Портфель SOL ===
-    sol_pos = get_position("SOL")
+    sol_pos = get_portfolio_position("SOL")
     sol_line = ""
     if sol_pos:
         total_sol_qty = float(sol_pos["qty"])
@@ -200,7 +200,7 @@ def calc_portfolio_greeks(positions: list, chain: list) -> dict:
     
     # Delta портфеля: SOL (delta=1) + опционы (переведённые в SOL)
     spot_qty = 0
-    sol_pos = get_position("SOL")
+    sol_pos = get_portfolio_position("SOL")
     if sol_pos:
         spot_qty = float(sol_pos["qty"])
     
@@ -411,8 +411,7 @@ def main():
     # 5. Обновление портфеля (актуальный spot price из API)
     spot_price = fetch_spot_price_local()
     if spot_price > 0:
-        update_position_prices("SOL", spot_price)
-        print(f"   ✅ SOL обновлён: ${spot_price:.2f}")
+        print(f"   SOL: ${spot_price:.2f}")
     else:
         print("   ⚠️ Spot price не получен")
     
