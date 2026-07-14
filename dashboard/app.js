@@ -971,11 +971,10 @@ function removeOptionTab(symbol){
   var content=document.getElementById('content-'+symbol);
   if(content) content.remove();
   
-  // Re-render aggregator if it exists
+  // Re-render aggregator (always visible at bottom)
   if(foundLayer){
-    var aggBtn=document.querySelector('[data-opttab="aggregator"]');
-    var aggContent=document.getElementById('content-aggregator');
-    if(aggBtn && aggContent) renderAggregatorGreeks(foundLayer);
+    var aggContent=document.getElementById('aggregatorContent');
+    if(aggContent) renderAggregatorGreeks(foundLayer);
   }
   
   // If no tabs left, show a message
@@ -1051,98 +1050,31 @@ function createOptionTab(layer, opt){
 
 var aggregatorCache={};
 
+function initAggregator(){
+  // Содержимое уже в HTML в .card, просто показываем дефолтное сообщение
+  var content=document.getElementById('aggregatorContent');
+  if(content) content.innerHTML='<div style="color:var(--text-dim);padding:12px;text-align:center">📊 <b>Суммарный</b> — выберите опционы двойным кликом</div>';
+}
+
 function createAggregatorTab(layer){
-  var tabBar=document.getElementById('dynamicOptionTabs');
-  var contentArea=document.getElementById('dynamicOptionContent');
-  
-  // Create tab button if not exists
-  var btn=document.querySelector('[data-opttab="aggregator"]');
-  if(!btn){
-    btn=document.createElement('div');
-    btn.className='layer-subtab';
-    btn.setAttribute('data-opttab', 'aggregator');
-    btn.style.cssText='padding:4px 8px;cursor:pointer;font-weight:bold;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-dim);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px;background:rgba(139,92,246,0.15);';
-    var label=document.createElement('span');
-    label.textContent='📊 Суммарный';
-    label.style.cssText='overflow:hidden;text-overflow:ellipsis;';
-    var xbtn=document.createElement('span');
-    xbtn.textContent='✕';
-    xbtn.style.cssText='cursor:pointer;color:var(--text-dim);font-size:14px;line-height:1;';
-    xbtn.onclick=function(e){e.stopPropagation();removeAggregatorTab();};
-    btn.appendChild(label);
-    btn.appendChild(xbtn);
-    btn.onclick=function(){
-      document.querySelectorAll('[data-opttab]').forEach(function(t){
-        t.classList.remove('active');
-        t.style.cssText='padding:4px 8px;cursor:pointer;font-weight:bold;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-dim);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px;';
-      });
-      btn.classList.add('active');
-      btn.style.cssText='padding:4px 8px;cursor:pointer;font-weight:bold;border-bottom:2px solid var(--purple);margin-bottom:-2px;color:#a78bfa;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px;background:rgba(139,92,246,0.2);';
-      document.querySelectorAll('.option-content').forEach(function(c){c.style.display='none';});
-      document.getElementById('content-aggregator').style.display='flex';
-    };
-    // Insert aggregator tab at END (after all option tabs)
-    var lastTab=tabBar.querySelector('[data-opttab]');
-    if(lastTab) tabBar.insertBefore(btn, lastTab.nextSibling);
-    else tabBar.appendChild(btn);
-  }
-  
-  // Create content div if not exists
-  var content=document.getElementById('content-aggregator');
-  if(!content){
-    content=document.createElement('div');
-    content.className='option-content';
-    content.id='content-aggregator';
-    content.style.cssText='margin-top:8px;';
-    content.innerHTML='<div style="color:var(--text-dim);padding:12px;text-align:center">Выберите опционы двойным кликом</div>';
-    contentArea.appendChild(content);
-  }
-  
-  // Activate aggregator tab
-  btn.classList.add('active');
-  btn.style.cssText='padding:4px 8px;cursor:pointer;font-weight:bold;border-bottom:2px solid var(--purple);margin-bottom:-2px;color:#a78bfa;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px;background:rgba(139,92,246,0.2);';
-  document.querySelectorAll('[data-opttab]').forEach(function(t){
-    if(t!==btn){
-      t.classList.remove('active');
-      t.style.cssText='padding:4px 8px;cursor:pointer;font-weight:bold;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-dim);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px;';
-    }
-  });
-  document.querySelectorAll('.option-content').forEach(function(c){c.style.display='none';});
-  content.style.display='flex';
-  
-  // Render aggregator
+  // Просто обновляем данные
   renderAggregatorGreeks(layer);
 }
 
 function removeAggregatorTab(){
-  var btn=document.querySelector('[data-opttab="aggregator"]');
-  if(btn) btn.remove();
-  var content=document.getElementById('content-aggregator');
-  if(content) content.remove();
-  aggregatorCache={};
-  if(document.querySelectorAll('[data-opttab]').length===0){
-    var msg=document.getElementById('dynamicOptionContent');
-    if(msg) msg.innerHTML='';
-  } else {
-    var first=document.querySelector('[data-opttab]');
-    if(first){
-      first.classList.add('active');
-      first.style.cssText='padding:4px 8px;cursor:pointer;font-weight:bold;border-bottom:2px solid var(--blue);margin-bottom:-2px;color:var(--blue);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px;';
-      var firstId=first.getAttribute('data-opttab');var fc=document.getElementById('content-'+firstId);if(fc)fc.style.display='flex';
-    }
-  }
+  // Суммарный теперь постоянный, не удаляем
 }
 
 function renderAggregatorGreeks(layer){
   layer=layer||'near';
   var sel=selectedOption[layer]||[];
   if(sel.length===0){
-    var el=document.getElementById('content-aggregator');
+    var el=document.getElementById('aggregatorContent');
     if(el) el.innerHTML='<div style="color:var(--text-dim);padding:12px;text-align:center">Нет выбранных опционов</div>';
     return;
   }
   
-  var el=document.getElementById('content-aggregator');
+  var el=document.getElementById('aggregatorContent');
   el.innerHTML='<div style="color:var(--text-dim);padding:12px;text-align:center">Загрузка...</div>';
   
   // Fetch BS for each selected option
@@ -1811,7 +1743,9 @@ function loadAll(){
       api("/api/available-options").then(function(d){renderGlobalLayer(d);});
     });
   });
+  initAggregator();
   document.getElementById('headerUpdated').textContent='Обновлено: '+new Date().toLocaleTimeString('ru-RU');
 }
 
+initAggregator();
 loadAll();
