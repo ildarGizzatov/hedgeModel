@@ -1212,6 +1212,18 @@ function renderAggregatorGreeks(layer){
       if(Math.abs(r.gamma-maxGamma)<0.000001 && maxGammaPrice===-1){maxGammaPrice=r.price;}
     });
 
+    // Compute insurance range from layer
+    var aggLayer=sel.length>0?sel[0].layer||layer:null;
+    var avgSpot=0;
+    if(aggLayer){
+      sel.forEach(function(s){avgSpot+=s.spot_price||s.spot_at_entry||0;});
+      avgSpot=Math.round(avgSpot/sel.length);
+      var hedges={near:{min:3,max:10},mid:{min:8,max:15},distant:{min:15,max:30}};
+      var h=hedges[aggLayer]||{min:5,max:20};
+      var avgInsLow=Math.round(avgSpot*(1-h.max/100));
+      var avgInsHigh=Math.round(avgSpot*(1-h.min/100));
+    }
+
     // Build price-based table (like individual tabs)
     var html='';
     html+='<div style="display:flex;gap:24px;align-items:flex-start">';
@@ -1259,7 +1271,7 @@ function renderAggregatorGreeks(layer){
 
     // Draw aggregator chart
     setTimeout(function(){
-      drawGammaChart(displayRows, displayRows, avgStrike, avgHedgeLow, avgHedgeHigh, 'gammaChart-aggregator', validResults);
+      drawGammaChart(displayRows, displayRows, avgStrike, avgHedgeLow, avgHedgeHigh, 'gammaChart-aggregator', validResults, avgInsLow, avgInsHigh);
       var c=document.getElementById('gammaChart-aggregator');
       if(c) console.log('aggregator chart drawn:', c.width, 'x', c.height);
     }, 50);
