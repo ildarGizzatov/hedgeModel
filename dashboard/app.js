@@ -807,30 +807,51 @@ window.__so = function(layer,symbol){
 };
 
 window.__as = function(layer,symbol){
+  console.log('__as START: layer='+layer+' symbol='+symbol);
   // Double-click: add to selectedOption array
   var data;
   if(layer==='distant') data=layerData_distant;
   else if(layer==='mid') data=layerData_mid;
   else data=layerData_near;
+  console.log('__as: data='+data+' data.options='+data?.options?.length);
   var found=null;
   if(data && data.options){
     for(var i=0;i<data.options.length;i++){
       if(data.options[i].symbol===symbol){found=data.options[i];break;}
     }
   }
+  console.log('__as: found='+found);
+  var newItem;
   if(found){
-    selectedOption[layer].push({symbol:symbol, strike:found.strike, dte:found.dte, iv:found.iv, price:found.price, delta:found.delta, gamma:found.gamma, theta:found.theta, vega:found.vega, spot_at_entry:found.spot_price, spot_price:found.spot_price});
+    newItem = {symbol:symbol, strike:found.strike, dte:found.dte, iv:found.iv, price:found.price, delta:found.delta, gamma:found.gamma, theta:found.theta, vega:found.vega, spot_at_entry:found.spot_price, spot_price:found.spot_price};
   } else {
-    selectedOption[layer].push({symbol:symbol});
+    newItem = {symbol:symbol};
   }
-  console.log('__as: selectedOption='+JSON.stringify(selectedOption[layer]));
-  addSelected(layer,symbol);
+  // Don't add duplicates
+  if(selectedOption[layer].find(function(x){return x.symbol===symbol})){
+    console.log('__as: already selected, refreshing aggregator');
+    createAggregatorTab(layer);
+    return;
+  }
+  selectedOption[layer].push(newItem);
+  console.log('__as: selectedOption now has', selectedOption[layer].length, 'items');
+
+  // Sync to localStorage
+  var selList=JSON.parse(localStorage.getItem('selectedOptions')||'{}');
+  if(!selList[layer]) selList[layer]=[];
+  if(!selList[layer].find(function(x){return x.symbol===symbol})){
+    var item=JSON.parse(JSON.stringify(newItem));
+    item.qty=1;
+    selList[layer].push(item);
+    localStorage.setItem('selectedOptions',JSON.stringify(selList));
+  }
 
   // Create dynamic sub-tab for this option
   if(found && layer==='near') {
     createOptionTab(layer, found);
-    createAggregatorTab(layer);
   }
+  // Always refresh aggregator
+  createAggregatorTab(layer);
 };
 
 function renderLayer(data){
@@ -850,18 +871,15 @@ function renderLayer(data){
   var h=hedges[layer]||{min:5,max:20};
   var lowStrike=spot*(1-h.max/100);
   var highStrike=spot*(1-h.min/100);
+  // Insurance range for highlighting
+  var insLow=lowStrike, insHigh=highStrike;
   var html='<div style="margin-bottom:8px;font-size:15px;font-weight:bold">Хедж: '+h.min+'-'+h.max+'% просадка | Strike $'+F(lowStrike,1)+'-$'+F(highStrike,1)+' | Всего: <b>'+data.count+'</b></div>';
   var opts=data.options||[];
   if(opts.length===0){html+='<div style="padding:12px;color:var(--text-dim)">Нет опционов</div>';el.innerHTML=html;return;}
-  // Sort by layer type
+  // Sort by strike desc, then DTE desc
   opts.sort(function(a,b){
-    if(layer==='near'){
-      if(Math.abs(a.delta)-Math.abs(b.delta)>0.0001) return Math.abs(b.delta)-Math.abs(a.delta);
-      return a.dte-b.dte;
-    }
-    // distant and mid: DTE desc, delta asc
-    if(a.dte-b.dte!==0) return b.dte-a.dte;
-    return Math.abs(a.delta)-Math.abs(b.delta);
+    if(b.strike-a.strike!==0) return b.strike-a.strike;
+    return b.dte-a.dte;
   });
   // Find closest strikes to spot price
   var spot=data.spot_price || 0;
@@ -883,10 +901,9 @@ function renderLayer(data){
   var purchSymbols={};
   (purchasedOptions[layer]||[]).forEach(function(p){purchSymbols[p.symbol]=p.qty;});
 
-  html+='<div style="max-height:400px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0">';
-  html+='<th style="text-align:left;padding:3px 6px">Символ</th><th style="padding:3px 6px;text-align:center">Drop%</th><th style="padding:3px 6px;text-align:right">Strike</th><th style="padding:3px 6px;text-align:center">DTE</th><th style="padding:3px 6px;text-align:right">Premium</th><th style="padding:3px 6px;text-align:right">Δ</th><th style="padding:3px 6px;text-align:right">Γ</th><th style="padding:3px 6px;text-align:right">Θ</th><th style="padding:3px 6px;text-align:right">IV</th><th style="padding:3px 6px;text-align:right">OI</th><th style="padding:3px 6px;text-align:right">Volume</th><th style="padding:3px 6px;text-align:right">Spread</th></tr></thead><tbody>';
+  html+='<div style="max-height:400px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0">';
+  html+='<th style="text-align:left;padding:2px 4px">Символ</th><th style="padding:2px 4px;text-align:center">Drop%</th><th style="padding:2px 4px;text-align:right">Strike</th><th style="padding:2px 4px;text-align:center">DTE</th><th style="padding:2px 4px;text-align:right">Premium</th><th style="padding:2px 4px;text-align:right">Δ</th><th style="padding:2px 4px;text-align:right">Γ</th><th style="padding:2px 4px;text-align:right">Θ</th><th style="padding:2px 4px;text-align:right">IV</th><th style="padding:2px 4px;text-align:right">OI</th><th style="padding:2px 4px;text-align:right">Volume</th><th style="padding:2px 4px;text-align:right">Spread</th></tr></thead><tbody>';
   opts.forEach(function(o){
-    var rowCls="";
     var sym=o.symbol.replace(/'/g,"\\'");
     var dropPct=spot>0?((spot-o.strike)/spot*100):0;
     var dropCls=dropPct>=0?'color:var(--green)':'color:#d32f2f';
@@ -894,25 +911,32 @@ function renderLayer(data){
     var title='Один клик: выделить, двойной: добавить | IV ATM: '+F(o.iv_atm,4);
     var purchased=purchSymbols[o.symbol];
     if(purchased) title+=' | 📌 Куплено: '+purchased;
-    html+='<tr style="text-align:left;height:24px;cursor:pointer;'+rowCls+' onclick="window.__so(\''+layer+'\',\''+sym+'\')" ondblclick="event.preventDefault();event.stopPropagation();window.__as(\''+layer+'\',\''+sym+'\')" title="'+title+'">';
-    html+='<td style="padding:2px 6px;font-weight:bold">'+o.symbol+(purchased?'<span style="color:#f0ad4e">📌'+purchased+'</span>':'')+'</td>';
-    html+='<td style="padding:2px 6px;text-align:center;color:'+dropCls+'"><b>'+dropStr+'</b></td>';
+    // Highlight insurance range strikes in green
+    var rowBg='';
+    if(o.strike>=insLow && o.strike<=insHigh){rowBg='background:rgba(63,185,80,0.12);';}
+    html+='<tr style="text-align:left;height:22px;cursor:pointer;'+rowBg+' onclick="window.__so(\''+layer+'\',\''+sym+'\')" ondblclick="event.preventDefault();event.stopPropagation();window.__as(\''+layer+'\',\''+sym+'\')" title="'+title+'">';
+    html+='<td style="padding:2px 4px;font-weight:bold">'+o.symbol+(purchased?'<span style="color:#f0ad4e">📌'+purchased+'</span>':'')+'</td>';
+    html+='<td style="padding:2px 4px;text-align:center;color:'+dropCls+'"><b>'+dropStr+'</b></td>';
     var strikeCell='';
-    if(closest2.indexOf(o.strike)!==-1){strikeCell='<b style="color:var(--blue)" title="Ближайший к spot">🎯 $'+o.strike+'</b>';}else{strikeCell='$'+o.strike;}
-    html+='<td style="padding:2px 6px;text-align:right">'+strikeCell+'</td>';
-    html+='<td style="padding:2px 6px;text-align:center">'+o.dte+'</td>';
-    html+='<td style="padding:2px 6px;text-align:right">$'+F(o.price,4)+'</td>';
-    html+='<td style="padding:2px 6px;text-align:right">'+F(o.delta,4)+'</td>';
-    html+='<td style="padding:2px 6px;text-align:right">'+F(o.gamma,4)+'</td>';
-    html+='<td style="padding:2px 6px;text-align:right">'+F(o.theta,4)+'</td>';
-    html+='<td style="padding:2px 6px;text-align:right">'+F(o.iv,4)+'</td>';
-    html+='<td style="padding:2px 6px;text-align:right">'+(o.open_interest||0)+'</td>';
-    html+='<td style="padding:2px 6px;text-align:right">'+(o.volume||o.open_interest||0)+'</td>';
-    html+='<td style="padding:2px 6px;text-align:right">'+(o.spread||'-')+'</td>';
+    if(o.strike>=insLow && o.strike<=insHigh){strikeCell='<b style="color:var(--green)" title="Диапазон страхования">🛡️ $'+o.strike+'</b>';}else if(closest2.indexOf(o.strike)!==-1){strikeCell='<b style="color:var(--blue)" title="Ближайший к spot">🎯 $'+o.strike+'</b>';}else{strikeCell='$'+o.strike;}
+    html+='<td style="padding:2px 4px;text-align:right">'+strikeCell+'</td>';
+    html+='<td style="padding:2px 4px;text-align:center">'+o.dte+'</td>';
+    html+='<td style="padding:2px 4px;text-align:right">$'+F(o.price,4)+'</td>';
+    html+='<td style="padding:2px 4px;text-align:right">'+F(o.delta,4)+'</td>';
+    html+='<td style="padding:2px 4px;text-align:right">'+F(o.gamma,4)+'</td>';
+    html+='<td style="padding:2px 4px;text-align:right">'+F(o.theta,4)+'</td>';
+    html+='<td style="padding:2px 4px;text-align:right">'+F(o.iv,4)+'</td>';
+    html+='<td style="padding:2px 4px;text-align:right">'+(o.open_interest||0)+'</td>';
+    html+='<td style="padding:2px 4px;text-align:right">'+(o.volume||o.open_interest||0)+'</td>';
+    html+='<td style="padding:2px 4px;text-align:right">'+(o.spread||'-')+'</td>';
     html+='</tr>';
   });
   html+='</tbody></table></div>';
   el.innerHTML=html;
+  // Save data for __as lookup
+  if(layer==='near') window.layerData_near=data;
+  else if(layer==='mid') window.layerData_mid=data;
+  else if(layer==='distant') window.layerData_distant=data;
   console.log('>>> renderLayer DONE');
   } catch(e){ console.error('>>> renderLayer ERROR:', e); }
 }
@@ -940,22 +964,22 @@ function selectOption(layer,symbol,o){
 }
 
 function addSelected(layer,symbol){
-  try {
-    var selArr=selectedOption[layer];
-    if(!selArr||!selArr.length){alert('Сначала кликните на опцион');return;}
-    var sel=selArr[selArr.length-1];
-    var selList=JSON.parse(localStorage.getItem('selectedOptions')||'{}');
-    if(!selList[layer]) selList[layer]=[];
-    if(!selList[layer].find(function(x){return x.symbol===sel.symbol})){
-      var item=JSON.parse(JSON.stringify(sel));
-      item.qty=1;
+  // Sync selectedOption to localStorage
+  var selArr=selectedOption[layer]||[];
+  if(!selArr.length) return; // nothing to sync
+  var selList=JSON.parse(localStorage.getItem('selectedOptions')||'{}');
+  if(!selList[layer]) selList[layer]=[];
+  // Remove existing symbol from localStorage
+  selList[layer]=selList[layer].filter(function(x){return x.symbol!==symbol});
+  // Add all items from selectedOption
+  selArr.forEach(function(s){
+    if(!selList[layer].find(function(x){return x.symbol===s.symbol})){
+      var item=JSON.parse(JSON.stringify(s));
+      if(!item.qty) item.qty=1;
       selList[layer].push(item);
-      localStorage.setItem('selectedOptions',JSON.stringify(selList));
-      alert('Добавлен: '+sel.symbol);
-    } else {
-      alert('Уже добавлен: '+sel.symbol);
     }
-  } catch(e){ console.error('addSelected error:',e); }
+  });
+  localStorage.setItem('selectedOptions',JSON.stringify(selList));
 }
 
 function removeOptionTab(symbol){
@@ -1073,6 +1097,7 @@ function removeAggregatorTab(){
 function renderAggregatorGreeks(layer){
   layer=layer||'near';
   var sel=selectedOption[layer]||[];
+  console.log('>>> renderAggregatorGreeks: sel.length='+sel.length);
   if(sel.length===0){
     var el=document.getElementById('aggregatorContent');
     if(el) el.innerHTML='<div style="color:var(--text-dim);padding:12px;text-align:center">Нет выбранных опционов</div>';
@@ -1083,8 +1108,6 @@ function renderAggregatorGreeks(layer){
   el.innerHTML='<div style="color:var(--text-dim);padding:12px;text-align:center">Загрузка...</div>';
 
   // Fetch BS for each selected option
-  console.log('renderAggregatorGreeks: selected options:', sel.length, sel);
-  if(sel.length===0){return;}
   var promises=sel.map(function(opt){
     var spot=opt.spot_price||opt.spot_at_entry||'';
     if(!spot){console.warn('No spot for',opt.symbol);return Promise.resolve(null);}
@@ -1108,11 +1131,19 @@ function renderAggregatorGreeks(layer){
     var spot=validResults[0].spot||validResults[0].rows[0].price;
     var allStrikes=[];
     var allHedgeRanges=[];
-
     validResults.forEach(function(d){
+      if(!d||!d.hedge_range||!d.hedge_range.low) return;
       allStrikes.push(d.strike);
       allHedgeRanges.push(d.hedge_range);
-
+    });
+    var avgHedgeLow=0,avgHedgeHigh=0;
+    if(allHedgeRanges.length>0){
+      allHedgeRanges.forEach(function(hr){avgHedgeLow+=hr.low;avgHedgeHigh+=hr.high;});
+      avgHedgeLow=Math.round(avgHedgeLow/allHedgeRanges.length);
+      avgHedgeHigh=Math.round(avgHedgeHigh/allHedgeRanges.length);
+    }
+    validResults.forEach(function(d){
+      if(!d||!d.rows) return;
       d.rows.forEach(function(r){
         if(!priceMap[r.price]){
           priceMap[r.price]={price:r.price, delta:0, gamma:0, theta:0, vega:0, bs_price:0, count:0};
@@ -1141,6 +1172,7 @@ function renderAggregatorGreeks(layer){
     // Filter to hedge range ± 2 steps
     var displayStart=avgHedgeLow-2, displayEnd=avgHedgeHigh+2;
     var displayRows=aggregated.filter(function(r){return r.price>=displayStart && r.price<=displayEnd;});
+    if(displayRows.length===0) displayRows=aggregated;
 
     // Find max gamma within display rows
     var maxGamma=-1;
@@ -1153,15 +1185,6 @@ function renderAggregatorGreeks(layer){
     displayRows.forEach(function(r){
       if(Math.abs(r.gamma-maxGamma)<0.000001 && maxGammaPrice===-1){maxGammaPrice=r.price;}
     });
-
-    // Average hedge range
-    var avgHedgeLow=0, avgHedgeHigh=0;
-    allHedgeRanges.forEach(function(hr){
-      avgHedgeLow+=hr.low;
-      avgHedgeHigh+=hr.high;
-    });
-    avgHedgeLow=Math.round(avgHedgeLow/allHedgeRanges.length);
-    avgHedgeHigh=Math.round(avgHedgeHigh/allHedgeRanges.length);
 
     // Coverage calc
     var priceDelta50=aggFiltered.length>0?aggFiltered[0].price:0;
@@ -1196,22 +1219,6 @@ function renderAggregatorGreeks(layer){
     });
     var avgStrike=Math.round(allStrikes.reduce(function(a,b){return a+b;},0)/allStrikes.length);
 
-    // Filter to hedge range ± 2 steps
-    var displayStart=avgHedgeLow-2, displayEnd=avgHedgeHigh+2;
-    var displayRows=aggregated.filter(function(r){return r.price>=displayStart && r.price<=displayEnd;});
-
-    // Find max gamma within display rows
-    var maxGamma=-1;
-    displayRows.forEach(function(r){
-      if(r.gamma>maxGamma){maxGamma=r.gamma;}
-    });
-
-    // Map display index to find max gamma highlight
-    var maxGammaPrice=-1;
-    displayRows.forEach(function(r){
-      if(Math.abs(r.gamma-maxGamma)<0.000001 && maxGammaPrice===-1){maxGammaPrice=r.price;}
-    });
-
     // Compute insurance range from layer
     var aggLayer=sel.length>0?sel[0].layer||layer:null;
     var avgSpot=0;
@@ -1223,6 +1230,8 @@ function renderAggregatorGreeks(layer){
       var avgInsLow=Math.round(avgSpot*(1-h.max/100));
       var avgInsHigh=Math.round(avgSpot*(1-h.min/100));
     }
+    // Fallback if not computed
+    if(typeof avgInsLow==='undefined'){avgInsLow=avgHedgeLow; avgInsHigh=avgHedgeHigh;}
 
     // Build price-based table (like individual tabs)
     var html='';
@@ -1271,9 +1280,8 @@ function renderAggregatorGreeks(layer){
 
     // Draw aggregator chart
     setTimeout(function(){
+      console.log('>>> drawGammaChart: displayRows='+displayRows.length+' validResults='+validResults.length);
       drawGammaChart(displayRows, displayRows, avgStrike, avgHedgeLow, avgHedgeHigh, 'gammaChart-aggregator', validResults, avgInsLow, avgInsHigh);
-      var c=document.getElementById('gammaChart-aggregator');
-      if(c) console.log('aggregator chart drawn:', c.width, 'x', c.height);
     }, 50);
   });
 }
@@ -1294,17 +1302,34 @@ function drawGammaChart(allRows, filtered, strike, hedgeLow, hedgeHigh, chartId,
   ctx.clearRect(0,0,W,H);
 
   // X-axis: gamma working range [hedgeLow, hedgeHigh] ±5%
-  var margin=(hedgeHigh-hedgeLow)*0.05;
-  var xMin=hedgeLow-margin, xMax=hedgeHigh+margin;
+  if(!hedgeLow || !hedgeHigh || hedgeLow===hedgeHigh){
+    // Fallback: use all rows price range
+    var allPrices=allRows.map(function(r){return r.price;});
+    xMin=Math.min.apply(null,allPrices);
+    xMax=Math.max.apply(null,allPrices);
+  } else {
+    var margin=(hedgeHigh-hedgeLow)*0.05;
+    xMin=hedgeLow-margin; xMax=hedgeHigh+margin;
+  }
   var xRange=xMax-xMin;
+  if(xRange===0) xRange=1; // guard
   var chartRows=allRows.filter(function(r){return r.price>=xMin && r.price<=xMax;});
-  if(chartRows.length===0) return;
+  if(chartRows.length===0){
+    // Fallback: use ALL rows price range
+    console.log('drawGammaChart: chartRows empty, using full range');
+    var allPrices=allRows.map(function(r){return r.price;});
+    xMin=Math.min.apply(null,allPrices);
+    xMax=Math.max.apply(null,allPrices);
+    xRange=xMax-xMin||1;
+    chartRows=allRows;
+  }
 
   // Gamma range from working range data only
   var gammas=chartRows.map(function(r){return r.gamma;});
   var gMax=Math.max.apply(null,gammas)*1.1;
   var gMin=0;
   var gRange=gMax-gMin;
+  if(gRange===0) gRange=1; // guard
 
   function toX(p){return pad.l+(p-xMin)/xRange*cW;}
   function toY(g){return pad.t+cH-(g-gMin)/gRange*cH;}
@@ -1411,12 +1436,12 @@ function drawGammaChart(allRows, filtered, strike, hedgeLow, hedgeHigh, chartId,
     ctx.fillText('K='+strike,sx+3,pad.t+12);
   }
 
-  // Insurance range zone (green highlight) - only if intersects gamma range
+  // Insurance range zone (green highlight) - ONLY intersection with hedge range
   if(insLow && insHigh){
     var covLow = Math.max(hedgeLow, insLow);
     var covHigh = Math.min(hedgeHigh, insHigh);
     if(covHigh > covLow){
-      var ix1=toX(insLow),ix2=toX(insHigh);
+      var ix1=toX(covLow),ix2=toX(covHigh);
       ix1=Math.max(ix1, pad.l);
       ix2=Math.min(ix2, pad.l+cW);
       ctx.fillStyle='rgba(63,185,80,0.3)';
@@ -1719,7 +1744,10 @@ function resetFilters(layer){
   var card=document.getElementById("tab-"+layer);
   if(!card) return;
   console.log('RESET: layer='+layer);
-  layerFilterParams[layer]="";
+  selectedOption[layer]=[];
+  purchasedOptions[layer]=[];
+  localStorage.removeItem('selectedOptions');
+  layerFilterParams[layer]="all=1";
   fetch(API+'/api/layer/'+layer+'?all=1&refresh=1').then(function(r){
     return r.json();
   }).then(function(data){
