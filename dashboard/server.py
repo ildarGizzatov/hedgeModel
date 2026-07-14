@@ -1321,13 +1321,45 @@ def api_spot() -> dict:
     return {"spot": 0, "ts": None}
 
 
-def _get_hedge_range(layer, spot):
+def _get_hedge_range_pct(layer, spot):
     hedges = {"near": (3, 10), "mid": (8, 15), "distant": (15, 30)}
     h = hedges.get(layer, (5, 20))
     min_pct, max_pct = h
-    low_strike = int(spot * (1 - max_pct / 100))
-    high_strike = int(spot * (1 - min_pct / 100))
-    return {"low": low_strike, "high": high_strike, "min_pct": min_pct, "max_pct": max_pct}
+    low = round(spot * (1 - max_pct / 100), 2)
+    high = round(spot * (1 - min_pct / 100), 2)
+    return {"low": low, "high": high}
+
+def _get_hedge_range_by_gamma(rows):
+    """Вычисляет рабочий диапазон по gamma-кривой.
+    1. Находим максимум Gamma (S_max)
+    2. Gamma_80% = 0.8 × Gamma_max
+    3. Находим две точки пересечения с уровнем Gamma_80%:
+       - S_left (нижняя граница)
+       - S_right (верхняя граница)
+    """
+    if not rows or len(rows) < 2:
+        return None
+    
+    # Находим максимум gamma и соответствующую цену
+    max_g = max(rows, key=lambda r: r["gamma"])
+    gamma_max = max_g["gamma"]
+    if gamma_max <= 0:
+        return None
+    
+    gamma_80 = 0.8 * gamma_max
+    
+    # rows идут от high price (spot) до low price (по убыванию)
+    # Собираем все цены с gamma >= gamma_80
+    prices_80 = [r["price"] for r in rows if r["gamma"] >= gamma_80]
+    
+    if not prices_80:
+        return None
+    
+    # low = минимальная, high = максимальная из этих цен
+    low = min(prices_80)
+    high = max(prices_80)
+    
+    return {"low": low, "high": high, "gamma_max": gamma_max, "gamma_80": gamma_80, "spot_at_max": max_g["price"]}
 
 @app.get("/api/bs-greeks")
 def api_bs_greeks(symbol: str = None, strike: float = None, dte: float = None, iv: float = None, spot: float = None, premium: float = None, layer: str = None) -> dict:
@@ -1370,7 +1402,8 @@ def api_bs_greeks(symbol: str = None, strike: float = None, dte: float = None, i
         "iv": iv,
         "entry_premium": premium or 0,
         "rows": rows,
-        "hedge_range": _get_hedge_range(layer, spot),
+        "hedge_range": _get_hedge_range_by_gamma(rows),
+        "insurance_range": _get_hedge_range_pct(layer, spot),
         "data_source": _get_greeks_status(),
     }
 

@@ -1208,7 +1208,8 @@ function renderAggregatorGreeks(layer){
     });
     
     // Build price-based table (like individual tabs)
-    var html='<div style="display:flex;gap:24px;align-items:flex-start">';
+    var html='';
+    html+='<div style="display:flex;gap:24px;align-items:flex-start">';
     html+='<div style="max-height:400px;overflow-y:auto;border:1px solid var(--border);border-radius:6px"><table style="width:auto;border-collapse:collapse;font-size:11px;font-weight:600"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0">';
     html+='<th style="text-align:left;padding:3px 4px;font-size:11px">Цена</th>';
     html+='<th style="padding:3px 4px;text-align:right;font-size:11px">ΣΔ</th>';
@@ -1260,7 +1261,8 @@ function renderAggregatorGreeks(layer){
   });
 }
 
-function drawGammaChart(allRows, filtered, strike, hedgeLow, hedgeHigh, chartId, extraProfiles){
+function drawGammaChart(allRows, filtered, strike, hedgeLow, hedgeHigh, chartId, extraProfiles, insLow, insHigh){
+  extraProfiles = extraProfiles && Array.isArray(extraProfiles) ? extraProfiles : [];
   extraProfiles=extraProfiles||[];
   if(!chartId) chartId='gammaChart';
   console.log('drawGammaChart called:', allRows.length, 'rows, strike=', strike, 'hedge=[', hedgeLow, hedgeHigh, ']');
@@ -1274,17 +1276,18 @@ function drawGammaChart(allRows, filtered, strike, hedgeLow, hedgeHigh, chartId,
   
   ctx.clearRect(0,0,W,H);
   
-  // Find price range - expand 20% on each side
-  var prices=allRows.map(function(r){return r.price;});
-  var pMin=Math.min.apply(null,prices);
-  var pMax=Math.max.apply(null,prices);
-  var pRange=pMax-pMin;
-  var xMin=pMin-pRange*0.15;
-  var xMax=pMax+pRange*0.15;
+  // X-axis: cover BOTH gamma working range AND insurance range
+  var margin=(hedgeHigh-hedgeLow)*0.05;
+  var xMin=hedgeLow-margin;
+  var xMax=hedgeHigh+margin;
+  if(insLow!=null) xMin=Math.min(xMin, insLow);
+  if(insHigh!=null) xMax=Math.max(xMax, insHigh);
   var xRange=xMax-xMin;
+  var chartRows=allRows.filter(function(r){return r.price>=xMin && r.price<=xMax;});
+  if(chartRows.length===0) return;
   
-  // Find gamma range (all positive for puts)
-  var gammas=allRows.map(function(r){return r.gamma;});
+  // Gamma range from working range data only
+  var gammas=chartRows.map(function(r){return r.gamma;});
   var gMax=Math.max.apply(null,gammas)*1.1;
   var gMin=0;
   var gRange=gMax-gMin;
@@ -1308,22 +1311,6 @@ function drawGammaChart(allRows, filtered, strike, hedgeLow, hedgeHigh, chartId,
     ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+cH);ctx.stroke();
   }
   
-  // Hedge range zone
-  if(hedgeLow && hedgeHigh){
-    var hx1=toX(hedgeLow),hx2=toX(hedgeHigh);
-    ctx.fillStyle='rgba(63,185,80,0.08)';
-    ctx.fillRect(hx1,pad.t,hx2-hx1,cH);
-    ctx.strokeStyle='rgba(63,185,80,0.4)';
-    ctx.lineWidth=1;ctx.setLineDash([4,4]);
-    ctx.beginPath();ctx.moveTo(hx1,pad.t);ctx.lineTo(hx1,pad.t+cH);ctx.stroke();
-    ctx.beginPath();ctx.moveTo(hx2,pad.t);ctx.lineTo(hx2,pad.t+cH);ctx.stroke();
-    ctx.setLineDash([]);
-    // Label
-    ctx.fillStyle='rgba(63,185,80,0.8)';
-    ctx.font='10px monospace';
-    ctx.fillText('Хедж',hx1+2,pad.t+12);
-  }
-  
   // Working window zone
   var fwMin=filtered[0]?filtered[0].price:0;
   var fwMax=filtered[filtered.length-1]?filtered[filtered.length-1].price:0;
@@ -1333,11 +1320,11 @@ function drawGammaChart(allRows, filtered, strike, hedgeLow, hedgeHigh, chartId,
     ctx.fillRect(fx1,pad.t,fx2-fx1,cH);
   }
   
-  // Draw gamma curve - smooth line
+  // Draw gamma curve - smooth line (using chart rows only)
   ctx.beginPath();
   ctx.strokeStyle='#f0883e';
   ctx.lineWidth=2;
-  allRows.forEach(function(r,i){
+  chartRows.forEach(function(r,i){
     var x=toX(r.price),y=toY(r.gamma);
     if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
   });
@@ -1345,12 +1332,12 @@ function drawGammaChart(allRows, filtered, strike, hedgeLow, hedgeHigh, chartId,
   
   // Fill under curve
   ctx.beginPath();
-  allRows.forEach(function(r,i){
+  chartRows.forEach(function(r,i){
     var x=toX(r.price),y=toY(r.gamma);
     if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
   });
-  ctx.lineTo(toX(allRows[allRows.length-1].price),pad.t+cH);
-  ctx.lineTo(toX(allRows[0].price),pad.t+cH);
+  ctx.lineTo(toX(chartRows[chartRows.length-1].price),pad.t+cH);
+  ctx.lineTo(toX(chartRows[0].price),pad.t+cH);
   ctx.closePath();
   var grad=ctx.createLinearGradient(0,pad.t,0,pad.t+cH);
   grad.addColorStop(0,'rgba(240,136,62,0.25)');
@@ -1366,6 +1353,8 @@ function drawGammaChart(allRows, filtered, strike, hedgeLow, hedgeHigh, chartId,
     ctx.lineWidth=1.5;
     ctx.setLineDash([4,4]);
     var sorted=ep.rows.slice().sort(function(a,b){return b.price-a.price;});
+    // Filter to working range
+    sorted=sorted.filter(function(r){return r.price>=xMin && r.price<=xMax;});
     var epMax=-1,epMaxPrice=-1;
     sorted.forEach(function(r,i){
       var x=toX(r.price),y=toY(r.gamma);
@@ -1382,13 +1371,10 @@ function drawGammaChart(allRows, filtered, strike, hedgeLow, hedgeHigh, chartId,
     ctx.strokeStyle=colors[epIdx%colors.length];ctx.lineWidth=2;ctx.stroke();
   });
   
-  // Draw data points
-  allRows.forEach(function(r){
+  // Draw data points (from working range only)
+  chartRows.forEach(function(r){
     var x=toX(r.price),y=toY(r.gamma);
-    var isFiltered=false;
-    filtered.forEach(function(f){if(f.price===r.price)isFiltered=true;});
     var isMax=r.gamma===Math.max.apply(null,gammas);
-    var isInHR=r.price>=hedgeLow && r.price<=hedgeHigh;
     
     if(isMax){
       ctx.beginPath();ctx.arc(x,y,5,0,Math.PI*2);
@@ -1399,10 +1385,6 @@ function drawGammaChart(allRows, filtered, strike, hedgeLow, hedgeHigh, chartId,
     ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);
     ctx.fillStyle=isMax?'#58a6ff':'#f0883e';
     ctx.fill();
-    if(isInHR){
-      ctx.beginPath();ctx.arc(x,y,5,0,Math.PI*2);
-      ctx.strokeStyle='rgba(63,185,80,0.6)';ctx.lineWidth=1.5;ctx.stroke();
-    }
   });
   
   // Strike line
@@ -1415,14 +1397,31 @@ function drawGammaChart(allRows, filtered, strike, hedgeLow, hedgeHigh, chartId,
     ctx.fillText('K='+strike,sx+3,pad.t+12);
   }
   
+  // Insurance range zone (green highlight) — DRAWN LAST so visible over orange fill
+  if(insLow && insHigh){
+    var ix1=toX(insLow),ix2=toX(insHigh);
+    // Limit to chart bounds
+    ix1=Math.max(ix1, pad.l);
+    ix2=Math.min(ix2, pad.l+cW);
+    ctx.fillStyle='rgba(63,185,80,0.3)';
+    ctx.fillRect(ix1,pad.t,ix2-ix1,cH);
+    ctx.strokeStyle='rgba(63,185,80,1.0)';
+    ctx.lineWidth=2;ctx.setLineDash([6,4]);
+    ctx.beginPath();ctx.moveTo(ix1,pad.t);ctx.lineTo(ix1,pad.t+cH);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(ix2,pad.t);ctx.lineTo(ix2,pad.t+cH);ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  
   // X axis line
   ctx.strokeStyle='#30363d';ctx.lineWidth=2;
   ctx.beginPath();ctx.moveTo(pad.l,pad.t+cH);ctx.lineTo(pad.l+cW,pad.t+cH);ctx.stroke();
   
-  // Price labels
+  // Price labels — only within chart bounds
   ctx.fillStyle='#e6edf3';ctx.font='bold 12px monospace';ctx.textAlign='center';
   allRows.forEach(function(r){
     var x=toX(r.price);
+    // Skip if outside chart area
+    if(x < pad.l-5 || x > pad.l+cW+5) return;
     // vertical tick
     ctx.strokeStyle='#484f58';ctx.lineWidth=1.5;
     ctx.beginPath();ctx.moveTo(x,pad.t+cH);ctx.lineTo(x,pad.t+cH+6);ctx.stroke();
@@ -1466,6 +1465,7 @@ function drawGammaChart(allRows, filtered, strike, hedgeLow, hedgeHigh, chartId,
 }
 
 function renderOptionGreeks(data, layer){
+  if(!layer) layer='near';
   var el=document.getElementById('content-'+data.symbol);
   if(!el) return;
   if(!data || !data.rows || data.rows.length===0){
@@ -1497,6 +1497,12 @@ function renderOptionGreeks(data, layer){
   var hedgeHigh = hedgeRange.high;
   var hedgeLen = Math.abs(hedgeHigh - hedgeLow);
   
+  // Insurance range: диапазон работы слоя (3-10% для near и т.д.)
+  var hedges={near:{min:3,max:10},mid:{min:8,max:15},distant:{min:15,max:30}};
+  var h=hedges[layer]||{min:5,max:20};
+  var insLow=Math.round(data.spot*(1-h.max/100));
+  var insHigh=Math.round(data.spot*(1-h.min/100));
+  
   // Intersection: overlap between [priceDelta85, priceDelta50] and [hedgeLow, hedgeHigh]
   var overlapLow = Math.max(priceDelta85, hedgeLow);
   var overlapHigh = Math.min(priceDelta50, hedgeHigh);
@@ -1523,19 +1529,19 @@ function renderOptionGreeks(data, layer){
   });
   
   var html='<div style="display:flex;gap:24px;align-items:flex-start">';
-  html+='<div style="max-height:380px;overflow-y:auto;border:1px solid var(--border);border-radius:6px"><table style="width:540px;border-collapse:collapse;font-size:13px;font-weight:600"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0">';
+  var chartH=380;
+  html+='<div style="width:620px;flex-shrink:0"><div style="font-size:14px;font-weight:bold;margin-bottom:6px;color:var(--text-dim)">Профиль Γ</div><div style="border:1px solid var(--border);border-radius:6px;padding:8px;background:var(--surface);height:'+chartH+'px"><canvas id="gammaChart-'+(data.symbol.replace(/[^a-zA-Z0-9]/g,'_'))+'" width="580" height="'+(chartH-24)+'"></canvas></div></div>';
+  html+='<div style="height:'+chartH+'px;overflow-y:auto;border:1px solid var(--border);border-radius:6px"><table style="width:540px;border-collapse:collapse;font-size:13px;font-weight:600"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0">';
   html+='<th style="text-align:left;padding:4px 6px;font-size:13px">Цена</th><th style="padding:4px 6px;text-align:right;font-size:13px">Δ</th><th style="padding:4px 6px;text-align:right;font-size:13px">Γ</th><th style="padding:4px 6px;text-align:right;font-size:13px">PnL</th><th style="padding:4px 6px;text-align:right;font-size:13px">Вн.стоимость</th><th style="padding:4px 6px;text-align:right;font-size:13px">Врем.стоимость</th></tr></thead><tbody>';
-  filtered.forEach(function(r, idx){
+  // Table: ALL prices in working range [hedgeLow, hedgeHigh]
+  var tableRows = data.rows.filter(function(r){return r.price >= hedgeLow && r.price <= hedgeHigh;});
+  tableRows.forEach(function(r, idx){
     var pnl = r.bs_price - data.entry_premium;
     var pnlCls = pnl >= 0 ? 'color:var(--green)' : 'color:var(--red)';
     
     var rowBg = '';
     // Highlight max gamma
-    if(idx===maxGammaIdx) rowBg='background:rgba(88,166,255,0.15);';
-    // Highlight in hedge range
-    if(r.price >= hedgeLow && r.price <= hedgeHigh) {
-      rowBg += 'background:rgba(63,185,80,0.15);';
-    }
+    if(r.gamma === maxGamma) rowBg='background:rgba(88,166,255,0.15);';
     
     var intrinsic = Math.max(0, data.strike - r.price);
     var timeValue = r.bs_price - intrinsic;
@@ -1557,7 +1563,7 @@ function renderOptionGreeks(data, layer){
   html+='<div style="margin-bottom:4px"><span style="color:var(--text-dim);font-weight:600">Точность покрытия:</span> <b style="color:var(--purple)">'+(accuracy*100).toFixed(0)+'%</b></div>';
   html+='<div><span style="color:var(--text-dim);font-weight:600">ΣΔΔ пересечение:</span> <b style="color:var(--green)">'+F(sumDeltaDD,4)+'</b></div>';
   html+='</div>';
-  html+='<div style="width:620px;flex-shrink:0"><div style="font-size:14px;font-weight:bold;margin-bottom:6px;color:var(--text-dim)">Профиль Γ</div><div style="border:1px solid var(--border);border-radius:6px;padding:8px;background:var(--surface)"><canvas id="gammaChart-'+(data.symbol.replace(/[^a-zA-Z0-9]/g,'_'))+'" width="580" height="380"></canvas></div></div>';
+  html+='</div>';
   html+='</div>';
   
   el.innerHTML=html;
@@ -1565,7 +1571,7 @@ function renderOptionGreeks(data, layer){
   // Draw gamma chart
   var chartId='gammaChart-'+data.symbol.replace(/[^a-zA-Z0-9]/g,'_');
   setTimeout(function(){
-    drawGammaChart(data.rows, filtered, data.strike, hedgeLow, hedgeHigh, chartId);
+    drawGammaChart(data.rows, filtered, data.strike, hedgeLow, hedgeHigh, chartId, [], insLow, insHigh);
     var c=document.getElementById(chartId);
     if(c) console.log('gammaChart drawn:', chartId, c.width, 'x', c.height);
   }, 50);
