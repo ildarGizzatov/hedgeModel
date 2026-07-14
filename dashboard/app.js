@@ -370,7 +370,7 @@ function updateDataSourceBadge(ds){
     banner.style.padding='8px 16px';
     banner.style.fontSize='13px';
     banner.style.color='var(--red)';
-    banner.innerHTML='⚠️ <b>Bybit недоступен</b> — показаны данные из кэша. Опционы могут не совпадать с реальностью.';
+    banner.innerHTML='⚠️ <b>Bybit недоступен</b> - показаны данные из кэша. Опционы могут не совпадать с реальностью.';
   } else if(ds==='stale'){
     banner.style.display='block';
     banner.style.background='rgba(210,153,34,.15)';
@@ -614,7 +614,7 @@ function renderOptions(opt, pos){
     var symEsc=o.symbol.replace(/'/g,"\'");
     rows+='<tr style="text-align:left">';
     rows+='<td>'+o.symbol+'</td>';
-    var layerDisplay = o.layer && LAYER_LABELS[o.layer] ? LAYER_LABELS[o.layer] : (o.layer || '—').toUpperCase();
+    var layerDisplay = o.layer && LAYER_LABELS[o.layer] ? LAYER_LABELS[o.layer] : (o.layer || '-').toUpperCase();
     var nextLayer = o.layer && LAYER_CYCLE.indexOf(o.layer) >= 0 ? LAYER_LABELS[LAYER_CYCLE[(LAYER_CYCLE.indexOf(o.layer)+1)%3]] : '';
     rows+='<td class="layer-'+(o.layer||'')+'" style="cursor:pointer;font-weight:600" onclick="window.__cycleLayer(event,' + o.id + ',\'' + (o.layer||'anchor') + '\')" title="Клик: '+layerDisplay+' → '+nextLayer+'">'+layerDisplay+'</td>';
     rows+='<td>'+o.dte+'</td>';
@@ -632,7 +632,7 @@ function renderOptions(opt, pos){
     rows+='</tr>';
   });
   optT.innerHTML=rows;
-  // Net Greeks — итоговая строка внизу таблицы
+  // Net Greeks - итоговая строка внизу таблицы
   var tEl=document.getElementById("optTable");
   if(tEl){
     tEl.insertAdjacentHTML("beforeend",
@@ -664,7 +664,7 @@ function renderLayers(l){
     // Result
     html+='<div style="display:flex;justify-content:space-between;padding-top:6px;border-top:1px solid var(--border)">';
     html+='<div><div style="font-size:14px;color:var(--text-dim)">PnL</div>';
-    html+='<div class="'+pnlCls+'" style="font-size:16px;font-weight:600">'+(ly.pnl!==0?((ly.pnl>=0?"+$":"-$")+F(Math.abs(ly.pnl))):'—')+'</div></div>';
+    html+='<div class="'+pnlCls+'" style="font-size:16px;font-weight:600">'+(ly.pnl!==0?((ly.pnl>=0?"+$":"-$")+F(Math.abs(ly.pnl))):'-')+'</div></div>';
     html+='<div><div style="font-size:14px;color:var(--text-dim)">Опционов</div>';
     html+='<div style="font-size:16px;font-weight:600">'+ly.count+'</div></div>';
     html+='</div>';
@@ -690,7 +690,7 @@ function renderRecommendations(rec){
   // Suggestions
   var recs=rec.suggestions||[];
   if(recs.length===0){
-    rl.innerHTML='<div style="color:var(--text-dim);padding:12px">Нет рекомендаций — все позиции в норме</div>';
+    rl.innerHTML='<div style="color:var(--text-dim);padding:12px">Нет рекомендаций - все позиции в норме</div>';
   } else {
     var html="";
     recs.forEach(function(s){
@@ -700,7 +700,7 @@ function renderRecommendations(rec){
         '<div class="rec-meta"><b>'+s.symbol+'</b><br>'+
         'Strike $'+s.strike+' | DTE '+s.dte+' | PnL '+F(s.pnl_pct)+'%<br><br>'+
         B(ac)+' '+PB(s.recommendation.priority)+'</div>'+
-        '<div class="rec-detail">'+ac+' — '+s.recommendation.reason+'</div></div>';
+        '<div class="rec-detail">'+ac+' - '+s.recommendation.reason+'</div></div>';
     });
     rl.innerHTML=html;
   }
@@ -825,7 +825,7 @@ window.__as = function(layer,symbol){
   }
   console.log('__as: selectedOption='+JSON.stringify(selectedOption[layer]));
   addSelected(layer,symbol);
-  
+
   // Create dynamic sub-tab for this option
   if(found && layer==='near') {
     createOptionTab(layer, found);
@@ -834,11 +834,14 @@ window.__as = function(layer,symbol){
 };
 
 function renderLayer(data){
-  if(!data) return;
+  try {
+  console.log('>>> renderLayer START data:', data ? 'exists' : 'null');
+  if(!data) { console.log('>>> no data'); return; }
   var layer=data.layer;
   var el=document.getElementById("layerContent-"+layer);
   var t=document.getElementById("layerTitle-"+layer);
-  if(!el) return;
+  if(!el) { console.log('>>> no el for layerContent-'+layer); return; }
+  console.log('>>> renderLayer: layer='+layer+' count='+data.count+' options='+data.options.length);
   // Don't overwrite static HTML headers
   // if(t) t.textContent=data.label;
   var spot=data.spot_price||0;
@@ -847,7 +850,7 @@ function renderLayer(data){
   var h=hedges[layer]||{min:5,max:20};
   var lowStrike=spot*(1-h.max/100);
   var highStrike=spot*(1-h.min/100);
-  var html='<div style="margin-bottom:8px;font-size:15px;font-weight:bold">Хедж: '+h.min+'–'+h.max+'% просадка | Strike $'+F(lowStrike,1)+'–$'+F(highStrike,1)+' | Всего: <b>'+data.count+'</b></div>';
+  var html='<div style="margin-bottom:8px;font-size:15px;font-weight:bold">Хедж: '+h.min+'-'+h.max+'% просадка | Strike $'+F(lowStrike,1)+'-$'+F(highStrike,1)+' | Всего: <b>'+data.count+'</b></div>';
   var opts=data.options||[];
   if(opts.length===0){html+='<div style="padding:12px;color:var(--text-dim)">Нет опционов</div>';el.innerHTML=html;return;}
   // Sort by layer type
@@ -879,7 +882,7 @@ function renderLayer(data){
   // Build purchased symbols lookup
   var purchSymbols={};
   (purchasedOptions[layer]||[]).forEach(function(p){purchSymbols[p.symbol]=p.qty;});
-  
+
   html+='<div style="max-height:400px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0">';
   html+='<th style="text-align:left;padding:3px 6px">Символ</th><th style="padding:3px 6px;text-align:center">Drop%</th><th style="padding:3px 6px;text-align:right">Strike</th><th style="padding:3px 6px;text-align:center">DTE</th><th style="padding:3px 6px;text-align:right">Premium</th><th style="padding:3px 6px;text-align:right">Δ</th><th style="padding:3px 6px;text-align:right">Γ</th><th style="padding:3px 6px;text-align:right">Θ</th><th style="padding:3px 6px;text-align:right">IV</th><th style="padding:3px 6px;text-align:right">OI</th><th style="padding:3px 6px;text-align:right">Volume</th><th style="padding:3px 6px;text-align:right">Spread</th></tr></thead><tbody>';
   opts.forEach(function(o){
@@ -905,11 +908,13 @@ function renderLayer(data){
     html+='<td style="padding:2px 6px;text-align:right">'+F(o.iv,4)+'</td>';
     html+='<td style="padding:2px 6px;text-align:right">'+(o.open_interest||0)+'</td>';
     html+='<td style="padding:2px 6px;text-align:right">'+(o.volume||o.open_interest||0)+'</td>';
-    html+='<td style="padding:2px 6px;text-align:right">'+(o.spread||'—')+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right">'+(o.spread||'-')+'</td>';
     html+='</tr>';
   });
   html+='</tbody></table></div>';
   el.innerHTML=html;
+  console.log('>>> renderLayer DONE');
+  } catch(e){ console.error('>>> renderLayer ERROR:', e); }
 }
 
 function selectOption(layer,symbol,o){
@@ -965,18 +970,18 @@ function removeOptionTab(symbol){
       }
     }
   }
-  
+
   var btn=document.querySelector('[data-opttab="'+symbol+'"]');
   if(btn) btn.remove();
   var content=document.getElementById('content-'+symbol);
   if(content) content.remove();
-  
+
   // Re-render aggregator (always visible at bottom)
   if(foundLayer){
     var aggContent=document.getElementById('aggregatorContent');
     if(aggContent) renderAggregatorGreeks(foundLayer);
   }
-  
+
   // If no tabs left, show a message
   if(document.querySelectorAll('[data-opttab]').length===0){
     var msg=document.getElementById('dynamicOptionContent');
@@ -995,10 +1000,10 @@ function removeOptionTab(symbol){
 function createOptionTab(layer, opt){
   // Check if tab already exists
   if(document.getElementById('content-'+opt.symbol)) return;
-  
+
   var tabBar=document.getElementById('dynamicOptionTabs');
   var contentArea=document.getElementById('dynamicOptionContent');
-  
+
   // Create tab button
   var btn=document.createElement('div');
   btn.className='layer-subtab';
@@ -1024,7 +1029,7 @@ function createOptionTab(layer, opt){
     document.getElementById('content-'+opt.symbol).style.display='flex';
   };
   tabBar.appendChild(btn);
-  
+
   // Create content div
   var content=document.createElement('div');
   content.className='option-content';
@@ -1032,14 +1037,14 @@ function createOptionTab(layer, opt){
   content.style.cssText='margin-top:8px;';
   content.innerHTML='<div style="color:var(--text-dim);padding:12px;text-align:center">Загрузка...</div>';
   contentArea.appendChild(content);
-  
+
   // Activate first tab
   if(document.querySelectorAll('[data-opttab]').length===1){
     btn.classList.add('active');
     btn.style.cssText='padding:4px 8px;cursor:pointer;font-weight:bold;border-bottom:2px solid var(--blue);margin-bottom:-2px;color:var(--blue);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;gap:4px;';
     content.style.display='flex';
   }
-  
+
   // Fetch BS Greeks
   api('/api/bs-greeks?symbol='+encodeURIComponent(opt.symbol)+'&strike='+opt.strike+'&dte='+opt.dte+'&iv='+opt.iv+'&spot='+opt.spot_price+'&premium='+opt.price+'&layer='+layer)
     .then(function(d){renderOptionGreeks(d, layer);})
@@ -1053,7 +1058,7 @@ var aggregatorCache={};
 function initAggregator(){
   // Содержимое уже в HTML в .card, просто показываем дефолтное сообщение
   var content=document.getElementById('aggregatorContent');
-  if(content) content.innerHTML='<div style="color:var(--text-dim);padding:12px;text-align:center">📊 <b>Суммарный</b> — выберите опционы двойным кликом</div>';
+  if(content) content.innerHTML='<div style="color:var(--text-dim);padding:12px;text-align:center">📊 <b>Суммарный</b> - выберите опционы двойным кликом</div>';
 }
 
 function createAggregatorTab(layer){
@@ -1073,10 +1078,10 @@ function renderAggregatorGreeks(layer){
     if(el) el.innerHTML='<div style="color:var(--text-dim);padding:12px;text-align:center">Нет выбранных опционов</div>';
     return;
   }
-  
+
   var el=document.getElementById('aggregatorContent');
   el.innerHTML='<div style="color:var(--text-dim);padding:12px;text-align:center">Загрузка...</div>';
-  
+
   // Fetch BS for each selected option
   console.log('renderAggregatorGreeks: selected options:', sel.length, sel);
   if(sel.length===0){return;}
@@ -1089,7 +1094,7 @@ function renderAggregatorGreeks(layer){
       .then(function(d){console.log('OK',opt.symbol,d.rows?d.rows.length:'NO_ROWS','rows');return d;})
       .catch(function(e){console.error('ERR',opt.symbol,e);return null;});
   });
-  
+
   Promise.all(promises).then(function(results){
   console.log('All results:', results.map(function(r){return r?r.symbol:'NULL';}));
     var validResults=results.filter(function(r){return r&&r.rows&&r.rows.length>0;});
@@ -1097,17 +1102,17 @@ function renderAggregatorGreeks(layer){
       el.innerHTML='<div style="color:#d32f2f;padding:12px;text-align:center">Не удалось загрузить данные</div>';
       return;
     }
-    
+
     // Aggregate all rows by price
     var priceMap={};
     var spot=validResults[0].spot||validResults[0].rows[0].price;
     var allStrikes=[];
     var allHedgeRanges=[];
-    
+
     validResults.forEach(function(d){
       allStrikes.push(d.strike);
       allHedgeRanges.push(d.hedge_range);
-      
+
       d.rows.forEach(function(r){
         if(!priceMap[r.price]){
           priceMap[r.price]={price:r.price, delta:0, gamma:0, theta:0, vega:0, bs_price:0, count:0};
@@ -1120,10 +1125,10 @@ function renderAggregatorGreeks(layer){
         priceMap[r.price].count++;
       });
     });
-    
+
     // Sort by price
     var aggregated=Object.values(priceMap).sort(function(a,b){return b.price-a.price;});
-    
+
     // Filter to working window (aggregate filtered ranges)
     var aggFiltered=[];
     aggregated.forEach(function(r){
@@ -1132,23 +1137,23 @@ function renderAggregatorGreeks(layer){
         aggFiltered.push(r);
       }
     });
-    
+
     // Filter to hedge range ± 2 steps
     var displayStart=avgHedgeLow-2, displayEnd=avgHedgeHigh+2;
     var displayRows=aggregated.filter(function(r){return r.price>=displayStart && r.price<=displayEnd;});
-    
+
     // Find max gamma within display rows
     var maxGamma=-1;
     displayRows.forEach(function(r){
       if(r.gamma>maxGamma){maxGamma=r.gamma;}
     });
-    
+
     // Map display index to find max gamma highlight
     var maxGammaPrice=-1;
     displayRows.forEach(function(r){
       if(Math.abs(r.gamma-maxGamma)<0.000001 && maxGammaPrice===-1){maxGammaPrice=r.price;}
     });
-    
+
     // Average hedge range
     var avgHedgeLow=0, avgHedgeHigh=0;
     allHedgeRanges.forEach(function(hr){
@@ -1157,7 +1162,7 @@ function renderAggregatorGreeks(layer){
     });
     avgHedgeLow=Math.round(avgHedgeLow/allHedgeRanges.length);
     avgHedgeHigh=Math.round(avgHedgeHigh/allHedgeRanges.length);
-    
+
     // Coverage calc
     var priceDelta50=aggFiltered.length>0?aggFiltered[0].price:0;
     var priceDelta85=aggFiltered.length>0?aggFiltered[aggFiltered.length-1].price:0;
@@ -1168,7 +1173,7 @@ function renderAggregatorGreeks(layer){
     var overlapLen=Math.max(0, overlapHigh-overlapLow);
     var coverage=hedgeLen>0?overlapLen/hedgeLen:0;
     var accuracy=windowLen>0?overlapLen/windowLen:0;
-    
+
     // Sum delta delta
     var sumDeltaDD=0;
     for(var i=1;i<aggFiltered.length;i++){
@@ -1176,7 +1181,7 @@ function renderAggregatorGreeks(layer){
         sumDeltaDD+=aggFiltered[i-1].delta-aggFiltered[i].delta;
       }
     }
-    
+
     // Compute summary Greeks (sum of all selected options' Greeks)
     var totalDelta=0, totalGamma=0, totalTheta=0, totalVega=0;
     var totalPnl=0;
@@ -1190,23 +1195,23 @@ function renderAggregatorGreeks(layer){
       totalPnl+=(curP-entryP)*100*(s.qty||1);
     });
     var avgStrike=Math.round(allStrikes.reduce(function(a,b){return a+b;},0)/allStrikes.length);
-    
+
     // Filter to hedge range ± 2 steps
     var displayStart=avgHedgeLow-2, displayEnd=avgHedgeHigh+2;
     var displayRows=aggregated.filter(function(r){return r.price>=displayStart && r.price<=displayEnd;});
-    
+
     // Find max gamma within display rows
     var maxGamma=-1;
     displayRows.forEach(function(r){
       if(r.gamma>maxGamma){maxGamma=r.gamma;}
     });
-    
+
     // Map display index to find max gamma highlight
     var maxGammaPrice=-1;
     displayRows.forEach(function(r){
       if(Math.abs(r.gamma-maxGamma)<0.000001 && maxGammaPrice===-1){maxGammaPrice=r.price;}
     });
-    
+
     // Build price-based table (like individual tabs)
     var html='';
     html+='<div style="display:flex;gap:24px;align-items:flex-start">';
@@ -1218,23 +1223,23 @@ function renderAggregatorGreeks(layer){
     html+='<th style="padding:3px 4px;text-align:right;font-size:11px">Вн.стоимость</th>';
     html+='<th style="padding:3px 4px;text-align:right;font-size:11px">Врем.стоимость</th>';
     html+='</tr></thead><tbody>';
-    
+
     var avgEntry=sel.reduce(function(a,s){return a+(s.entry_price||s.price||0);},0)/sel.length;
     displayRows.forEach(function(r){
       var pnl=r.bs_price-avgEntry;
       var pnlCls=pnl>=0?'color:var(--green)':'color:var(--red)';
-      
+
       var rowBg='';
       if(r.price===maxGammaPrice) rowBg='background:rgba(88,166,255,0.15);';
       if(r.price>=avgHedgeLow && r.price<=avgHedgeHigh){
         rowBg+='background:rgba(63,185,80,0.15);';
       }
-      
+
       var intrinsic=Math.max(0, avgStrike-r.price);
       var timeValue=r.bs_price-intrinsic;
       var tvCls=timeValue>=0?'color:var(--green)':'color:var(--red)';
       var intrinsicCls=intrinsic>0?'color:var(--green)':'color:var(--text-dim)';
-      
+
       html+='<tr style="text-align:left;height:28px;'+rowBg+'">' ;
       html+='<td style="padding:2px 4px;font-weight:bold">$'+r.price+'</td>';
       html+='<td style="padding:2px 4px;text-align:right">'+F(r.delta,4)+'</td>';
@@ -1245,13 +1250,13 @@ function renderAggregatorGreeks(layer){
       html+='</tr>';
     });
     html+='</tbody></table></div>';
-    
+
     // Gamma chart
     html+='<div style="min-width:580px;flex-shrink:0"><div style="font-size:14px;font-weight:bold;margin-bottom:6px;color:var(--text-dim)">Суммарный Γ</div><div style="border:1px solid var(--border);border-radius:6px;padding:8px;background:var(--surface)"><canvas id="gammaChart-aggregator" width="580" height="380"></canvas></div></div>';
     html+='</div>';
-    
+
     el.innerHTML=html;
-    
+
     // Draw aggregator chart
     setTimeout(function(){
       drawGammaChart(displayRows, displayRows, avgStrike, avgHedgeLow, avgHedgeHigh, 'gammaChart-aggregator', validResults);
@@ -1273,32 +1278,29 @@ function drawGammaChart(allRows, filtered, strike, hedgeLow, hedgeHigh, chartId,
   var W=canvas.width, H=canvas.height;
   var pad={t:25,r:20,b:60,l:55};
   var cW=W-pad.l-pad.r, cH=H-pad.t-pad.b;
-  
+
   ctx.clearRect(0,0,W,H);
-  
-  // X-axis: cover BOTH gamma working range AND insurance range
+
+  // X-axis: gamma working range [hedgeLow, hedgeHigh] ±5%
   var margin=(hedgeHigh-hedgeLow)*0.05;
-  var xMin=hedgeLow-margin;
-  var xMax=hedgeHigh+margin;
-  if(insLow!=null) xMin=Math.min(xMin, insLow);
-  if(insHigh!=null) xMax=Math.max(xMax, insHigh);
+  var xMin=hedgeLow-margin, xMax=hedgeHigh+margin;
   var xRange=xMax-xMin;
   var chartRows=allRows.filter(function(r){return r.price>=xMin && r.price<=xMax;});
   if(chartRows.length===0) return;
-  
+
   // Gamma range from working range data only
   var gammas=chartRows.map(function(r){return r.gamma;});
   var gMax=Math.max.apply(null,gammas)*1.1;
   var gMin=0;
   var gRange=gMax-gMin;
-  
+
   function toX(p){return pad.l+(p-xMin)/xRange*cW;}
   function toY(g){return pad.t+cH-(g-gMin)/gRange*cH;}
-  
+
   // Background
   ctx.fillStyle='#0d1117';
   ctx.fillRect(0,0,W,H);
-  
+
   // Grid lines
   ctx.strokeStyle='#21262d';
   ctx.lineWidth=1;
@@ -1310,7 +1312,7 @@ function drawGammaChart(allRows, filtered, strike, hedgeLow, hedgeHigh, chartId,
     var x=pad.l+cW*(i/5);
     ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+cH);ctx.stroke();
   }
-  
+
   // Working window zone
   var fwMin=filtered[0]?filtered[0].price:0;
   var fwMax=filtered[filtered.length-1]?filtered[filtered.length-1].price:0;
@@ -1319,7 +1321,7 @@ function drawGammaChart(allRows, filtered, strike, hedgeLow, hedgeHigh, chartId,
     ctx.fillStyle='rgba(88,166,255,0.06)';
     ctx.fillRect(fx1,pad.t,fx2-fx1,cH);
   }
-  
+
   // Draw gamma curve - smooth line (using chart rows only)
   ctx.beginPath();
   ctx.strokeStyle='#f0883e';
@@ -1329,7 +1331,7 @@ function drawGammaChart(allRows, filtered, strike, hedgeLow, hedgeHigh, chartId,
     if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
   });
   ctx.stroke();
-  
+
   // Fill under curve
   ctx.beginPath();
   chartRows.forEach(function(r,i){
@@ -1344,7 +1346,7 @@ function drawGammaChart(allRows, filtered, strike, hedgeLow, hedgeHigh, chartId,
   grad.addColorStop(1,'rgba(240,136,62,0.02)');
   ctx.fillStyle=grad;
   ctx.fill();
-  
+
   // Draw extra profiles (individual option gammas)
   var colors=['#58a6ff','#f778ba','#7ee787','#d2a8ff','#ff7b72','#79c0ff'];
   extraProfiles.forEach(function(ep,epIdx){
@@ -1370,12 +1372,12 @@ function drawGammaChart(allRows, filtered, strike, hedgeLow, hedgeHigh, chartId,
     ctx.beginPath();ctx.arc(mx,my,8,0,Math.PI*2);
     ctx.strokeStyle=colors[epIdx%colors.length];ctx.lineWidth=2;ctx.stroke();
   });
-  
+
   // Draw data points (from working range only)
   chartRows.forEach(function(r){
     var x=toX(r.price),y=toY(r.gamma);
     var isMax=r.gamma===Math.max.apply(null,gammas);
-    
+
     if(isMax){
       ctx.beginPath();ctx.arc(x,y,5,0,Math.PI*2);
       ctx.fillStyle='#58a6ff';ctx.fill();
@@ -1386,7 +1388,7 @@ function drawGammaChart(allRows, filtered, strike, hedgeLow, hedgeHigh, chartId,
     ctx.fillStyle=isMax?'#58a6ff':'#f0883e';
     ctx.fill();
   });
-  
+
   // Strike line
   var sx=toX(strike||0);
   if(sx>pad.l && sx<pad.l+cW){
@@ -1396,27 +1398,30 @@ function drawGammaChart(allRows, filtered, strike, hedgeLow, hedgeHigh, chartId,
     ctx.fillStyle='rgba(255,255,255,0.5)';ctx.font='10px monospace';
     ctx.fillText('K='+strike,sx+3,pad.t+12);
   }
-  
-  // Insurance range zone (green highlight) — DRAWN LAST so visible over orange fill
+
+  // Insurance range zone (green highlight) - only if intersects gamma range
   if(insLow && insHigh){
-    var ix1=toX(insLow),ix2=toX(insHigh);
-    // Limit to chart bounds
-    ix1=Math.max(ix1, pad.l);
-    ix2=Math.min(ix2, pad.l+cW);
-    ctx.fillStyle='rgba(63,185,80,0.3)';
-    ctx.fillRect(ix1,pad.t,ix2-ix1,cH);
-    ctx.strokeStyle='rgba(63,185,80,1.0)';
-    ctx.lineWidth=2;ctx.setLineDash([6,4]);
-    ctx.beginPath();ctx.moveTo(ix1,pad.t);ctx.lineTo(ix1,pad.t+cH);ctx.stroke();
-    ctx.beginPath();ctx.moveTo(ix2,pad.t);ctx.lineTo(ix2,pad.t+cH);ctx.stroke();
-    ctx.setLineDash([]);
+    var covLow = Math.max(hedgeLow, insLow);
+    var covHigh = Math.min(hedgeHigh, insHigh);
+    if(covHigh > covLow){
+      var ix1=toX(insLow),ix2=toX(insHigh);
+      ix1=Math.max(ix1, pad.l);
+      ix2=Math.min(ix2, pad.l+cW);
+      ctx.fillStyle='rgba(63,185,80,0.3)';
+      ctx.fillRect(ix1,pad.t,ix2-ix1,cH);
+      ctx.strokeStyle='rgba(63,185,80,1.0)';
+      ctx.lineWidth=2;ctx.setLineDash([6,4]);
+      ctx.beginPath();ctx.moveTo(ix1,pad.t);ctx.lineTo(ix1,pad.t+cH);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(ix2,pad.t);ctx.lineTo(ix2,pad.t+cH);ctx.stroke();
+      ctx.setLineDash([]);
+    }
   }
-  
+
   // X axis line
   ctx.strokeStyle='#30363d';ctx.lineWidth=2;
   ctx.beginPath();ctx.moveTo(pad.l,pad.t+cH);ctx.lineTo(pad.l+cW,pad.t+cH);ctx.stroke();
-  
-  // Price labels — only within chart bounds
+
+  // Price labels - only within chart bounds
   ctx.fillStyle='#e6edf3';ctx.font='bold 12px monospace';ctx.textAlign='center';
   allRows.forEach(function(r){
     var x=toX(r.price);
@@ -1435,7 +1440,7 @@ function drawGammaChart(allRows, filtered, strike, hedgeLow, hedgeHigh, chartId,
     ctx.fillStyle='#e6edf3';
     ctx.fillText(text,x,pad.t+cH+19);
   });
-  
+
   // Y axis labels
   ctx.textAlign='right';
   for(var i=0;i<=5;i++){
@@ -1449,7 +1454,7 @@ function drawGammaChart(allRows, filtered, strike, hedgeLow, hedgeHigh, chartId,
   ctx.textAlign='center';
   ctx.fillText('Γ',0,0);
   ctx.restore();
-  
+
   // Legend - below prices area
   var ly=pad.t+cH+50;
   ctx.textAlign='left';ctx.font='10px monospace';
@@ -1472,7 +1477,10 @@ function renderOptionGreeks(data, layer){
     el.innerHTML='<div style="color:var(--text-dim);padding:12px;text-align:center">Нет данных</div>';
     return;
   }
-  
+
+  // Cost per day
+  var costPerDay = data.dte > 0 ? (data.entry_premium || 0) / data.dte : 0;
+
   // Filter rows: 0.5 <= |delta| <= 0.85
   var filtered=[];
   data.rows.forEach(function(r){
@@ -1482,52 +1490,91 @@ function renderOptionGreeks(data, layer){
     }
   });
   if(filtered.length===0){
-    el.innerHTML='<div style="color:var(--text-dim);padding:12px;text-align:center">Нет строк в диапазоне Δ 0.5–0.85</div>';
+    el.innerHTML='<div style="color:var(--text-dim);padding:12px;text-align:center">Нет строк в диапазоне Δ 0.5-0.85</div>';
     return;
   }
-  
+
   // Compute working window and intersection
   var priceDelta50 = filtered[0].price;  // price at delta ~0.5
   var priceDelta85 = filtered[filtered.length-1].price;  // price at delta ~0.85
   var windowLen = Math.round(Math.abs(priceDelta50 - priceDelta85));  // length of working window (rounded)
-  
+
   // Hedge range from API
   var hedgeRange = data.hedge_range;
   var hedgeLow = hedgeRange.low;
   var hedgeHigh = hedgeRange.high;
   var hedgeLen = Math.abs(hedgeHigh - hedgeLow);
-  
+
   // Insurance range: диапазон работы слоя (3-10% для near и т.д.)
   var hedges={near:{min:3,max:10},mid:{min:8,max:15},distant:{min:15,max:30}};
   var h=hedges[layer]||{min:5,max:20};
   var insLow=Math.round(data.spot*(1-h.max/100));
   var insHigh=Math.round(data.spot*(1-h.min/100));
-  
-  // Intersection: overlap between [priceDelta85, priceDelta50] and [hedgeLow, hedgeHigh]
-  var overlapLow = Math.max(priceDelta85, hedgeLow);
-  var overlapHigh = Math.min(priceDelta50, hedgeHigh);
-  var overlapLen = Math.max(0, overlapHigh - overlapLow);
-  
-  // Coverage: intersection / hedge range length
-  var coverage = hedgeLen > 0 ? overlapLen / hedgeLen : 0;
-  
-  // Accuracy: intersection / working window length
-  var accuracy = windowLen > 0 ? overlapLen / windowLen : 0;
-  
-  // Sum of delta changes only for rows that fall within the intersection
+  var insLen = Math.abs(insHigh - insLow);
+
+  // Coverage: intersection(gamma_range, insurance_range) / insurance_range
+  var covLow = Math.max(hedgeLow, insLow);
+  var covHigh = Math.min(hedgeHigh, insHigh);
+  var covLen = Math.max(0, covHigh - covLow);
+  var coverage = insLen > 0 ? covLen / insLen : 0;
+
+  // Accuracy: intersection(gamma_range, insurance_range) / gamma_range
+  var accLow = Math.max(hedgeLow, insLow);
+  var accHigh = Math.min(hedgeHigh, insHigh);
+  var accLen = Math.max(0, accHigh - accLow);
+  var accuracy = hedgeLen > 0 ? accLen / hedgeLen : 0;
+
+  // Sum of delta changes in intersection
   var sumDeltaDD = 0;
   for (var i = 1; i < filtered.length; i++) {
-    if (filtered[i].price >= overlapLow && filtered[i].price <= overlapHigh) {
+    if (filtered[i].price >= covLow && filtered[i].price <= covHigh) {
       sumDeltaDD += filtered[i-1].delta - filtered[i].delta;
     }
   }
-  
+
+  // Sum of gamma in intersection
+  var sumGammaInIntersection = 0;
+  data.rows.forEach(function(r) {
+    if (r.price >= covLow && r.price <= covHigh) {
+      sumGammaInIntersection += r.gamma;
+    }
+  });
+
+  // GammaProtection per Dollar = ΣΓ_intersection / premium
+  var gammaProtection = (data.entry_premium || 0) > 0 ? sumGammaInIntersection / data.entry_premium : 0;
+
+  // WeightedPnL = Σ ΔPnL_i × weight_i
+  var weightedPnL = 0;
+  var spot = Math.round(data.spot);
+  var bsMap = {};
+  data.rows.forEach(function(r) { bsMap[r.price] = r.bs_price; });
+  function bsAt(p) {
+    if (bsMap[p] !== undefined) return bsMap[p];
+    var lo = null, hi = null;
+    for (var k = p; k >= 0; k--) { if (bsMap[k] !== undefined) { lo = k; break; } }
+    for (var k = p; k <= spot + 20; k++) { if (bsMap[k] !== undefined) { hi = k; break; } }
+    if (lo === null || hi === null) return 0;
+    if (lo === hi) return bsMap[lo];
+    var frac = (p - lo) / (hi - lo);
+    return bsMap[lo] + frac * (bsMap[hi] - bsMap[lo]);
+  }
+  var prevPnL = bsAt(spot) - (data.entry_premium || 0);
+  for (var wi = 1; wi <= spot - covLow; wi++) {
+    var p = spot - wi;
+    if (p < covLow) break;
+    var pnl = bsAt(p) - (data.entry_premium || 0);
+    var dPnL = pnl - prevPnL;
+    var w = 1.00 - (wi - 1) * 0.05;
+    weightedPnL += dPnL * w;
+    prevPnL = pnl;
+  }
+
   // Find max gamma
   var maxGammaIdx=-1, maxGamma=-1;
   filtered.forEach(function(r, idx){
     if(r.gamma > maxGamma) { maxGamma=r.gamma; maxGammaIdx=idx; }
   });
-  
+
   var html='<div style="display:flex;gap:24px;align-items:flex-start">';
   var chartH=380;
   html+='<div style="width:620px;flex-shrink:0"><div style="font-size:14px;font-weight:bold;margin-bottom:6px;color:var(--text-dim)">Профиль Γ</div><div style="border:1px solid var(--border);border-radius:6px;padding:8px;background:var(--surface);height:'+chartH+'px"><canvas id="gammaChart-'+(data.symbol.replace(/[^a-zA-Z0-9]/g,'_'))+'" width="580" height="'+(chartH-24)+'"></canvas></div></div>';
@@ -1538,16 +1585,16 @@ function renderOptionGreeks(data, layer){
   tableRows.forEach(function(r, idx){
     var pnl = r.bs_price - data.entry_premium;
     var pnlCls = pnl >= 0 ? 'color:var(--green)' : 'color:var(--red)';
-    
+
     var rowBg = '';
     // Highlight max gamma
     if(r.gamma === maxGamma) rowBg='background:rgba(88,166,255,0.15);';
-    
+
     var intrinsic = Math.max(0, data.strike - r.price);
     var timeValue = r.bs_price - intrinsic;
     var tvCls = timeValue >= 0 ? 'color:var(--green)' : 'color:var(--red)';
     var intrinsicCls = intrinsic > 0 ? 'color:var(--green)' : 'color:var(--text-dim)';
-    
+
     html+='<tr style="text-align:left;height:28px;'+rowBg+'">';
     html+='<td style="padding:2px 4px;font-weight:bold">$'+r.price+'</td>';
     html+='<td style="padding:2px 4px;text-align:right">'+F(r.delta,4)+'</td>';
@@ -1558,16 +1605,44 @@ function renderOptionGreeks(data, layer){
     html+='</tr>';
   });
   html+='</tbody></table></div>';
-  html+='<div style="padding:16px 24px;background:var(--surface);border-radius:10px;border:1px solid var(--border);font-size:18px;white-space:nowrap">';
-  html+='<div style="margin-bottom:4px"><span style="color:var(--text-dim);font-weight:600">Покрытие:</span> <b style="color:var(--blue)">'+(coverage*100).toFixed(0)+'%</b></div>';
-  html+='<div style="margin-bottom:4px"><span style="color:var(--text-dim);font-weight:600">Точность покрытия:</span> <b style="color:var(--purple)">'+(accuracy*100).toFixed(0)+'%</b></div>';
-  html+='<div><span style="color:var(--text-dim);font-weight:600">ΣΔΔ пересечение:</span> <b style="color:var(--green)">'+F(sumDeltaDD,4)+'</b></div>';
+  html+='<div style="display:flex;gap:16px;flex-wrap:nowrap">';
+  // Column 1: Coverage / Precision
+  html+='<div style="flex:1;display:flex;flex-direction:column;gap:8px">';
+  html+='<div style="padding:20px 24px;background:var(--surface);border-radius:12px;border:2px solid var(--blue);min-width:160px">';
+  html+='<div style="color:var(--text-dim);font-weight:600;font-size:14px">Coverage</div>';
+  html+='<div style="color:var(--blue);font-size:32px;font-weight:bold;margin-top:4px">'+(coverage*100).toFixed(0)+'%</div>';
+  html+='</div>';
+  html+='<div style="padding:14px 18px;background:var(--surface);border-radius:8px;border:1px solid var(--purple);min-width:130px">';
+  html+='<div style="color:var(--text-dim);font-weight:600;font-size:11px">Precision</div>';
+  html+='<div style="color:var(--purple);font-size:20px;font-weight:bold;margin-top:4px">'+(accuracy*100).toFixed(0)+'%</div>';
+  html+='</div>';
+  html+='</div>';
+  // Column 2: ΣΓ / WeightedPnL
+  html+='<div style="flex:1;display:flex;flex-direction:column;gap:8px">';
+  html+='<div style="padding:18px 22px;background:var(--surface);border-radius:10px;border:1px solid var(--green);min-width:150px">';
+  html+='<div style="color:var(--text-dim);font-weight:600;font-size:13px">ΣΓ в пересечении</div>';
+  html+='<div style="color:var(--green);font-size:28px;font-weight:bold;margin-top:4px">'+F(sumGammaInIntersection,6)+'</div>';
+  html+='</div>';
+  html+='<div style="padding:14px 18px;background:var(--surface);border-radius:8px;border:1px solid var(--magenta);min-width:130px">';
+  html+='<div style="color:var(--text-dim);font-weight:600;font-size:11px">WeightedPnL</div>';
+  html+='<div style="color:var(--magenta);font-size:20px;font-weight:bold;margin-top:4px">$'+(weightedPnL).toFixed(2)+'</div>';
+  html+='</div>';
+  html+='</div>';
+  // Column 3: Γ/$ / Cost/Day
+  html+='<div style="flex:1;display:flex;flex-direction:column;gap:8px">';
+  html+='<div style="padding:18px 22px;background:var(--surface);border-radius:10px;border:1px solid var(--cyan);min-width:150px">';
+  html+='<div style="color:var(--text-dim);font-weight:600;font-size:13px">Γ/$</div>';
+  html+='<div style="color:var(--cyan);font-size:28px;font-weight:bold;margin-top:4px">'+gammaProtection.toFixed(2)+'</div>';
+  html+='</div>';
+  html+='<div style="padding:12px 16px;background:var(--surface);border-radius:6px;border:1px solid rgba(48,54,61,.6);min-width:110px">';
+  html+='<div style="color:var(--text-dim);font-weight:600;font-size:10px">Cost/Day</div>';
+  html+='<div style="color:var(--orange);font-size:16px;font-weight:bold;margin-top:4px">$'+(costPerDay).toFixed(2)+'</div>';
   html+='</div>';
   html+='</div>';
   html+='</div>';
-  
+
   el.innerHTML=html;
-  
+
   // Draw gamma chart
   var chartId='gammaChart-'+data.symbol.replace(/[^a-zA-Z0-9]/g,'_');
   setTimeout(function(){
@@ -1631,15 +1706,16 @@ function applyFilters(layer){
 function resetFilters(layer){
   var card=document.getElementById("tab-"+layer);
   if(!card) return;
-  var inputs=card.querySelectorAll("input[type=number]");
-  var defs=layerDefaults[layer];
-  if(inputs[0]) inputs[0].value=defs.delta_min;
-  if(inputs[1]) inputs[1].value=defs.delta_max;
-  if(inputs[2]) inputs[2].value=defs.dte_min;
-  if(inputs[3]) inputs[3].value=defs.dte_max;
-  var qs="?delta_min="+defs.delta_min+"&delta_max="+defs.delta_max+"&dte_min="+defs.dte_min+"&dte_max="+defs.dte_max;
-  layerFilterParams[layer]=qs;
-  api("/api/layer/"+layer+qs).then(function(data){renderLayer(data);});
+  console.log('RESET: layer='+layer);
+  layerFilterParams[layer]="";
+  fetch(API+'/api/layer/'+layer+'?all=1&refresh=1').then(function(r){
+    return r.json();
+  }).then(function(data){
+    console.log('RESET: count='+data.count);
+    renderLayer(data);
+  }).catch(function(e){
+    console.error('RESET error:', e);
+  });
 }
 
 function refreshLayers(layer){
@@ -1686,7 +1762,7 @@ function showDataStatus(){
     banner.style.padding = "8px 16px";
     banner.style.fontSize = "13px";
     banner.style.color = "var(--red)";
-    banner.innerHTML = "⛔ <b>Нет данных</b> — Bybit недоступен, снапшотов нет. Проверьте подключение.";
+    banner.innerHTML = "⛔ <b>Нет данных</b> - Bybit недоступен, снапшотов нет. Проверьте подключение.";
   } else if(worstSource === "db_fallback"){
     var ageStr = worstAge > 0 ? ("данные от " + worstAge + " мин. назад") : "данные устаревшие";
     banner.style.display = "block";
@@ -1697,7 +1773,7 @@ function showDataStatus(){
     banner.style.padding = "8px 16px";
     banner.style.fontSize = "13px";
     banner.style.color = "var(--yellow)";
-    banner.innerHTML = "⚠️ <b>Bybit недоступен</b> — показаны " + ageStr + ". Опционы могут не совпадать с реальностью.";
+    banner.innerHTML = "⚠️ <b>Bybit недоступен</b> - показаны " + ageStr + ". Опционы могут не совпадать с реальностью.";
   } else {
     banner.style.display = "none";
   }
