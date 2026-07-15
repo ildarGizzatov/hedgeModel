@@ -796,6 +796,9 @@ var posData = null;
 // === LAYER TABS ===
 var layerFilterParams={distant:"all=1",mid:"all=1",near:"all=1"};
 var selectedOption={distant:[],mid:[],near:[]};
+selectedOption.distant=selectedOption.distant||[];
+selectedOption.mid=selectedOption.mid||[];
+selectedOption.near=selectedOption.near||[];
 
 
 var layerDefaults={distant:{delta_min:0.05,delta_max:0.20,dte_min:25,dte_max:99999},mid:{delta_min:0.20,delta_max:0.40,dte_min:10,dte_max:25},near:{delta_min:0.25,delta_max:0.45,dte_min:5,dte_max:25}};
@@ -808,6 +811,7 @@ window.__so = function(layer,symbol){
 
 window.__as = function(layer,symbol){
   console.log('__as START: layer='+layer+' symbol='+symbol);
+  if(!layer||!selectedOption[layer]) { console.log('__as: invalid layer='+layer); return; }
   // Double-click: add to selectedOption array
   var data;
   if(layer==='distant') data=layerData_distant;
@@ -901,8 +905,11 @@ function renderLayer(data){
   var purchSymbols={};
   (purchasedOptions[layer]||[]).forEach(function(p){purchSymbols[p.symbol]=p.qty;});
 
-  html+='<div style="max-height:400px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0">';
-  html+='<th style="text-align:left;padding:2px 4px">Символ</th><th style="padding:2px 4px;text-align:center">Drop%</th><th style="padding:2px 4px;text-align:right">Strike</th><th style="padding:2px 4px;text-align:center">DTE</th><th style="padding:2px 4px;text-align:right">Premium</th><th style="padding:2px 4px;text-align:right">Δ</th><th style="padding:2px 4px;text-align:right">Γ</th><th style="padding:2px 4px;text-align:right">Θ</th><th style="padding:2px 4px;text-align:right">IV</th><th style="padding:2px 4px;text-align:right">OI</th><th style="padding:2px 4px;text-align:right">Volume</th><th style="padding:2px 4px;text-align:right">Spread</th></tr></thead><tbody>';
+  // For distant: store layer info on tbody for dblclick handler
+  var tbodyId=(layer==='distant')?'distantLayerBody':'layerBody-'+layer;
+  
+  html+='<div style="max-height:250px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0">';
+  html+='<th style="text-align:left;padding:2px 4px">Символ</th><th style="padding:2px 4px;text-align:center">Drop%</th><th style="padding:2px 4px;text-align:right">Strike</th><th style="padding:2px 4px;text-align:center">DTE</th><th style="padding:2px 4px;text-align:right">Premium</th><th style="padding:2px 4px;text-align:right">Δ</th><th style="padding:2px 4px;text-align:right">Γ</th><th style="padding:2px 4px;text-align:right">Θ</th><th style="padding:2px 4px;text-align:right">IV</th><th style="padding:2px 4px;text-align:right">OI</th><th style="padding:2px 4px;text-align:right">Volume</th><th style="padding:2px 4px;text-align:right">Spread</th></tr></thead><tbody id="'+tbodyId+'">';
   opts.forEach(function(o){
     var sym=o.symbol.replace(/'/g,"\\'");
     var dropPct=spot>0?((spot-o.strike)/spot*100):0;
@@ -914,7 +921,11 @@ function renderLayer(data){
     // Highlight insurance range strikes in green
     var rowBg='';
     if(o.strike>=insLow && o.strike<=insHigh){rowBg='background:rgba(63,185,80,0.12);';}
-    html+='<tr style="text-align:left;height:22px;cursor:pointer;'+rowBg+' onclick="window.__so(\''+layer+'\',\''+sym+'\')" ondblclick="event.preventDefault();event.stopPropagation();window.__as(\''+layer+'\',\''+sym+'\')" title="'+title+'">';
+    if(layer==='distant'){
+      html+='<tr style="text-align:left;height:22px;cursor:pointer;'+rowBg+' data-symbol="'+o.symbol+'" ondblclick="event.preventDefault();event.stopPropagation();addDistant(\''+o.symbol.replace(/'/g,"\\'")+'\')" title="'+title+'">';
+    } else {
+      html+='<tr style="text-align:left;height:22px;cursor:pointer;'+rowBg+' onclick="window.__so(\''+layer+'\',\''+o.symbol.replace(/'/g,"\\'")+'\')" ondblclick="event.preventDefault();event.stopPropagation();window.__as(\''+layer+'\',\''+o.symbol.replace(/'/g,"\\'")+'\')" title="'+title+'">';
+    }
     html+='<td style="padding:2px 4px;font-weight:bold">'+o.symbol+(purchased?'<span style="color:#f0ad4e">📌'+purchased+'</span>':'')+'</td>';
     html+='<td style="padding:2px 4px;text-align:center;color:'+dropCls+'"><b>'+dropStr+'</b></td>';
     var strikeCell='';
@@ -933,10 +944,11 @@ function renderLayer(data){
   });
   html+='</tbody></table></div>';
   el.innerHTML=html;
+  
   // Save data for __as lookup
   if(layer==='near') window.layerData_near=data;
   else if(layer==='mid') window.layerData_mid=data;
-  else if(layer==='distant') window.layerData_distant=data;
+  else if(layer==='distant') { window.layerData_distant=data; console.log('>>> renderLayer: set layerData_distant, options='+data.options.length); }
   console.log('>>> renderLayer DONE');
   } catch(e){ console.error('>>> renderLayer ERROR:', e); }
 }
@@ -961,6 +973,178 @@ function selectOption(layer,symbol,o){
   } catch(e){ console.error('selectOption error:',e); }
   var params=layerFilterParams[layer]?"?"+layerFilterParams[layer]:"";
   api("/api/layer/"+layer+params).then(function(d){renderLayer(d);});
+}
+
+window._dbClick=function(layer,symbol){
+  if(!layer||!symbol||layer==='undefined') return;
+  if(layer==='distant'){ addDistant(symbol); }
+  else { window.__as(layer,symbol); }
+};
+
+// === Distant: add selected option ===
+function addDistant(symbol){
+  console.log('addDistant called: symbol='+symbol);
+  for(var i=0;i<selectedOption.distant.length;i++){
+    if(selectedOption.distant[i].symbol===symbol) { console.log('addDistant: already selected'); return; }
+  }
+  var data=window.layerData_distant;
+  if(!data||!data.options) { console.log('addDistant: no data'); return; }
+  var found=null;
+  for(var i=0;i<data.options.length;i++){
+    if(data.options[i].symbol===symbol){found=data.options[i];break;}
+  }
+  if(!found) return;
+  var item={symbol:found.symbol,strike:found.strike,dte:found.dte,iv:found.iv,price:found.price,delta:found.delta,gamma:found.gamma,theta:found.theta,vega:found.vega,spot_at_entry:found.spot_price,qty:1,checked:true};
+  selectedOption.distant.push(item);
+  var selList=JSON.parse(localStorage.getItem('selectedDistant')||'[]');
+  if(!selList.find(function(x){return x.symbol===symbol})){
+    selList.push(JSON.parse(JSON.stringify(item)));
+    localStorage.setItem('selectedDistant',JSON.stringify(selList));
+  }
+  syncDistantSelected();
+  renderDistantProfile();
+}
+
+// === Distant: render selected table ===
+function syncDistantSelected(){
+  var tbody=document.getElementById('distantSelectedTable');
+  if(!tbody) return;
+  var opts=selectedOption.distant||[];
+  var html='';
+  var sumTotal=0;
+  opts.forEach(function(opt,idx){
+    var checked=opt.checked!==false;
+    var strike=opt.strike||'-';
+    var delta=opt.delta||0;
+    var price=opt.price||0;
+    var qty=opt.qty||1;
+    var total=price*qty;
+    sumTotal+=total;
+    html+='<tr style="height:22px">';
+    html+='<td style="padding:2px 6px;text-align:center"><input type="checkbox" '+(checked?'checked':'')+' onchange="window._onDistantToggle('+idx+',this.checked)"></td>';
+    html+='<td style="padding:2px 6px;font-weight:bold">'+opt.symbol+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right">$'+strike+'</td>';
+    html+='<td style="padding:2px 6px;text-align:center">'+(opt.dte||'-')+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right">'+F(delta,4)+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right">$'+F(price,4)+'</td>';
+    html+='<td style="padding:2px 6px;text-align:center"><input type="number" min="0" step="1" value="'+qty+'" style="width:50px;text-align:center;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px 4px;border-radius:4px" onchange="window._onDistantQtyChange('+idx+',this.value)"></td>';
+    html+='<td style="padding:2px 6px;text-align:right">$'+F(total,2)+'</td>';
+    html+='<td style="padding:2px 6px;text-align:center"><button style="background:none;border:none;cursor:pointer;color:#d32f2f;font-size:14px" onclick="window._onDistantRemove('+idx+')">✕</button></td>';
+    html+='</tr>';
+  });
+  if(html===''){
+    html='<tr><td colspan="9" style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';
+  } else {
+    html+='<tr style="height:22px;font-weight:bold;background:var(--bg);border-top:2px solid var(--border)">';
+    html+='<td style="padding:2px 6px;text-align:center"></td>';
+    html+='<td style="padding:2px 6px" colspan="4">Итого:</td>';
+    html+='<td></td>';
+    html+='<td style="padding:2px 6px;text-align:right">$'+F(sumTotal,2)+'</td>';
+    html+='<td></td>';
+    html+='</tr>';
+  }
+  tbody.innerHTML=html;
+}
+
+window._onDistantToggle=function(idx,val){
+  if(selectedOption.distant[idx]){
+    selectedOption.distant[idx].checked=val;
+    var selList=JSON.parse(localStorage.getItem('selectedDistant')||'[]');
+    if(selList[idx]) selList[idx].checked=val;
+    localStorage.setItem('selectedDistant',JSON.stringify(selList));
+    renderDistantProfile();
+  }
+};
+
+window._onDistantQtyChange=function(idx,val){
+  if(selectedOption.distant[idx]){
+    selectedOption.distant[idx].qty=parseInt(val)||0;
+    var selList=JSON.parse(localStorage.getItem('selectedDistant')||'[]');
+    if(selList[idx]) selList[idx].qty=selectedOption.distant[idx].qty;
+    localStorage.setItem('selectedDistant',JSON.stringify(selList));
+    syncDistantSelected();
+    renderDistantProfile();
+  }
+};
+
+window._onDistantRemove=function(idx){
+  selectedOption.distant.splice(idx,1);
+  var selList=JSON.parse(localStorage.getItem('selectedDistant')||'[]');
+  selList.splice(idx,1);
+  localStorage.setItem('selectedDistant',JSON.stringify(selList));
+  syncDistantSelected();
+  renderDistantProfile();
+};
+
+// === Distant: profile table (Цена, Δ, Γ, PnL) ===
+function renderDistantProfile(){
+  var tbody=document.getElementById('distantProfileTable');
+  if(!tbody){ console.log('Profile: no tbody'); return; }
+  var allOpts=selectedOption.distant||[];
+  var opts=allOpts.filter(function(o){return o.checked!==false;});
+  console.log('Profile: allOpts='+allOpts.length+' opts='+opts.length+' checked='+opts.map(function(o){return o.symbol+' c='+o.checked}).join(','));
+  if(opts.length===0){tbody.innerHTML='<tr><td colspan="4" style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';return;}
+  
+  var data=window.layerData_distant;
+  if(!data||!data.spot_price){ console.log('Profile: no data/spot'); return; }
+  var spot=data.spot_price;
+  console.log('Profile: spot='+spot+' insHigh='+Math.round(spot*0.85)+' insLow='+Math.round(spot*0.70));
+  
+  // Insurance range: 15-30% drop from spot
+  var insHigh=Math.round(spot*(1-0.15));
+  var insLow=Math.round(spot*(1-0.30));
+  
+  // BS helper functions (r=0 как в black_scholes.py)
+  function _ncdf(x){
+    // Abramowitz & Stegun approximation (no Math.erf needed)
+    var a1=0.254829592, a2=-0.284496736, a3=1.421413741, a4=-1.453152027, a5=1.061405429, p=0.3275911;
+    var sign=x<0?-1:1;
+    var ax=Math.abs(x)/Math.sqrt(2);
+    var t=1/(1+p*ax);
+    var poly=((( (a5*t+a4)*t+a3 )*t+a2)*t+a1)*t;
+    var y=poly*Math.exp(-ax*ax);
+    return 0.5*(1+sign*(1-y));
+  }
+  function _npdf(x){
+    return Math.exp(-0.5*x*x)/Math.sqrt(2*Math.PI);
+  }
+  function bs_greeks(S, K, T, sigma){
+    if(T<=0||sigma<=0||S<=0||K<=0){
+      return {delta: S<=K?-1:0, gamma:0};
+    }
+    var d1=(Math.log(S/K)+(sigma*sigma/2)*T)/(sigma*Math.sqrt(T));
+    var delta=_ncdf(d1)-1; // put delta
+    var gamma=_npdf(d1)/(S*sigma*Math.sqrt(T));
+    return {delta:delta, gamma:gamma};
+  }
+  
+  var html='';
+  for(var p=insHigh;p>=insLow;p--){
+    var sumDelta=0, sumGamma=0, sumPnL=0;
+    opts.forEach(function(opt){
+      var qty=opt.qty||1;
+      var strike=opt.strike||0;
+      var premium=opt.price||0;
+      var iv=opt.iv||0.3;
+      var dte=opt.dte||30;
+      var T=Math.max(dte/365, 1/365);
+      var greeks=bs_greeks(p, strike, T, iv);
+      sumDelta+=greeks.delta*qty;
+      sumGamma+=greeks.gamma*qty;
+      // PnL = intrinsic value at price p - premium paid
+      var intrinsic=Math.max(strike-p, 0);
+      var pnl=intrinsic-premium;
+      sumPnL+=pnl*qty;
+    });
+    var pnlCls=sumPnL>=0?'color:var(--green)':'color:#d32f2f';
+    html+='<tr style="height:22px">';
+    html+='<td style="padding:2px 6px;text-align:right">$'+p+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right">'+F(sumDelta,2)+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right">'+F(sumGamma,4)+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right" class="'+pnlCls+'">$'+F(sumPnL,2)+'</td>';
+    html+='</tr>';
+  }
+  tbody.innerHTML=html;
 }
 
 function addSelected(layer,symbol){
@@ -1867,6 +2051,12 @@ function loadAll(){
   });
   initAggregator();
   document.getElementById('headerUpdated').textContent='Обновлено: '+new Date().toLocaleTimeString('ru-RU');
+  try {
+    var sd=JSON.parse(localStorage.getItem('selectedDistant')||'[]');
+    if(sd.length>0) selectedOption.distant=sd;
+  } catch(e){}
+  syncDistantSelected();
+  renderDistantProfile();
 }
 
 initAggregator();

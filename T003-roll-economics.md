@@ -99,4 +99,11 @@ related: [[T001-conditions-closing]], [[102-adaptation-layer]], [[T002-theta-mon
 
 ---
 
+**roll zone начинается примерно на 7–14 DTE**
+
+
+
+
+
+
 *Создано: 2026-06-10*

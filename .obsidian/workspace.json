@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "docs/204-active-layer-selection.md",
+                "file": "docs/203-anchor-selection-algorithm.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "204-active-layer-selection"
+              "title": "203-anchor-selection-algorithm"
             }
           }
         ]
@@ -186,31 +186,33 @@
   },
   "active": "bd9c837cb873cf31",
   "lastOpenFiles": [
-    "docs/203-anchor-selection-algorithm.md",
-    "dashboard/sedRNWSqy",
-    "dashboard/sed5jMJK8",
-    "hedge_model.db-shm",
+    "tools/excel/lu620380fccq5.tmp",
     "hedge_model.db-wal",
-    "src/__pycache__/buy_sol.cpython-312.pyc",
+    "hedge_model.db-shm",
+    "dashboard/sedHh0a13",
+    "dashboard/sedCfhPLX",
     "docs/201-selection-criteria.md",
+    "docs/203-anchor-selection-algorithm.md",
     "docs/101-anchor-layer.md",
+    "docs/102-adaptation-layer.md",
+    "docs/103-active-layer.md",
+    "docs/204-active-layer-selection.md",
+    "T003-roll-economics.md",
+    "dashboard/sedhObDau",
+    "dashboard/sed3qJLPy",
+    "dashboard/sedJUdjjs",
+    "2026-07-14.md",
+    "dashboard/sedaw1ZC5",
+    "dashboard/sedm8Rqep",
+    "dashboard/sedVe8xPR",
     "T001-conditions-closing.md",
     "T004-monitor-open-options.md",
     "docs/200-budget-allocation.md",
-    "tools/excel/lu2289024uda.tmp",
-    "docs/204-active-layer-selection.md",
     "T009-active-layer-selection.md",
     "Kanban.md",
-    "dashboard/sedCOTeft",
-    "dashboard/sedb75c06",
-    "dashboard/sedxNa5M6",
-    "dashboard/sedzWs3tm",
     "docs/210-active-layer-selection.md",
     "T006-anchor-selection.md",
-    "T003-roll-economics.md",
     "2026-06-30.md",
-    "docs/103-active-layer.md",
-    "docs/102-adaptation-layer.md",
     "2026-06-29.md",
     "2026-06-25.md",
     "README.md",
@@ -219,7 +221,6 @@
     "T008-conditions-active-closing.md",
     "AGENTS.md",
     "venv/lib/python3.12/site-packages/numpy-2.4.6.dist-info/licenses/numpy/random/src/pcg64/LICENSE.md",
-    "2026-06-22.md",
-    "docs/901-project-setup.md"
+    "2026-06-22.md"
   ]
 }

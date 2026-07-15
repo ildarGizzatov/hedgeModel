@@ -134,11 +134,21 @@ tr:hover td{background:rgba(88,166,255,.05)}
   </div>
 </div>
 <div class="tab-content" id="tab-distant">
-<div class="card"><h3>Дальний слой</h3>
-<div id="selectedContent-distant"></div>
-</div>
-<div class="card"><h2 id="layerTitle-distant">Доступные опционы</h2>
+<div style="display:flex;gap:16px;align-items:flex-start">
+<div class="card" style="width:50%"><h2 id="layerTitle-distant">Доступные опционы</h2>
 <div id="layerContent-distant"></div>
+</div>
+<div class="card" style="width:50%">
+<h2>Выбранные опционы</h2>
+<div style="max-height:250px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0">
+<th style="text-align:center;padding:3px 6px;width:30px">✔</th><th style="text-align:left;padding:3px 6px">Опцион</th><th style="padding:3px 6px;text-align:right">Страйк</th><th style="padding:3px 6px;text-align:center">DTE</th><th style="padding:3px 6px;text-align:right">Δ</th><th style="padding:3px 6px;text-align:right">Price</th><th style="padding:3px 6px;text-align:center">Кол-во</th><th style="padding:3px 6px;text-align:right">Стоимость</th><th style="padding:3px 6px;text-align:center">✕</th>
+</tr></thead><tbody id="distantSelectedTable"></tbody></table></div>
+</div>
+</div>
+<div class="card" style="margin-top:16px"><h2>Профиль по цене (диапазон страхования)</h2>
+<div style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0">
+<th style="text-align:right;padding:2px 6px">Цена</th><th style="text-align:right;padding:2px 6px">Δ</th><th style="text-align:right;padding:2px 6px">Γ</th><th style="text-align:right;padding:2px 6px">PnL</th>
+</tr></thead><tbody id="distantProfileTable"></tbody></table></div>
 </div>
 </div>
 <div class="tab-content" id="tab-mid">
@@ -184,6 +194,6 @@ tr:hover td{background:rgba(88,166,255,.05)}
 
 </div>
 
-<script src="app.js?t=20260713_120"></script>
+<script src="app.js?t=20260714_390"></script>
 </body>
 </html>
