@@ -1003,6 +1003,8 @@ function addDistant(symbol){
   }
   syncDistantSelected();
   renderDistantProfile();
+  renderDistantPnlChart();
+  renderDistantGammaChart();
 }
 
 // === Distant: render selected table ===
@@ -1019,7 +1021,7 @@ function syncDistantSelected(){
     var price=opt.price||0;
     var qty=opt.qty||1;
     var total=price*qty;
-    sumTotal+=total;
+    if(checked) sumTotal+=total;
     html+='<tr style="height:22px">';
     html+='<td style="padding:2px 6px;text-align:center"><input type="checkbox" '+(checked?'checked':'')+' onchange="window._onDistantToggle('+idx+',this.checked)"></td>';
     html+='<td style="padding:2px 6px;font-weight:bold">'+opt.symbol+'</td>';
@@ -1044,6 +1046,8 @@ function syncDistantSelected(){
     html+='</tr>';
   }
   tbody.innerHTML=html;
+  renderDistantPnlChart();
+  renderDistantGammaChart();
 }
 
 window._onDistantToggle=function(idx,val){
@@ -1052,7 +1056,10 @@ window._onDistantToggle=function(idx,val){
     var selList=JSON.parse(localStorage.getItem('selectedDistant')||'[]');
     if(selList[idx]) selList[idx].checked=val;
     localStorage.setItem('selectedDistant',JSON.stringify(selList));
+    syncDistantSelected();
     renderDistantProfile();
+  renderDistantPnlChart();
+  renderDistantGammaChart();
   }
 };
 
@@ -1064,6 +1071,8 @@ window._onDistantQtyChange=function(idx,val){
     localStorage.setItem('selectedDistant',JSON.stringify(selList));
     syncDistantSelected();
     renderDistantProfile();
+  renderDistantPnlChart();
+  renderDistantGammaChart();
   }
 };
 
@@ -1074,6 +1083,8 @@ window._onDistantRemove=function(idx){
   localStorage.setItem('selectedDistant',JSON.stringify(selList));
   syncDistantSelected();
   renderDistantProfile();
+  renderDistantPnlChart();
+  renderDistantGammaChart();
 };
 
 // === Distant: profile table (Цена, Δ, Γ, PnL) ===
@@ -1083,7 +1094,7 @@ function renderDistantProfile(){
   var allOpts=selectedOption.distant||[];
   var opts=allOpts.filter(function(o){return o.checked!==false;});
   console.log('Profile: allOpts='+allOpts.length+' opts='+opts.length+' checked='+opts.map(function(o){return o.symbol+' c='+o.checked}).join(','));
-  if(opts.length===0){tbody.innerHTML='<tr><td colspan="4" style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';return;}
+  if(opts.length===0){tbody.innerHTML='<tr><td colspan="5" style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';return;}
   
   var data=window.layerData_distant;
   if(!data||!data.spot_price){ console.log('Profile: no data/spot'); return; }
@@ -1137,14 +1148,341 @@ function renderDistantProfile(){
       sumPnL+=pnl*qty;
     });
     var pnlCls=sumPnL>=0?'color:var(--green)':'color:#d32f2f';
+    var dropPct = ((spot-p)/spot*100);
     html+='<tr style="height:22px">';
     html+='<td style="padding:2px 6px;text-align:right">$'+p+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right">'+F(dropPct,1)+'%</td>';
     html+='<td style="padding:2px 6px;text-align:right">'+F(sumDelta,2)+'</td>';
     html+='<td style="padding:2px 6px;text-align:right">'+F(sumGamma,4)+'</td>';
     html+='<td style="padding:2px 6px;text-align:right" class="'+pnlCls+'">$'+F(sumPnL,2)+'</td>';
     html+='</tr>';
   }
   tbody.innerHTML=html;
+}
+
+// === Distant: PnL chart ===
+function renderDistantPnlChart(){
+  var container=document.getElementById('distantPnlChart');
+  if(!container) return;
+  var allOpts=selectedOption.distant||[];
+  var opts=allOpts.filter(function(o){return o.checked!==false && (o.qty||0)>0;});
+  if(opts.length===0){container.innerHTML='Нет выбранных опционов';return;}
+  
+  var data=window.layerData_distant;
+  if(!data||!data.spot_price){container.innerHTML='Нет данных';return;}
+  var spot=data.spot_price;
+  
+  // Insurance range for x-axis
+  var insLow=Math.round(spot*0.70);
+  var insHigh=Math.round(spot*0.85);
+  var xMin=insLow-1;
+  var xMax=insHigh+1;
+  
+  // Collect all PnL points per option
+  var allPoints=[];
+  var colors=['#3b82f6','#ef4444','#22c55e','#f59e0b','#8b5cf6','#ec4899'];
+  var totalPremium=0;
+  opts.forEach(function(opt,si){
+    var strike=opt.strike||0;
+    var premium=opt.price||0;
+    var qty=opt.qty||1;
+    var points=[];
+    var pnlSumInIns=0;
+    var pnlCountInIns=0;
+    for(var p=xMin;p<=xMax;p+=1){
+      var intrinsic=Math.max(strike-p, 0);
+      var pnl=(intrinsic-premium)*qty;
+      points.push({price:p, pnl:pnl});
+      if(p>=insLow && p<=insHigh){
+        pnlSumInIns+=pnl;
+        pnlCountInIns++;
+      }
+    }
+    var avgPnlIns=pnlCountInIns>0?pnlSumInIns/pnlCountInIns:0;
+    var gammaEff=premium>0?avgPnlIns/premium:0;
+    allPoints.push({symbol:opt.symbol, points:points, strike:strike, premium:premium, color:colors[si%colors.length], avgPnlIns:avgPnlIns, gammaEff:gammaEff});
+    totalPremium+=premium*qty;
+  });
+  
+  // Use same step as points for stacked
+  var stacked=[];
+  for(var p=xMin;p<=xMax;p+=1){
+    var totalPnl=0;
+    allPoints.forEach(function(s){
+      for(var i=0;i<s.points.length;i++){
+        if(s.points[i].price===p){ totalPnl+=s.points[i].pnl; break; }
+      }
+    });
+    stacked.push({price:p, total:totalPnl});
+  }
+  
+  var yMax=0, yMin=0;
+  allPoints.forEach(function(s){
+    s.points.forEach(function(pt){
+      if(pt.pnl>yMax) yMax=pt.pnl;
+      if(pt.pnl<yMin) yMin=pt.pnl;
+    });
+  });
+  
+  // Add some padding
+  var yPad=Math.max(Math.abs(yMax)*0.15, Math.abs(yMin)*0.15, 1);
+  yMax+=yPad;
+  yMin-=yPad;
+  
+  var w=container.clientWidth||450;
+  var h=container.clientHeight||280;
+  var pad={l:60, r:20, t:30, b:40};
+  var cw=w-pad.l-pad.r;
+  var ch=h-pad.t-pad.b;
+  
+  // Build SVG
+  var svgW=w, svgH=h;
+  var svg='<svg width="'+svgW+'" height="'+svgH+'" xmlns="http://www.w3.org/2000/svg">';
+  
+  // Grid and axes
+  var xRange=xMax-xMin;
+  var yRange=yMax-yMin;
+  
+  function xPos(p){ return pad.l+(p-xMin)/xRange*cw; }
+  function yPos(v){ return pad.t+(1-(v-yMin)/yRange)*ch; }
+  
+  // Defs for clip — full width
+  var clipW=cw;
+  svg+='<defs><clipPath id="chartArea"><rect x="'+pad.l+'" y="'+pad.t+'" width="'+clipW+'" height="'+ch+'"/></clipPath></defs>';
+  
+  // Background
+  svg+='<rect x="0" y="0" width="'+svgW+'" height="'+svgH+'" fill="var(--surface)"/>';
+  
+  // Zero line
+  if(yMin<=0 && yMax>=0){
+    var zeroY=yPos(0);
+    svg+='<line x1="'+pad.l+'" y1="'+zeroY+'" x2="'+(pad.l+cw)+'" y2="'+zeroY+'" stroke="#666" stroke-width="1"/>';
+  }
+  
+  // Green insurance zone
+  var zoneLeft=xPos(insLow);
+  var zoneRight=xPos(insHigh);
+  var zoneW=zoneRight-zoneLeft;
+  svg+='<rect x="'+zoneLeft+'" y="'+pad.t+'" width="'+zoneW+'" height="'+ch+'" fill="rgba(34,197,94,0.12)"/>';
+  svg+='<text x="'+(zoneLeft+zoneW/2)+'" y="'+(pad.t+14)+'" text-anchor="middle" fill="#22c55e" font-size="9">страховка</text>';
+  
+  // Y-axis grid lines
+  var yStep=1; if(yRange>50) yStep=5; if(yRange>100) yStep=10;
+  for(var vy=Math.ceil(yMin/yStep)*yStep;vy<=yMax;vy+=yStep){
+    var yy=yPos(vy);
+    svg+='<line x1="'+pad.l+'" y1="'+yy+'" x2="'+(pad.l+cw)+'" y2="'+yy+'" stroke="#333" stroke-width="0.5"/>';
+    svg+='<text x="'+(pad.l-5)+'" y="'+(yy+4)+'" text-anchor="end" fill="#888" font-size="10">$'+vy+'</text>';
+  }
+  
+  // X-axis grid lines - step $1
+  for(var vx=xMin;vx<=xMax;vx+=1){
+    var xx=xPos(vx);
+    svg+='<line x1="'+xx+'" y1="'+pad.t+'" x2="'+xx+'" y2="'+(pad.t+ch)+'" stroke="#333" stroke-width="0.5"/>';
+    svg+='<text x="'+xx+'" y="'+(pad.t+ch+12)+'" text-anchor="middle" fill="#888" font-size="8">$'+vx+'</text>';
+  }
+  
+  // Axis labels
+  var centerLabel=pad.l+cw/2;
+  svg+='<text x="'+centerLabel+'" y="'+(h-5)+'" text-anchor="middle" fill="#aaa" font-size="11">Цена SOL</text>';
+  svg+='<text x="12" y="'+(pad.t+ch/2)+'" text-anchor="middle" fill="#aaa" font-size="11" transform="rotate(-90,12,'+(pad.t+ch/2)+')">PnL ($)</text>';
+  
+  // Draw grouped PnL bars: one bar per option at each price, no gap
+  var cellW=cw/(xMax-xMin+1);
+  var barW=cellW/allPoints.length;
+  svg+='<g clip-path="url(#chartArea)">';
+  
+  for(var idx=0;idx<stacked.length;idx++){
+    var sp=stacked[idx];
+    var bx=xPos(sp.price);
+    var cellStart=bx-cellW/2;
+    
+    for(var oi=0;oi<allPoints.length;oi++){
+      var series=allPoints[oi];
+      var segPnl=0;
+      for(var i=0;i<series.points.length;i++){
+        if(series.points[i].price===sp.price){ segPnl=series.points[i].pnl; break; }
+      }
+      
+      var by=yPos(0);
+      var bt=yPos(segPnl);
+      var h=Math.abs(bt-by);
+      
+      if(h>0.5){
+        var fillColor=segPnl>=0?series.color:'#d32f2f';
+        svg+='<rect x="'+(cellStart+oi*barW)+'" y="'+(segPnl>=0?bt:by)+'" width="'+barW+'" height="'+h+'" fill="'+fillColor+'" opacity="0.75"/>';
+      }
+    }
+  }
+  svg+='</g>';
+  
+  // Legend
+  allPoints.forEach(function(s,i){
+    var ly=pad.t+15+i*14;
+    svg+='<text x="'+(pad.l+5)+'" y="'+ly+'" fill="'+s.color+'" font-size="10">'+s.symbol+' K=$'+s.strike+' Eff='+F(s.gammaEff,3)+'</text>';
+  });
+  
+  // Spot marker (only if within insurance range)
+  if(spot<=insHigh){
+    var spotX=xPos(spot);
+    svg+='<line x1="'+spotX+'" y1="'+pad.t+'" x2="'+spotX+'" y2="'+(pad.t+ch)+'" stroke="#fff" stroke-width="1" stroke-dasharray="2,2"/>';
+    svg+='<text x="'+spotX+'" y="'+(pad.t-5)+'" text-anchor="middle" fill="#fff" font-size="9">spot $'+spot+'</text>';
+  }
+  
+  // Total PnL summary
+  if(totalPremium>0){
+    var totalCost='-$'+totalPremium.toFixed(2);
+    svg+='<text x="'+centerLabel+'" y="'+(pad.t-5)+'" text-anchor="middle" fill="#aaa" font-size="10">Всего премий: '+totalCost+'</text>';
+  }
+  
+  svg+='</svg>';
+  container.innerHTML=svg;
+}
+
+// === Distant: Gamma Profile Chart ===
+function renderDistantGammaChart(){
+  var container=document.getElementById('distantGammaChart');
+  if(!container) return;
+  var allOpts=selectedOption.distant||[];
+  var opts=allOpts.filter(function(o){return o.checked!==false && (o.qty||0)>0;});
+  if(opts.length===0){container.innerHTML='Нет выбранных опционов';return;}
+  
+  var data=window.layerData_distant;
+  if(!data||!data.spot_price){container.innerHTML='Нет данных';return;}
+  var spot=data.spot_price;
+  
+  // Insurance range: 15-30% drop
+  var insLow=Math.round(spot*0.70);
+  var insHigh=Math.round(spot*0.85);
+  
+  // X-axis: from 70% to 110% of spot
+  var xMin=Math.round(spot*0.60);
+  var xMax=Math.round(spot*1.10);
+  var maxGamma=0;
+  
+  // Collect all gamma points
+  var allPoints=[];
+  opts.forEach(function(opt){
+    var strike=opt.strike||0;
+    var iv=opt.iv||0.3;
+    var dte=opt.dte||30;
+    var qty=opt.qty||1;
+    var T=Math.max(dte/365, 1/365);
+    
+    function _ncdf(x){
+      var a1=0.254829592,a2=-0.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,p=0.3275911;
+      var sign=x<0?-1:1;
+      var ax=Math.abs(x)/Math.sqrt(2);
+      var t=1/(1+p*ax);
+      var poly=((( (a5*t+a4)*t+a3 )*t+a2)*t+a1)*t;
+      var y=poly*Math.exp(-ax*ax);
+      return 0.5*(1+sign*(1-y));
+    }
+    function _npdf(x){ return Math.exp(-0.5*x*x)/Math.sqrt(2*Math.PI); }
+    
+    var points=[];
+    for(var p=xMin;p<=xMax;p+=1){
+      if(T<=0||iv<=0||p<=0||strike<=0){
+        points.push({price:p, gamma:0});
+        continue;
+      }
+      var d1=(Math.log(p/strike)+(iv*iv/2)*T)/(iv*Math.sqrt(T));
+      var gamma=_npdf(d1)/(p*iv*Math.sqrt(T));
+      points.push({price:p, gamma:gamma*qty});
+      if(gamma*qty>maxGamma) maxGamma=gamma*qty;
+    }
+    // Sum gamma in insurance range
+    var sumGamma=0;
+    for(var i=0;i<points.length;i++){
+      if(points[i].price>=insLow && points[i].price<=insHigh){
+        sumGamma+=points[i].gamma;
+      }
+    }
+    var premium=opt.price||0;
+    var gammaEff=premium>0?sumGamma/premium:0;
+    allPoints.push({symbol:opt.symbol, points:points, strike:strike, sumGamma:sumGamma, gammaEff:gammaEff, color:null});
+  });
+  
+  // Colors
+  var colors=['#3b82f6','#ef4444','#22c55e','#f59e0b','#8b5cf6','#ec4899'];
+  allPoints.forEach(function(s,i){ s.color=colors[i%colors.length]; });
+  
+  // Add padding to gamma
+  maxGamma=maxGamma*1.1+0.001;
+  
+  var w=container.clientWidth||450;
+  var h=container.clientHeight||280;
+  var pad={l:60, r:20, t:30, b:40};
+  var cw=w-pad.l-pad.r;
+  var ch=h-pad.t-pad.b;
+  
+  var svgW=w, svgH=h;
+  var svg='<svg width="'+svgW+'" height="'+svgH+'" xmlns="http://www.w3.org/2000/svg">';
+  
+  // Background
+  svg+='<rect x="0" y="0" width="'+svgW+'" height="'+svgH+'" fill="var(--surface)"/>';
+  
+  var xRange=xMax-xMin;
+  var yRange=maxGamma;
+  
+  function xPos(p){ return pad.l+(p-xMin)/xRange*cw; }
+  function yPos(v){ return pad.t+(1-v/yRange)*ch; }
+  
+  // Green insurance zone
+  var xLeft=xPos(insLow);
+  var xRight=xPos(insHigh);
+  var zoneW=xRight-xLeft;
+  svg+='<rect x="'+xLeft+'" y="'+pad.t+'" width="'+zoneW+'" height="'+ch+'" fill="rgba(34,197,94,0.15)"/>';
+  svg+='<text x="'+(xLeft+zoneW/2)+'" y="'+(pad.t+14)+'" text-anchor="middle" fill="#22c55e" font-size="10">Зона страховки ('+insLow+'-'+insHigh+')</text>';
+  
+  // Grid
+  svg+='<line x1="'+pad.l+'" y1="'+(pad.t+ch)+'" x2="'+(pad.l+cw)+'" y2="'+(pad.t+ch)+'" stroke="#555" stroke-width="1"/>';
+  svg+='<line x1="'+pad.l+'" y1="'+pad.t+'" x2="'+pad.l+'" y2="'+(pad.t+ch)+'" stroke="#555" stroke-width="1"/>';
+  
+  // Y-axis labels
+  var yStep=0.01; if(maxGamma>0.1) yStep=0.02; if(maxGamma>0.2) yStep=0.05;
+  for(var vy=0;vy<=maxGamma;vy+=yStep){
+    var yy=yPos(vy);
+    svg+='<text x="'+(pad.l-5)+'" y="'+(yy+4)+'" text-anchor="end" fill="#888" font-size="10">'+vy.toFixed(4)+'</text>';
+  }
+  
+  // X-axis labels
+  var xStep=5; if(xRange>100) xStep=10; if(xRange>200) xStep=25;
+  for(var vx=xMin;vx<=xMax;vx+=xStep){
+    var xx=xPos(vx);
+    svg+='<text x="'+xx+'" y="'+(pad.t+ch+15)+'" text-anchor="middle" fill="#888" font-size="10">$'+vx+'</text>';
+  }
+  
+  // Axis labels
+  svg+='<text x="'+(pad.l+cw/2)+'" y="'+(h-5)+'" text-anchor="middle" fill="#aaa" font-size="11">Цена SOL</text>';
+  svg+='<text x="12" y="'+(pad.t+ch/2)+'" text-anchor="middle" fill="#aaa" font-size="11" transform="rotate(-90,12,'+(pad.t+ch/2)+')">Гамма</text>';
+  
+  // Draw gamma curves
+  allPoints.forEach(function(series){
+    var path='';
+    series.points.forEach(function(pt,pi){
+      var x=xPos(pt.price);
+      var y=yPos(pt.gamma);
+      if(pi===0) path+='M'+x+','+y+' '; else path+='L'+x+','+y+' ';
+    });
+    svg+='<path d="'+path+'" fill="none" stroke="'+series.color+'" stroke-width="2"/>';
+    // Strike marker
+    var strikeX=xPos(series.strike);
+    svg+='<line x1="'+strikeX+'" y1="'+pad.t+'" x2="'+strikeX+'" y2="'+(pad.t+ch)+'" stroke="'+series.color+'" stroke-width="1" stroke-dasharray="4,4"/>';
+  });
+  
+  // Spot marker
+  var spotX=xPos(spot);
+  svg+='<line x1="'+spotX+'" y1="'+pad.t+'" x2="'+spotX+'" y2="'+(pad.t+ch)+'" stroke="#fff" stroke-width="1" stroke-dasharray="2,2"/>';
+  svg+='<text x="'+spotX+'" y="'+(pad.t-5)+'" text-anchor="middle" fill="#fff" font-size="9">spot $'+spot+'</text>';
+  
+  // Legend
+  allPoints.forEach(function(s,i){
+    var ly=pad.t+15+i*14;
+    svg+='<text x="'+(pad.l+cw-5)+'" y="'+ly+'" text-anchor="end" fill="'+s.color+'" font-size="10">'+s.symbol+' Γ='+F(s.sumGamma,4)+' Eff='+F(s.gammaEff,4)+'</text>';
+  });
+  
+  svg+='</svg>';
+  container.innerHTML=svg;
 }
 
 function addSelected(layer,symbol){
@@ -2057,6 +2395,8 @@ function loadAll(){
   } catch(e){}
   syncDistantSelected();
   renderDistantProfile();
+  renderDistantPnlChart();
+  renderDistantGammaChart();
 }
 
 initAggregator();

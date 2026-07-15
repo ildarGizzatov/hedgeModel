@@ -145,10 +145,16 @@ tr:hover td{background:rgba(88,166,255,.05)}
 </tr></thead><tbody id="distantSelectedTable"></tbody></table></div>
 </div>
 </div>
-<div class="card" style="margin-top:16px"><h2>Профиль по цене (диапазон страхования)</h2>
+<div class="card" style="margin-top:16px;width:50%"><h2>Профиль по цене (диапазон страхования)</h2>
 <div style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0">
-<th style="text-align:right;padding:2px 6px">Цена</th><th style="text-align:right;padding:2px 6px">Δ</th><th style="text-align:right;padding:2px 6px">Γ</th><th style="text-align:right;padding:2px 6px">PnL</th>
+<th style="text-align:right;padding:2px 6px">Цена</th><th style="text-align:right;padding:2px 6px">%Просадка</th><th style="text-align:right;padding:2px 6px">Δ</th><th style="text-align:right;padding:2px 6px">Γ</th><th style="text-align:right;padding:2px 6px">PnL</th>
 </tr></thead><tbody id="distantProfileTable"></tbody></table></div>
+</div>
+<div class="card" style="margin-top:16px;width:50%"><h2>PnL график</h2>
+<div id="distantPnlChart" style="height:300px;border:1px solid var(--border);border-radius:6px;padding:8px;background:var(--surface);display:flex;align-items:center;justify-content:center;color:var(--text-dim)">Нет выбранных опционов</div>
+</div>
+<div class="card" style="margin-top:16px;width:50%"><h2>Профиль Гаммы</h2>
+<div id="distantGammaChart" style="height:300px;border:1px solid var(--border);border-radius:6px;padding:8px;background:var(--surface);display:flex;align-items:center;justify-content:center;color:var(--text-dim)">Нет выбранных опционов</div>
 </div>
 </div>
 <div class="tab-content" id="tab-mid">
@@ -194,6 +200,6 @@ tr:hover td{background:rgba(88,166,255,.05)}
 
 </div>
 
-<script src="app.js?t=20260714_390"></script>
+<script src="app.js?t=20260714_610"></script>
 </body>
 </html>
