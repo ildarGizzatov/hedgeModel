@@ -1005,6 +1005,8 @@ function addDistant(symbol){
   renderDistantProfile();
   renderDistantPnlChart();
   renderDistantGammaChart();
+  renderDistantDeltaMatrix();
+  renderDistantPnlMatrix();
 }
 
 // === Distant: render selected table ===
@@ -1046,8 +1048,11 @@ function syncDistantSelected(){
     html+='</tr>';
   }
   tbody.innerHTML=html;
+  renderDistantProfile();
   renderDistantPnlChart();
   renderDistantGammaChart();
+  renderDistantDeltaMatrix();
+  renderDistantPnlMatrix();
 }
 
 window._onDistantToggle=function(idx,val){
@@ -1058,8 +1063,10 @@ window._onDistantToggle=function(idx,val){
     localStorage.setItem('selectedDistant',JSON.stringify(selList));
     syncDistantSelected();
     renderDistantProfile();
-  renderDistantPnlChart();
-  renderDistantGammaChart();
+    renderDistantPnlChart();
+    renderDistantGammaChart();
+    renderDistantDeltaMatrix();
+    renderDistantPnlMatrix();
   }
 };
 
@@ -1071,8 +1078,10 @@ window._onDistantQtyChange=function(idx,val){
     localStorage.setItem('selectedDistant',JSON.stringify(selList));
     syncDistantSelected();
     renderDistantProfile();
-  renderDistantPnlChart();
-  renderDistantGammaChart();
+    renderDistantPnlChart();
+    renderDistantGammaChart();
+    renderDistantDeltaMatrix();
+    renderDistantPnlMatrix();
   }
 };
 
@@ -1085,6 +1094,8 @@ window._onDistantRemove=function(idx){
   renderDistantProfile();
   renderDistantPnlChart();
   renderDistantGammaChart();
+  renderDistantDeltaMatrix();
+  renderDistantPnlMatrix();
 };
 
 // === Distant: profile table (Цена, Δ, Γ, PnL) ===
@@ -1128,6 +1139,12 @@ function renderDistantProfile(){
     var gamma=_npdf(d1)/(S*sigma*Math.sqrt(T));
     return {delta:delta, gamma:gamma};
   }
+  function bs_put_price(S, K, T, sigma){
+    if(T<=0||sigma<=0||S<=0||K<=0) return Math.max(K-S, 0);
+    var d1=(Math.log(S/K)+(sigma*sigma/2)*T)/(sigma*Math.sqrt(T));
+    var d2=d1-sigma*Math.sqrt(T);
+    return K*(1-_ncdf(d2)) - S*(1-_ncdf(d1));
+  }
   
   var html='';
   for(var p=insHigh;p>=insLow;p--){
@@ -1142,9 +1159,8 @@ function renderDistantProfile(){
       var greeks=bs_greeks(p, strike, T, iv);
       sumDelta+=greeks.delta*qty;
       sumGamma+=greeks.gamma*qty;
-      // PnL = intrinsic value at price p - premium paid
-      var intrinsic=Math.max(strike-p, 0);
-      var pnl=intrinsic-premium;
+      var bsPrice=bs_put_price(p, strike, T, iv);
+      var pnl=bsPrice-premium;
       sumPnL+=pnl*qty;
     });
     var pnlCls=sumPnL>=0?'color:var(--green)':'color:#d32f2f';
@@ -1155,6 +1171,148 @@ function renderDistantProfile(){
     html+='<td style="padding:2px 6px;text-align:right">'+F(sumDelta,2)+'</td>';
     html+='<td style="padding:2px 6px;text-align:right">'+F(sumGamma,4)+'</td>';
     html+='<td style="padding:2px 6px;text-align:right" class="'+pnlCls+'">$'+F(sumPnL,2)+'</td>';
+    html+='</tr>';
+  }
+  tbody.innerHTML=html;
+}
+
+// === Distant: Delta Matrix ===
+function renderDistantDeltaMatrix(){
+  var tbody=document.querySelector('#distantDeltaMatrix tbody');
+  var thead=document.querySelector('#distantDeltaMatrix thead tr');
+  if(!tbody||!thead) return;
+  var allOpts=selectedOption.distant||[];
+  var opts=allOpts.filter(function(o){return o.checked!==false;});
+  if(opts.length===0){tbody.innerHTML='<tr><td colspan="2" style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';thead.innerHTML='<tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0"><th style="text-align:right;padding:2px 6px">Цена</th><th style="text-align:right;padding:2px 6px">%Просадка</th></tr>';return;}
+  var data=window.layerData_distant;
+  if(!data||!data.spot_price) return;
+  var spot=data.spot_price;
+  var insLow=Math.round(spot*0.70);
+  var insHigh=Math.round(spot*0.85);
+  var dropPct20=Math.round(spot*0.80);
+  var dropPct25=Math.round(spot*0.75);
+  thead.innerHTML='';
+  var thPrice=document.createElement('th');
+  thPrice.style.cssText='text-align:right;padding:2px 6px';
+  thPrice.textContent='Цена';
+  thead.appendChild(thPrice);
+  var thDrop=document.createElement('th');
+  thDrop.style.cssText='text-align:right;padding:2px 6px';
+  thDrop.textContent='%Просадка';
+  thead.appendChild(thDrop);
+  opts.forEach(function(o){
+    var th=document.createElement('th');
+    th.style.cssText='text-align:right;padding:2px 6px';
+    th.textContent=o.symbol.replace('-P','');
+    thead.appendChild(th);
+  });
+  var html='';
+  for(var p=insHigh;p>=insLow;p--){
+    var is20=(p===dropPct20);
+    var is25=(p===dropPct25);
+    var bg=is25?'background:#ff000030':(is20?'background:#ffaa0020':'');
+    html+='<tr style="height:20px;'+bg+'">';
+    html+='<td style="padding:2px 6px;text-align:right">$'+p+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right">'+F((spot-p)/spot*100,1)+'%</td>';
+    opts.forEach(function(o){
+      var qty=o.qty||1;
+      var strike=o.strike||0;
+      var iv=o.iv||0.3;
+      var dte=Math.max(o.dte||30,1);
+      var T=dte/365;
+      var d1=(Math.log(p/strike)+(iv*iv/2)*T)/(iv*Math.sqrt(T));
+      var a1=0.254829592,a2=-0.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,p0=0.3275911;
+      var sign=d1<0?-1:1;
+      var ax=Math.abs(d1)/Math.sqrt(2);
+      var t=1/(1+p0*ax);
+      var poly=((( (a5*t+a4)*t+a3 )*t+a2)*t+a1)*t;
+      var y=poly*Math.exp(-ax*ax);
+      var cdf=0.5*(1+sign*(1-y));
+      var delta=cdf-1;
+      html+='<td style="padding:2px 6px;text-align:right">'+F(delta*qty,2)+'</td>';
+    });
+    html+='</tr>';
+  }
+  tbody.innerHTML=html;
+}
+
+function _bsPrice(S, K, T, sigma){
+  if(T<=0||sigma<=0||S<=0||K<=0) return 0;
+  var a1=0.254829592,a2=-0.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,p0=0.3275911;
+  var sign=x<0?-1:1;
+  var ax=Math.abs(x)/Math.sqrt(2);
+  var t=1/(1+p0*ax);
+  var poly=((( (a5*t+a4)*t+a3 )*t+a2)*t+a1)*t;
+  var y=poly*Math.exp(-ax*ax);
+  return 0.5*(1+sign*(1-y));
+}
+function _ncdf(x){
+  var a1=0.254829592,a2=-0.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,p0=0.3275911;
+  var sign=x<0?-1:1;
+  var ax=Math.abs(x)/Math.sqrt(2);
+  var t=1/(1+p0*ax);
+  var poly=((( (a5*t+a4)*t+a3 )*t+a2)*t+a1)*t;
+  var y=poly*Math.exp(-ax*ax);
+  return 0.5*(1+sign*(1-y));
+}
+function _bsPutPrice(S, K, T, sigma){
+  if(T<=0||sigma<=0||S<=0||K<=0) return Math.max(K-S, 0);
+  var d1=(Math.log(S/K)+(sigma*sigma/2)*T)/(sigma*Math.sqrt(T));
+  var d2=d1-sigma*Math.sqrt(T);
+  var N_d1=_ncdf(d1);
+  var N_d2=_ncdf(d2);
+  return K*(1-N_d2) - S*(1-N_d1);
+}
+// === Distant: PnL Matrix ===
+function renderDistantPnlMatrix(){
+  var tbody=document.querySelector('#distantPnlMatrix tbody');
+  var thead=document.querySelector('#distantPnlMatrix thead tr');
+  if(!tbody||!thead) return;
+  var allOpts=selectedOption.distant||[];
+  var opts=allOpts.filter(function(o){return o.checked!==false;});
+  if(opts.length===0){tbody.innerHTML='<tr><td colspan="2" style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';thead.innerHTML='<tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0"><th style="text-align:right;padding:2px 6px">Цена</th><th style="text-align:right;padding:2px 6px">%Просадка</th></tr>';return;}
+  var data=window.layerData_distant;
+  if(!data||!data.spot_price) return;
+  var spot=data.spot_price;
+  var insLow=Math.round(spot*0.70);
+  var insHigh=Math.round(spot*0.85);
+  var dropPct20=Math.round(spot*0.80);
+  var dropPct25=Math.round(spot*0.75);
+  thead.innerHTML='';
+  var thPrice=document.createElement('th');
+  thPrice.style.cssText='text-align:right;padding:2px 6px';
+  thPrice.textContent='Цена';
+  thead.appendChild(thPrice);
+  var thDrop=document.createElement('th');
+  thDrop.style.cssText='text-align:right;padding:2px 6px';
+  thDrop.textContent='%Просадка';
+  thead.appendChild(thDrop);
+  opts.forEach(function(o){
+    var th=document.createElement('th');
+    th.style.cssText='text-align:right;padding:2px 6px';
+    th.textContent=o.symbol.replace('-P','');
+    thead.appendChild(th);
+  });
+  var html='';
+  for(var p=insHigh;p>=insLow;p--){
+    var is20=(p===dropPct20);
+    var is25=(p===dropPct25);
+    var bg=is25?'background:#ff000030':(is20?'background:#ffaa0020':'');
+    html+='<tr style="height:20px;'+bg+'">';
+    html+='<td style="padding:2px 6px;text-align:right">$'+p+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right">'+F((spot-p)/spot*100,1)+'%</td>';
+    opts.forEach(function(o){
+      var qty=o.qty||1;
+      var strike=o.strike||0;
+      var premium=o.price||0;
+      var iv=o.iv||0.3;
+      var dte=Math.max(o.dte||30,1);
+      var T=dte/365;
+      var bsPrice=_bsPutPrice(p, strike, T, iv);
+      var pnl=(bsPrice-premium)*qty;
+      var cls=pnl>=0?'color:var(--green)':'color:#d32f2f';
+      html+='<td style="padding:2px 6px;text-align:right" class="'+cls+'">$'+F(pnl,2)+'</td>';
+    });
     html+='</tr>';
   }
   tbody.innerHTML=html;
@@ -1186,12 +1344,15 @@ function renderDistantPnlChart(){
     var strike=opt.strike||0;
     var premium=opt.price||0;
     var qty=opt.qty||1;
+    var iv=opt.iv||0.3;
+    var dte=Math.max(opt.dte||30,1);
+    var T=dte/365;
     var points=[];
     var pnlSumInIns=0;
     var pnlCountInIns=0;
     for(var p=xMin;p<=xMax;p+=1){
-      var intrinsic=Math.max(strike-p, 0);
-      var pnl=(intrinsic-premium)*qty;
+      var bsPrice=_bsPutPrice(p, strike, T, iv);
+      var pnl=(bsPrice-premium)*qty;
       points.push({price:p, pnl:pnl});
       if(p>=insLow && p<=insHigh){
         pnlSumInIns+=pnl;
@@ -2397,6 +2558,8 @@ function loadAll(){
   renderDistantProfile();
   renderDistantPnlChart();
   renderDistantGammaChart();
+  renderDistantDeltaMatrix();
+  renderDistantPnlMatrix();
 }
 
 initAggregator();
