@@ -385,64 +385,6 @@ function updateDataSourceBadge(ds){
   }
 }
 
-// === OPTION BOARD ===
-function loadOptionBoard(){
-  fetch(API+"/api/available-options")
-    .then(function(r){return r.json();})
-    .then(function(data){
-      if(!data || !data.options || data.options.length===0){
-        document.getElementById("optionBoard").innerHTML='<tr><td colspan="10" style="color:var(--text-dim);text-align:center">Нет данных</td></tr>';
-        return;
-      }
-      var infoEl=document.getElementById("optionBoardInfo");
-      if(infoEl){
-        var src=data.data_source||"unknown";
-        var age=data.data_age_minutes>=0?" («"+data.data_age_minutes+" мин назад»)":"";
-        var spot=data.spot_price!=null?'Spot: $'+F(data.spot_price,2)+" | ":"";
-        infoEl.textContent=spot+"Всего: "+data.count+" | Источник: "+src+age;
-      }
-      // Find closest strikes to spot price
-      var spot=data.spot_price || 0;
-      var strikes=[];
-      var strikeSet={};
-      data.options.forEach(function(o){
-        var k=o.strike;
-        if(!strikeSet[k]){strikeSet[k]=true;strikes.push(k);}
-      });
-      strikes.sort(function(a,b){return a-b;});
-      var closest2=[];
-      // Find strike index just below or equal to spot
-      var idx=0;
-      for(var i=0;i<strikes.length;i++){
-        if(strikes[i]<=spot) idx=i;
-      }
-      if(idx<strikes.length) closest2.push(strikes[idx]);
-      if(idx+1<strikes.length) closest2.push(strikes[idx+1]);
-      var html="";
-      data.options.forEach(function(o){
-        var isClose=closest2.indexOf(o.strike)!==-1;
-        var rowCls=isClose?' style="background:rgba(0,136,204,0.15);font-weight:700"':'';
-        var strikeCell=isClose?'<b style="color:var(--blue)" title="Ближайший к spot">🎯 $'+F(o.strike,2)+'🎯</b>':'$'+F(o.strike,2);
-        // Drop% = (spot - strike) / spot * 100
-        var dropPct = spot > 0 ? Math.max(0, (spot - o.strike) / spot * 100) : 0;
-        html+='<tr'+rowCls+'><td>'+o.symbol+'</td>';
-        html+='<td>'+strikeCell+'</td>';
-        html+='<td class="'+clr(-dropPct)+'">'+P(-dropPct)+'</td>';
-        html+='<td>'+o.dte+'</td>';
-        html+='<td>$'+F(o.price,2)+'</td>';
-        html+='<td>'+F(o.delta,4)+'</td>';
-        html+='<td>'+F(o.gamma,4)+'</td>';
-        html+='<td>'+F(o.iv,4)+'</td>';
-        html+='<td>'+F(o.theta,4)+'</td>';
-        html+='</tr>';
-      });
-      document.getElementById("optionBoard").innerHTML=html;
-    })
-    .catch(function(e){
-      document.getElementById("optionBoard").innerHTML='<tr><td colspan="10" style="color:var(--red);text-align:center">Ошибка: '+e.message+'</td></tr>';
-    });
-}
-
 // === TAB 1: POSITIONS ===
 function renderPositions(pos){
   posData = pos;
@@ -638,6 +580,124 @@ function renderOptions(opt, pos){
     tEl.insertAdjacentHTML("beforeend",
       '<tr style="background:var(--surface);border-top:2px solid var(--border);font-weight:700"><td colspan="4" style="color:var(--blue);font-size:15px">Итого</td><td></td><td></td><td></td><td style="'+clr(t.total_pnl)+';font-size:15px">'+U(t.total_pnl)+'</td><td style="font-size:15px">'+F(t.net_delta,4)+'</td><td style="font-size:15px">'+F(t.net_gamma,4)+'</td><td style="font-size:15px">'+F(t.net_theta,4)+'</td><td></td><td></td></tr>');
   }
+  renderTotalPnlProfile(opt);
+  renderTargetPnlProfile2(opt);
+}
+
+function renderTargetPnlProfile2(opt){
+  if(!opt||!opt.options||opt.options.length===0){
+    var el=document.getElementById('targetPnlProfile2');
+    if(el) el.innerHTML='<tr><td colspan="2" style="padding:12px;text-align:center;color:var(--text-dim)">Нет позиций</td></tr>';
+    return;
+  }
+  var spot=opt.spot_price||0;
+  if(!spot){
+    var el=document.getElementById('targetPnlProfile2');
+    if(el) el.innerHTML='<tr><td colspan="2" style="padding:12px;text-align:center;color:var(--text-dim)">Нет spot</td></tr>';
+    return;
+  }
+  // Загружаем данные из БД
+  api('/api/pnl-profile').then(function(res){
+    var dbData={};
+    if(res&&res.status==='ok'&&res.rows){
+      res.rows.forEach(function(r){dbData[Number(r.price)]=r.target_pnl;});
+    }
+    console.log('DB load: spot='+spot+' dbData keys='+Object.keys(dbData).join(','));
+    var low=Math.round(spot*0.65);
+    var rows="";
+    window._pnlProfileData={};
+    for(var p=Math.round(spot);p>=low;p--){
+      var targetPnl=dbData[p]!==undefined?dbData[p]:0;
+      var cls=targetPnl>=0?'var(--green)':'#d32f2f';
+      rows+='<tr>';
+      rows+='<td style="padding:2px 6px;text-align:right">$'+p+'</td>';
+      rows+='<td style="padding:2px 6px;text-align:right;color:'+cls+'">$'+F(targetPnl,2)+'</td>';
+      rows+='</tr>';
+      window._pnlProfileData[p]=targetPnl;
+    }
+    console.log('_pnlProfileData keys='+Object.keys(window._pnlProfileData).join(','));
+    var el=document.getElementById('targetPnlProfile2');
+    if(el) el.innerHTML=rows;
+    renderTargetPnlProfile(opt);
+  });
+}
+
+function renderTotalPnlProfile(opt){
+  if(!opt||!opt.options||opt.options.length===0){
+    var el=document.getElementById('totalPnlProfile');
+    if(el) el.innerHTML='<tr><td colspan="2" style="padding:12px;text-align:center;color:var(--text-dim)">Нет позиций</td></tr>';
+    return;
+  }
+  var spot=opt.spot_price||0;
+  if(!spot){
+    var el=document.getElementById('totalPnlProfile');
+    if(el) el.innerHTML='<tr><td colspan="2" style="padding:12px;text-align:center;color:var(--text-dim)">Нет spot</td></tr>';
+    return;
+  }
+  var low=Math.round(spot*0.65);
+  var rows="";
+  for(var p=Math.round(spot);p>=low;p--){
+    var totalPnl=0;
+    opt.options.forEach(function(o){
+      var qty=o.qty||0;
+      var strike=o.strike||0;
+      var premium=o.entry_price||0;
+      var iv=o.iv||0.3;
+      var dte=Math.max(o.dte||30,1);
+      var T=dte/365;
+      if(p<=0||strike<=0||iv<=0||T<=0){totalPnl+=qty*premium;return;}
+      var bsPrice=_bsPutPrice(p,strike,T,iv);
+      totalPnl+=(bsPrice-premium)*qty;
+    });
+    var cls=totalPnl>=0?'var(--green)':'#d32f2f';
+    rows+='<tr><td style="padding:2px 6px;text-align:right">$'+p+'</td>';
+    rows+='<td style="padding:2px 6px;text-align:right;color:'+cls+'">$'+F(totalPnl,2)+'</td>';
+    rows+='</tr>';
+  }
+  var el=document.getElementById('totalPnlProfile');
+  if(el) el.innerHTML=rows;
+}
+
+function renderTargetPnlProfile(opt){
+  if(!opt||!opt.options||opt.options.length===0){
+    var el=document.getElementById('targetPnlProfile');
+    if(el) el.innerHTML='<tr><td colspan="4" style="padding:12px;text-align:center;color:var(--text-dim)">Нет позиций</td></tr>';
+    return;
+  }
+  var spot=opt.spot_price||0;
+  if(!spot){
+    var el=document.getElementById('targetPnlProfile');
+    if(el) el.innerHTML='<tr><td colspan="4" style="padding:12px;text-align:center;color:var(--text-dim)">Нет spot</td></tr>';
+    return;
+  }
+  var low=Math.round(spot*0.65);
+  var rows="";
+  for(var p=Math.round(spot);p>=low;p--){
+    var targetPnl=window._pnlProfileData&&window._pnlProfileData[Number(p)]!==undefined?window._pnlProfileData[Number(p)]:0;
+    var currentPnl=0;
+    opt.options.forEach(function(o){
+      var qty=o.qty||0;
+      var strike=o.strike||0;
+      var premium=o.entry_price||0;
+      var iv=o.iv||0.3;
+      var dte=Math.max(o.dte||30,1);
+      var T=dte/365;
+      if(p<=0||strike<=0||iv<=0||T<=0){currentPnl+=qty*premium;return;}
+      var bsPrice=_bsPutPrice(p,strike,T,iv);
+      currentPnl+=(bsPrice-premium)*qty;
+    });
+    var diff=targetPnl-currentPnl;
+    var currCls=currentPnl>=0?'var(--green)':'#d32f2f';
+    var diffCls=diff>=0?'var(--green)':'#d32f2f';
+    rows+='<tr>';
+    rows+='<td style="padding:2px 6px;text-align:right">$'+p+'</td>';
+    rows+='<td style="padding:2px 6px;text-align:right;color:'+diffCls+'">$'+F(targetPnl,2)+'</td>';
+    rows+='<td style="padding:2px 6px;text-align:right;color:'+currCls+'">$'+F(currentPnl,2)+'</td>';
+    rows+='<td style="padding:2px 6px;text-align:right;color:'+diffCls+'">$'+F(diff,2)+'</td>';
+    rows+='</tr>';
+  }
+  var el=document.getElementById('targetPnlProfile');
+  if(el) el.innerHTML=rows;
 }
 
 // === Distant: Budget ===
@@ -2535,7 +2595,6 @@ function loadAll(){
     window._lastLayersData=results[4];
     renderDistantBudget(results[4]);
     renderPnnLadderTable(results[0]);
-    loadOptionBoard();
     layerData_distant=results[6];
     layerData_mid=results[7];
     layerData_near=results[8];
@@ -2573,3 +2632,37 @@ function loadAll(){
 
 initAggregator();
 loadAll();
+window.savePnlProfile=function(){
+  var btn=document.querySelector('#tab-options .btn-action');
+  if(!btn) return;
+  btn.textContent='⏳ Сохранение...';
+  btn.disabled=true;
+  var rows=[];
+  var tbody=document.getElementById('totalPnlProfile');
+  if(!tbody) return;
+  var trs=tbody.querySelectorAll('tr');
+  for(var i=0;i<trs.length;i++){
+    var tds=trs[i].querySelectorAll('td');
+    if(tds.length>=2){
+      var priceStr=tds[0].textContent.replace('$','').trim().replace(/\./g,'').replace(',','.');
+      var pnlStr=tds[1].textContent.replace('$','').trim().replace(/\./g,'').replace(',','.');
+      rows.push({price:parseFloat(priceStr),current_pnl:parseFloat(pnlStr)});
+    }
+  }
+  if(rows.length===0){btn.textContent='💾 Сохранить';btn.disabled=false;return;}
+  fetch(API+'/api/save-pnl-profile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rows:rows})}).then(function(r){return r.json();}).then(function(res){
+    if(res.status==='ok'){
+      btn.textContent='✅ Сохранено';
+      api('/api/pnl-profile').then(function(res2){
+        var dbData={};
+        if(res2&&res2.status==='ok'&&res2.rows){
+          res2.rows.forEach(function(r){dbData[Number(r.price)]=r.target_pnl;});
+        }
+        window._pnlProfileData=dbData;
+        var opt=window._lastOptionsData;
+        if(opt){renderTargetPnlProfile2(opt);renderTargetPnlProfile(opt);}
+      });
+      setTimeout(function(){btn.textContent='💾 Сохранить';btn.disabled=false;},2000);
+    }else{btn.textContent='❌ Ошибка';setTimeout(function(){btn.textContent='💾 Сохранить';btn.disabled=false;},2000);console.error('Save error:',res);}
+  }).catch(function(e){btn.textContent='❌ Ошибка';setTimeout(function(){btn.textContent='💾 Сохранить';btn.disabled=false;},2000);console.error(e);});
+};

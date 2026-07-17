@@ -34,6 +34,7 @@ from src.db import (
     get_latest_chain_snapshot, get_option_by_id, update_option,
     add_option, record_greeks, get_portfolio_position, sell,
     get_all_portfolio_symbols, get_portfolio_all,
+    get_connection,
 )
 from src.bybit_api import fetch_spot_price, fetch_option_chain
 import time
@@ -860,8 +861,10 @@ def api_options() -> dict[str, Any]:
     layer_order = {"anchor": 0, "adaptation": 1, "active": 2}
     options.sort(key=lambda o: (layer_order.get(o["layer"], 99), o["id"]))
 
+    spot = _get_spot_price()
     return {
         "options": options,
+        "spot_price": spot,
         "totals": {
             "total_cost": round(total_opt_cost, 2),
             "total_value": round(total_opt_value, 2),
@@ -1622,6 +1625,52 @@ def api_available_options(request: Request):
         "data_source": source or "unknown",
         "data_age_minutes": _data_age_minutes(ts) if ts else -1,
     }
+
+@app.get("/api/pnl-profile")
+def api_pnl_profile():
+    """Загрузка сохранённого профиля PNL из БД."""
+    try:
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            rows = cur.execute("SELECT price, target_pnl FROM pnl_profile_current ORDER BY price DESC").fetchall()
+            result = []
+            for r in rows:
+                result.append({"price": r["price"], "target_pnl": r["target_pnl"]})
+            return {"status": "ok", "rows": result}
+        finally:
+            conn.close()
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.post("/api/save-pnl-profile")
+def api_save_pnl_profile(data: dict):
+    """Сохранение текущего профиля PNL в БД."""
+    try:
+        rows = data.get("rows", [])
+        if not rows:
+            return {"status": "error", "message": "Нет данных"}
+        
+        timestamp = date.today().strftime("%Y-%m-%d %H:%M:%S")
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            # Очистка старых данных для нового снимка
+            cur.execute("DELETE FROM pnl_profile_current WHERE 1")
+            
+            for row in rows:
+                val = float(row.get("target_pnl", row.get("current_pnl", 0)))
+                cur.execute(
+                    "INSERT INTO pnl_profile_current (timestamp, price, target_pnl) VALUES (?, ?, ?)",
+                    (timestamp, float(row["price"]), val)
+                )
+            conn.commit()
+            return {"status": "ok", "rows": len(rows)}
+        finally:
+            conn.close()
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 
 # ==========================================
 # STATIC FILES

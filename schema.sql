@@ -162,6 +162,16 @@ CREATE TABLE IF NOT EXISTS recommendations (
 );
 
 -- ----------------------------------------
+-- 7. Текущий профиль PNL (сохранённые данные)
+-- ----------------------------------------
+CREATE TABLE IF NOT EXISTS pnl_profile_current (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp       TEXT NOT NULL,            -- ISO datetime
+    price           REAL NOT NULL,            -- цена (шаг $1)
+    target_pnl      REAL NOT NULL DEFAULT 0   -- целевой PNL
+);
+
+-- ----------------------------------------
 -- Индексы
 -- ----------------------------------------
 CREATE INDEX IF NOT EXISTS idx_gh_option   ON option_greeks_history(option_id);
