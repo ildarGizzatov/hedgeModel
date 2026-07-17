@@ -640,6 +640,25 @@ function renderOptions(opt, pos){
   }
 }
 
+// === Distant: Budget ===
+function renderDistantBudget(l){
+  var el=document.getElementById('distantBudgetContent');
+  if(!el) return;
+  if(!l||!l.layers) { el.innerHTML='Нет данных'; return; }
+  var anchor=l.layers.find(function(x){return x.name==='Anchor';});
+  if(!anchor) { el.innerHTML='Нет данных'; return; }
+  var usedPct=0;
+  if(anchor.budget && anchor.budget>0) usedPct=parseFloat(anchor.spent)/parseFloat(anchor.budget)*100;
+  var barColor=usedPct>=90?'var(--red)':usedPct>=50?'var(--yellow)':'var(--green)';
+  var html='';
+  html+='<div style="font-size:16px;font-weight:600;margin-bottom:6px">$'+F(anchor.budget,2)+' бюджет</div>';
+  html+='<div style="font-size:14px;color:var(--text-dim);margin-bottom:6px">$'+F(anchor.spent,2)+' потрачено ('+Math.round(usedPct)+'%)</div>';
+  html+='<div style="height:8px;background:#30363d;border-radius:4px;overflow:hidden;margin-bottom:6px"><div style="width:'+Math.min(usedPct,100)+'%;height:100%;background:'+barColor+';border-radius:4px"></div></div>';
+  html+='<div style="font-size:14px;color:var(--text-dim)">PnL: <span style="color:'+(anchor.pnl>=0?'var(--green)':'#d32f2f')+'">'+(anchor.pnl>=0?'+':'')+'$'+F(anchor.pnl,2)+'</span></div>';
+  html+='<div style="font-size:14px;color:var(--text-dim)">Опционов: '+anchor.count+'</div>';
+  el.innerHTML=html;
+}
+
 // === TAB 3: RECOMMENDATIONS ===
 function renderLayers(l){
   if(!l){return;}
@@ -1269,7 +1288,7 @@ function renderDistantSummaryMatrix(){
   if(!tbody||!thead) return;
   var allOpts=selectedOption.distant||[];
   var opts=allOpts.filter(function(o){return o.checked!==false;});
-  if(opts.length===0){tbody.innerHTML='<tr><td colspan="5" style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';return;}
+  if(opts.length===0){tbody.innerHTML='<tr><td colspan="6" style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';return;}
   var data=window.layerData_distant;
   if(!data||!data.spot_price) return;
   var spot=data.spot_price;
@@ -1277,6 +1296,9 @@ function renderDistantSummaryMatrix(){
   var insHigh=Math.round(spot*0.85);
   var dropPct20=Math.round(spot*0.80);
   var dropPct25=Math.round(spot*0.75);
+  var sol=posData&&posData.positions&&posData.positions.length>0?posData.positions.find(function(x){return x.symbol==='SOL';}):null;
+  var solAvg=sol?sol.avg_price:0;
+  var solQty=sol?sol.qty:0;
   var html='';
   for(var p=insHigh;p>=insLow;p--){
     var is20=(p===dropPct20);
@@ -1284,7 +1306,6 @@ function renderDistantSummaryMatrix(){
     var bg=is25?'background:#ff000030':(is20?'background:#ffaa0020':'');
     var totalPnl=0;
     var totalDelta=0;
-    var totalGamma=0;
     opts.forEach(function(o){
       var qty=o.qty||1;
       var strike=o.strike||0;
@@ -1305,9 +1326,6 @@ function renderDistantSummaryMatrix(){
       var cdf=0.5*(1+sign*(1-y));
       var delta=cdf-1;
       totalDelta+=delta*qty;
-      var npdf=Math.exp(-d1*d1/2)/Math.sqrt(2*Math.PI);
-      var gamma=npdf/(p*iv*Math.sqrt(T));
-      totalGamma+=gamma*qty;
     });
     html+='<tr style="height:20px;'+bg+'">';
     html+='<td style="padding:2px 6px;text-align:right">$'+p+'</td>';
@@ -1316,7 +1334,13 @@ function renderDistantSummaryMatrix(){
     html+='<td style="padding:2px 6px;text-align:right" class="'+pnlCls+'">$'+F(totalPnl,2)+'</td>';
     var deltaCls=totalDelta>=0?'color:var(--green)':'color:#d32f2f';
     html+='<td style="padding:2px 6px;text-align:right" class="'+deltaCls+'">'+F(totalDelta,2)+'</td>';
-    html+='<td style="padding:2px 6px;text-align:right">'+F(totalGamma,4)+'</td>';
+    var solPnl=(p-solAvg)*solQty;
+    var ddPnlCls=solPnl>=0?'color:var(--green)':'color:#d32f2f';
+    html+='<td style="padding:2px 6px;text-align:right" class="'+ddPnlCls+'">'+F(solPnl,2)+'</td>';
+    var solInvest=solAvg*solQty;
+    var solPnlPct=solInvest>0?F(solPnl/solInvest*100,2)+'%':'-';
+    var ddPnlPctCls=solPnl>=0?'color:var(--green)':'color:#d32f2f';
+    html+='<td style="padding:2px 6px;text-align:right" class="'+ddPnlPctCls+'">'+solPnlPct+'</td>';
     html+='</tr>';
   }
   tbody.innerHTML=html;
@@ -2350,6 +2374,7 @@ function loadAll(){
     renderRecommendations(results[2]);
     renderSummary(results[3], results[1]);
     renderLayers(results[4]);
+    renderDistantBudget(results[4]);
     renderPnnLadderTable(results[0]);
     loadOptionBoard();
     layerData_distant=results[6];
