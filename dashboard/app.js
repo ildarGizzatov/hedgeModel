@@ -1083,18 +1083,14 @@ function syncDistantSelected(){
     html+='</tr>';
   }
   tbody.innerHTML=html;
-  // Prepare insLow/insHigh for DTE chart
+  // Prepare spot for DTE chart
   var dData=window.layerData_distant;
-  var insLow=1,insHigh=1;
-  if(dData&&dData.spot_price){
-    insLow=Math.round(dData.spot_price*0.70);
-    insHigh=Math.round(dData.spot_price*0.85);
-  }
-  renderDistantDeltaDteChart(opts, insLow, insHigh);
-  renderDistantGammaChart();
-  renderDistantDeltaMatrix();
-  renderDistantPnlMatrix();
-  renderDistantSummaryMatrix();
+  var spot=dData&&dData.spot_price?dData.spot_price:0;
+  try{renderDistantDeltaDteChart(opts, spot);}catch(e){console.warn('renderDistantDeltaDteChart fail:',e);}
+  try{renderDistantGammaChart();}catch(e){console.warn('renderDistantGammaChart fail:',e);}
+  try{renderDistantDeltaMatrix();}catch(e){console.warn('renderDistantDeltaMatrix fail:',e);}
+  try{renderDistantPnlMatrix();}catch(e){console.warn('renderDistantPnlMatrix fail:',e);}
+  try{renderDistantSummaryMatrix();}catch(e){console.warn('renderDistantSummaryMatrix fail:',e);}
 }
 
 window._onDistantToggle=function(idx,val){
@@ -1104,10 +1100,6 @@ window._onDistantToggle=function(idx,val){
     if(selList[idx]) selList[idx].checked=val;
     localStorage.setItem('selectedDistant',JSON.stringify(selList));
     syncDistantSelected();
-    renderDistantGammaChart();
-    renderDistantDeltaMatrix();
-    renderDistantPnlMatrix();
-  renderDistantSummaryMatrix();
   }
 };
 
@@ -1118,10 +1110,6 @@ window._onDistantQtyChange=function(idx,val){
     if(selList[idx]) selList[idx].qty=selectedOption.distant[idx].qty;
     localStorage.setItem('selectedDistant',JSON.stringify(selList));
     syncDistantSelected();
-    renderDistantGammaChart();
-    renderDistantDeltaMatrix();
-    renderDistantPnlMatrix();
-  renderDistantSummaryMatrix();
   }
 };
 
@@ -1131,10 +1119,6 @@ window._onDistantRemove=function(idx){
   selList.splice(idx,1);
   localStorage.setItem('selectedDistant',JSON.stringify(selList));
   syncDistantSelected();
-  renderDistantGammaChart();
-  renderDistantDeltaMatrix();
-  renderDistantPnlMatrix();
-  renderDistantSummaryMatrix();
 };
 
 // === BS Put Price (r=0) ===
@@ -1166,6 +1150,7 @@ function renderDistantPnlMatrix(){
   var allOpts=selectedOption.distant||[];
   var opts=allOpts.filter(function(o){return o.checked!==false;});
   if(opts.length===0){tbody.innerHTML='<tr><td colspan="2" style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';thead.innerHTML='<tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0"><th style="text-align:right;padding:2px 6px">Цена</th><th style="text-align:right;padding:2px 6px">%Просадка</th></tr>';return;}
+  try{
   var data=window.layerData_distant;
   if(!data||!data.spot_price) return;
   var spot=data.spot_price;
@@ -1228,6 +1213,7 @@ function renderDistantPnlMatrix(){
   });
   html+='</tr>';
   tbody.innerHTML=html;
+  }catch(e){console.warn('renderDistantPnlMatrix fail:',e);}
 }
 
 // === Distant: Delta Matrix ===
@@ -1238,6 +1224,7 @@ function renderDistantDeltaMatrix(){
   var allOpts=selectedOption.distant||[];
   var opts=allOpts.filter(function(o){return o.checked!==false;});
   if(opts.length===0){tbody.innerHTML='<tr><td colspan="2" style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';thead.innerHTML='<tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0"><th style="text-align:right;padding:2px 6px">Цена</th><th style="text-align:right;padding:2px 6px">%Просадка</th></tr>';return;}
+  try{
   var data=window.layerData_distant;
   if(!data||!data.spot_price) return;
   var spot=data.spot_price;
@@ -1331,49 +1318,57 @@ function renderDistantDeltaMatrix(){
   });
   html+='</tr>';
   tbody.innerHTML=html;
+  }catch(e){console.warn('renderDistantDeltaMatrix fail:',e);}
 }
 
-function renderDistantDeltaDteChart(opts, insLow, insHigh){
-  var container=document.getElementById('distantDeltaDteChart');
-  if(!container) return;
-  if(opts.length===0){container.innerHTML='Нет выбранных опционов';return;}
-  var data=window.layerData_distant;
-  if(!data||!data.spot_price) return;
-  var spot=data.spot_price;
-  // Find max DTE among selected options
-  var maxDte=0;
-  opts.forEach(function(o){var dte=Math.max(o.dte||30,1);if(dte>maxDte)maxDte=dte;});
+function renderDistantDeltaDteChart(opts, spot){
+  try{
+    var container=document.getElementById('distantDeltaDteChart');
+    if(!container) return;
+    if(!opts||opts.length===0){container.innerHTML='Нет выбранных опционов';return;}
+    // Fallback: read spot from layerData if not passed
+    if(!spot){
+      var ld=window.layerData_distant;
+      if(ld&&ld.spot_price) spot=ld.spot_price;
+      if(!spot) return;
+    }
+    var maxDte=0;
+    opts.forEach(function(o){if(o.checked===false) return; var dte=Math.max(o.dte||30,1);if(dte>maxDte)maxDte=dte;});
   maxDte=Math.ceil(maxDte/2)*2; // round up to even number
   // Calculate average delta for EACH option at each DTE step
   var optColors=['#4fc3f7','#ff7043','#66bb6a','#ffa726','#ab47bc','#26c6da','#ec407a','#8d6e63'];
   var optChartData=[];
   for(var oi=0;oi<opts.length;oi++){
     var o=opts[oi];
+    if(o.checked===false) continue;
     var qty=o.qty||1;
     var strike=o.strike||0;
     var iv=o.iv||0.3;
+    if(!strike||strike<=0||!iv||iv<=0){continue;}
     var row=[];
-    for(var dte=maxDte;dte>=2;dte-=2){
+    var optMaxDte=Math.min(maxDte, o.dte||maxDte);
+    for(var dte=optMaxDte;dte>=2;dte-=2){
       var T=dte/365;
-      var sumDelta=0;
-      var count=0;
-      for(var p=insHigh;p>=insLow;p--){
-        var d1=(Math.log(p/strike)+(iv*iv/2)*T)/(iv*Math.sqrt(T));
-        var sign=d1<0?-1:1;
-        var ax=Math.abs(d1)/Math.sqrt(2);
-        var t=1/(1+0.3275911*ax);
-        var poly=((( (1.061405429*t+-1.453152027)*t+1.421413741 )*t+-0.284496736)*t+0.254829592)*t;
-        var y=poly*Math.exp(-ax*ax);
-        var cdf=0.5*(1+sign*(1-y));
-        sumDelta+=(cdf-1)*qty;
-        count++;
-      }
-      row.push({dte:dte, avgDelta:count>0?sumDelta/count:0});
+      if(T<=0){continue;}
+      // BS delta: spot and IV are fixed, only DTE decreases
+      var logRatio=Math.log(spot/strike);
+      if(!isFinite(logRatio)){row.push({dte:dte,avgDelta:0});continue;}
+      var d1=(logRatio+(iv*iv/2)*T)/(iv*Math.sqrt(T));
+      if(!isFinite(d1)){row.push({dte:dte,avgDelta:0});continue;}
+      var sign=d1<0?-1:1;
+      var ax=Math.abs(d1)/Math.sqrt(2);
+      var t=1/(1+0.3275911*ax);
+      var poly=((( (1.061405429*t+-1.453152027)*t+1.421413741 )*t+-0.284496736)*t+0.254829592)*t;
+      var y=poly*Math.exp(-ax*ax);
+      var cdf=0.5*(1+sign*(1-y));
+      var delta=(cdf-1)*qty;
+      row.push({dte:dte, avgDelta:delta});
     }
     optChartData.push({symbol:o.symbol.replace('-P',''), color:optColors[oi%optColors.length], rows:row});
   }
   // SVG rendering
   var W=container.clientWidth-16||300;
+  if(W<100) W=300;
   var H=250;
   var pad={l:50,r:140,t:20,b:40};
   var cW=W-pad.l-pad.r;
@@ -1434,6 +1429,7 @@ function renderDistantDeltaDteChart(opts, insLow, insHigh){
   });
   svg+='</svg>';
   container.innerHTML=svg;
+  }catch(e){console.warn('renderDistantDeltaDteChart fail:',e);}
 }
 
 // === Distant: Summary Matrix ===
@@ -1444,6 +1440,7 @@ function renderDistantSummaryMatrix(){
   var allOpts=selectedOption.distant||[];
   var opts=allOpts.filter(function(o){return o.checked!==false;});
   if(opts.length===0){tbody.innerHTML='<tr><td colspan="7" style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';return;}
+  try{
   var data=window.layerData_distant;
   if(!data||!data.spot_price) return;
   var spot=data.spot_price;
@@ -1502,10 +1499,12 @@ function renderDistantSummaryMatrix(){
     html+='</tr>';
   }
   tbody.innerHTML=html;
+  }catch(e){console.warn('renderDistantSummaryMatrix fail:',e);}
 }
 
 // === Distant: Gamma Profile Chart ===
 function renderDistantGammaChart(){
+  try{
   var container=document.getElementById('distantGammaChart');
   if(!container) return;
   var allOpts=selectedOption.distant||[];
@@ -1649,6 +1648,7 @@ function renderDistantGammaChart(){
   
   svg+='</svg>';
   container.innerHTML=svg;
+  }catch(e){console.warn('renderDistantGammaChart fail:',e);}
 }
 
 function addSelected(layer,symbol){
