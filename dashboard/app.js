@@ -1031,6 +1031,16 @@ function addDistant(symbol){
 function syncDistantSelected(){
   var tbody=document.getElementById('distantSelectedTable');
   if(!tbody) return;
+  // Остаток бюджета Дальнего слоя
+  var anchorLayer=null;
+  if(window._lastLayersData&&window._lastLayersData.layers){
+    anchorLayer=window._lastLayersData.layers.find(function(x){return x.name==='Anchor';});
+  }
+  var remainingBudget=0;
+  if(anchorLayer&&anchorLayer.budget>0){
+    remainingBudget=anchorLayer.budget-anchorLayer.spent;
+    if(remainingBudget<0) remainingBudget=0;
+  }
   var opts=selectedOption.distant||[];
   var html='';
   var sumTotal=0;
@@ -1042,6 +1052,10 @@ function syncDistantSelected(){
     var qty=opt.qty||1;
     var total=price*qty;
     if(checked) sumTotal+=total;
+    var pctFromRemaining='';
+    if(remainingBudget>0&&checked){
+      pctFromRemaining=F(total/remainingBudget*100,1)+'%';
+    }
     html+='<tr style="height:22px">';
     html+='<td style="padding:2px 6px;text-align:center"><input type="checkbox" '+(checked?'checked':'')+' onchange="window._onDistantToggle('+idx+',this.checked)"></td>';
     html+='<td style="padding:2px 6px;font-weight:bold">'+opt.symbol+'</td>';
@@ -1051,21 +1065,32 @@ function syncDistantSelected(){
     html+='<td style="padding:2px 6px;text-align:right">$'+F(price,4)+'</td>';
     html+='<td style="padding:2px 6px;text-align:center"><input type="number" min="0" step="1" value="'+qty+'" style="width:50px;text-align:center;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px 4px;border-radius:4px" onchange="window._onDistantQtyChange('+idx+',this.value)"></td>';
     html+='<td style="padding:2px 6px;text-align:right">$'+F(total,2)+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right">'+pctFromRemaining+'</td>';
     html+='<td style="padding:2px 6px;text-align:center"><button style="background:none;border:none;cursor:pointer;color:#d32f2f;font-size:14px" onclick="window._onDistantRemove('+idx+')">✕</button></td>';
     html+='</tr>';
   });
   if(html===''){
-    html='<tr><td colspan="9" style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';
+    html='<tr><td colspan="10" style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';
   } else {
     html+='<tr style="height:22px;font-weight:bold;background:var(--bg);border-top:2px solid var(--border)">';
     html+='<td style="padding:2px 6px;text-align:center"></td>';
-    html+='<td style="padding:2px 6px" colspan="4">Итого:</td>';
-    html+='<td></td>';
+    html+='<td style="padding:2px 6px" colspan="6">Итого:</td>';
     html+='<td style="padding:2px 6px;text-align:right">$'+F(sumTotal,2)+'</td>';
+    var pctTotal='';
+    if(remainingBudget>0&&sumTotal>0) pctTotal=F(sumTotal/remainingBudget*100,1)+'%';
+    html+='<td style="padding:2px 6px;text-align:right">'+pctTotal+'</td>';
     html+='<td></td>';
     html+='</tr>';
   }
   tbody.innerHTML=html;
+  // Prepare insLow/insHigh for DTE chart
+  var dData=window.layerData_distant;
+  var insLow=1,insHigh=1;
+  if(dData&&dData.spot_price){
+    insLow=Math.round(dData.spot_price*0.70);
+    insHigh=Math.round(dData.spot_price*0.85);
+  }
+  renderDistantDeltaDteChart(opts, insLow, insHigh);
   renderDistantGammaChart();
   renderDistantDeltaMatrix();
   renderDistantPnlMatrix();
@@ -1278,7 +1303,137 @@ function renderDistantDeltaMatrix(){
     html+='<td style="padding:2px 6px;text-align:right" class="'+cls+'">'+F(diff,2)+'</td>';
   });
   html+='</tr>';
+  // Delta average row
+  html+='<tr style="height:20px;font-weight:bold;background:var(--bg);border-top:2px solid var(--border)">';
+  html+='<td style="padding:2px 6px;text-align:right" colspan="2">Среднее Δ:</td>';
+  opts.forEach(function(o){
+    var qty=o.qty||1;
+    var strike=o.strike||0;
+    var iv=o.iv||0.3;
+    var dte=Math.max(o.dte||30,1);
+    var T=dte/365;
+    var sumDelta=0;
+    var count=0;
+    for(var p=insHigh;p>=insLow;p--){
+      var d1=(Math.log(p/strike)+(iv*iv/2)*T)/(iv*Math.sqrt(T));
+      var sign=d1<0?-1:1;
+      var ax=Math.abs(d1)/Math.sqrt(2);
+      var t=1/(1+0.3275911*ax);
+      var poly=((( (1.061405429*t+-1.453152027)*t+1.421413741 )*t+-0.284496736)*t+0.254829592)*t;
+      var y=poly*Math.exp(-ax*ax);
+      var cdf=0.5*(1+sign*(1-y));
+      sumDelta+=(cdf-1)*qty;
+      count++;
+    }
+    var avg=sumDelta/count;
+    var cls=avg>=0?'color:var(--green)':'color:#d32f2f';
+    html+='<td style="padding:2px 6px;text-align:right" class="'+cls+'">'+F(avg,2)+'</td>';
+  });
+  html+='</tr>';
   tbody.innerHTML=html;
+}
+
+function renderDistantDeltaDteChart(opts, insLow, insHigh){
+  var container=document.getElementById('distantDeltaDteChart');
+  if(!container) return;
+  if(opts.length===0){container.innerHTML='Нет выбранных опционов';return;}
+  var data=window.layerData_distant;
+  if(!data||!data.spot_price) return;
+  var spot=data.spot_price;
+  // Find max DTE among selected options
+  var maxDte=0;
+  opts.forEach(function(o){var dte=Math.max(o.dte||30,1);if(dte>maxDte)maxDte=dte;});
+  maxDte=Math.ceil(maxDte/2)*2; // round up to even number
+  // Calculate average delta for EACH option at each DTE step
+  var optColors=['#4fc3f7','#ff7043','#66bb6a','#ffa726','#ab47bc','#26c6da','#ec407a','#8d6e63'];
+  var optChartData=[];
+  for(var oi=0;oi<opts.length;oi++){
+    var o=opts[oi];
+    var qty=o.qty||1;
+    var strike=o.strike||0;
+    var iv=o.iv||0.3;
+    var row=[];
+    for(var dte=maxDte;dte>=2;dte-=2){
+      var T=dte/365;
+      var sumDelta=0;
+      var count=0;
+      for(var p=insHigh;p>=insLow;p--){
+        var d1=(Math.log(p/strike)+(iv*iv/2)*T)/(iv*Math.sqrt(T));
+        var sign=d1<0?-1:1;
+        var ax=Math.abs(d1)/Math.sqrt(2);
+        var t=1/(1+0.3275911*ax);
+        var poly=((( (1.061405429*t+-1.453152027)*t+1.421413741 )*t+-0.284496736)*t+0.254829592)*t;
+        var y=poly*Math.exp(-ax*ax);
+        var cdf=0.5*(1+sign*(1-y));
+        sumDelta+=(cdf-1)*qty;
+        count++;
+      }
+      row.push({dte:dte, avgDelta:count>0?sumDelta/count:0});
+    }
+    optChartData.push({symbol:o.symbol.replace('-P',''), color:optColors[oi%optColors.length], rows:row});
+  }
+  // SVG rendering
+  var W=container.clientWidth-16||300;
+  var H=250;
+  var pad={l:50,r:140,t:20,b:40};
+  var cW=W-pad.l-pad.r;
+  var cH=H-pad.t-pad.b;
+  // Find global delta range
+  var dMin=0,dMax=0;
+  optChartData.forEach(function(op){
+    op.rows.forEach(function(r){if(r.avgDelta<dMin)dMin=r.avgDelta;if(r.avgDelta>dMax)dMax=r.avgDelta;});
+  });
+  if(dMin===dMax){dMin=-0.1;dMax=0.1;}
+  var range=dMax-dMin;
+  dMin-=range*0.1;
+  dMax+=range*0.1;
+  var xMin=2,xMax=maxDte;
+  // Y-axis range
+  var yMin=dMin,yMax=dMax;
+  // Build SVG
+  var svg='<svg width="'+W+'" height="'+(H+60)+'" xmlns="http://www.w3.org/2000/svg">';
+  // Grid lines
+  for(var i=0;i<=5;i++){
+    var y=pad.t+cH*(i/5);
+    var val=yMax-(yMax-yMin)*(i/5);
+    svg+='<line x1="'+pad.l+'" y1="'+y+'" x2="'+(pad.l+cW)+'" y2="'+y+'" stroke="#30363d" stroke-width="1"/>';
+    svg+='<text x="'+(pad.l-5)+'" y="'+(y+4)+'" text-anchor="end" fill="#888" font-size="10">'+F(val,2)+'</text>';
+  }
+  // X-axis labels (DTE)
+  var step=Math.max(2,Math.round(maxDte/10));
+  for(var d=xMin; d<=xMax; d+=step) {
+    var x=pad.l+cW*((xMax-d)/(xMax-xMin));
+    svg+='<line x1="'+x+'" y1="'+pad.t+'" x2="'+x+'" y2="'+(pad.t+cH)+'" stroke="#30363d" stroke-width="1"/>';
+    svg+='<text x="'+x+'" y="'+(H-5)+'" text-anchor="middle" fill="#888" font-size="10">'+d+'</text>';
+  }
+  // Draw lines for each option
+  optChartData.forEach(function(op){
+    var pathD='';
+    var pts=[];
+    op.rows.forEach(function(r,i){
+      var x=pad.l+cW*((xMax-r.dte)/(xMax-xMin));
+      var y=pad.t+cH*(1-(r.avgDelta-yMin)/(yMax-yMin));
+      pathD+=(i===0?'M':'L')+x+','+y;
+      pts.push({x:x,y:y});
+    });
+    svg+='<path d="'+pathD+'" fill="none" stroke="'+op.color+'" stroke-width="2"/>';
+    pts.forEach(function(pt){
+      svg+='<circle cx="'+pt.x+'" cy="'+pt.y+'" r="3" fill="'+op.color+'"/>';
+    });
+  });
+  // Axis labels
+  svg+='<text x="'+(pad.l+cW/2)+'" y="'+(H-2)+'" text-anchor="middle" fill="#aaa" font-size="11">DTE (дни)</text>';
+  svg+='<text x="10" y="'+(pad.t+cH/2)+'" text-anchor="middle" fill="#aaa" font-size="11" transform="rotate(-90,10,'+(pad.t+cH/2)+')">Δ</text>';
+  // Legend
+  var ly=pad.t+10;
+  optChartData.forEach(function(op){
+    var lx=pad.l+cW+15;
+    svg+='<circle cx="'+lx+'" cy="'+ly+'" r="4" fill="'+op.color+'"/>';
+    svg+='<text x="'+(lx+10)+'" y="'+(ly+4)+'" fill="#ccc" font-size="11">'+op.symbol+'</text>';
+    ly+=18;
+  });
+  svg+='</svg>';
+  container.innerHTML=svg;
 }
 
 // === Distant: Summary Matrix ===
@@ -1288,12 +1443,12 @@ function renderDistantSummaryMatrix(){
   if(!tbody||!thead) return;
   var allOpts=selectedOption.distant||[];
   var opts=allOpts.filter(function(o){return o.checked!==false;});
-  if(opts.length===0){tbody.innerHTML='<tr><td colspan="6" style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';return;}
+  if(opts.length===0){tbody.innerHTML='<tr><td colspan="7" style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';return;}
   var data=window.layerData_distant;
   if(!data||!data.spot_price) return;
   var spot=data.spot_price;
   var insLow=Math.round(spot*0.70);
-  var insHigh=Math.round(spot*0.85);
+  var insHigh=Math.round(spot);
   var dropPct20=Math.round(spot*0.80);
   var dropPct25=Math.round(spot*0.75);
   var sol=posData&&posData.positions&&posData.positions.length>0?posData.positions.find(function(x){return x.symbol==='SOL';}):null;
@@ -1341,6 +1496,9 @@ function renderDistantSummaryMatrix(){
     var solPnlPct=solInvest>0?F(solPnl/solInvest*100,2)+'%':'-';
     var ddPnlPctCls=solPnl>=0?'color:var(--green)':'color:#d32f2f';
     html+='<td style="padding:2px 6px;text-align:right" class="'+ddPnlPctCls+'">'+solPnlPct+'</td>';
+    var stab=solInvest>0?F((solPnl+totalPnl)/solInvest*100,2)+'%':'-';
+    var stabCls=(solPnl+totalPnl)>=0?'color:var(--green)':'color:#d32f2f';
+    html+='<td style="padding:2px 6px;text-align:right" class="'+stabCls+'">'+stab+'</td>';
     html+='</tr>';
   }
   tbody.innerHTML=html;
@@ -2374,6 +2532,7 @@ function loadAll(){
     renderRecommendations(results[2]);
     renderSummary(results[3], results[1]);
     renderLayers(results[4]);
+    window._lastLayersData=results[4];
     renderDistantBudget(results[4]);
     renderPnnLadderTable(results[0]);
     loadOptionBoard();

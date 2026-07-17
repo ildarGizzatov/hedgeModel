@@ -156,11 +156,14 @@ tr:hover td{background:rgba(88,166,255,.05)}
 <div class="card" style="width:100%">
 <h2>Выбранные опционы</h2>
 <div style="max-height:250px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0">
-<th style="text-align:center;padding:3px 6px;width:30px">✔</th><th style="text-align:left;padding:3px 6px">Опцион</th><th style="padding:3px 6px;text-align:right">Страйк</th><th style="padding:3px 6px;text-align:center">DTE</th><th style="padding:3px 6px;text-align:right">Δ</th><th style="padding:3px 6px;text-align:right">Price</th><th style="padding:3px 6px;text-align:center">Кол-во</th><th style="padding:3px 6px;text-align:right">Стоимость</th><th style="padding:3px 6px;text-align:center">✕</th>
+<th style="text-align:center;padding:3px 6px;width:30px">✔</th><th style="text-align:left;padding:3px 6px">Опцион</th><th style="padding:3px 6px;text-align:right">Страйк</th><th style="padding:3px 6px;text-align:center">DTE</th><th style="padding:3px 6px;text-align:right">Δ</th><th style="padding:3px 6px;text-align:right">Price</th><th style="padding:3px 6px;text-align:center">Кол-во</th><th style="padding:3px 6px;text-align:right">Стоимость</th><th style="padding:3px 6px;text-align:right">% от остатка</th><th style="padding:3px 6px;text-align:center">✕</th>
 </tr></thead><tbody id="distantSelectedTable"></tbody></table></div>
 </div>
 <div class="card" style="width:100%"><h2>Итого</h2>
-<div style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table id="distantSummaryMatrix" style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0"><th style="text-align:right;padding:2px 6px">Цена</th><th style="text-align:right;padding:2px 6px">%Просадка</th><th style="text-align:right;padding:2px 6px">Общий PnL</th><th style="text-align:right;padding:2px 6px">Общая Δ</th><th style="text-align:right;padding:2px 6px">Просадка портфеля</th><th style="text-align:right;padding:2px 6px">%Просадка портфеля</th></tr></thead><tbody></tbody></table></div>
+<div style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table id="distantSummaryMatrix" style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0"><th style="text-align:right;padding:2px 6px">Цена</th><th style="text-align:right;padding:2px 6px">%Просадка</th><th style="text-align:right;padding:2px 6px">Общий PnL</th><th style="text-align:right;padding:2px 6px">Общая Δ</th><th style="text-align:right;padding:2px 6px">Просадка портфеля</th><th style="text-align:right;padding:2px 6px">%Просадка портфеля</th><th style="text-align:right;padding:2px 6px">Стабилизация</th></tr></thead><tbody></tbody></table></div>
+</div>
+<div class="card" style="width:100%"><h3>Средняя дельта vs DTE</h3>
+<div style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;padding:8px;background:var(--surface)"><div id="distantDeltaDteChart" style="height:250px"></div></div>
 </div>
 
 </div>
@@ -209,6 +212,6 @@ tr:hover td{background:rgba(88,166,255,.05)}
 
 </div>
 
-<script src="app.js?t=20260714_920"></script>
+<script src="app.js?t=20260714_1020"></script>
 </body>
 </html>
