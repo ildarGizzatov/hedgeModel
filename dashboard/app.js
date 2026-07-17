@@ -1166,6 +1166,23 @@ function renderDistantPnlMatrix(){
     });
     html+='</tr>';
   }
+  // PnL difference row (last - first)
+  html+='<tr style="height:20px;font-weight:bold;background:var(--bg);border-top:2px solid var(--border)">';
+  html+='<td style="padding:2px 6px;text-align:right" colspan="2">Разница PnL:</td>';
+  opts.forEach(function(o){
+    var qty=o.qty||1;
+    var strike=o.strike||0;
+    var premium=o.price||0;
+    var iv=o.iv||0.3;
+    var dte=Math.max(o.dte||30,1);
+    var T=dte/365;
+    var pnlFirst=(_bsPutPrice(insHigh, strike, T, iv)-premium)*qty;
+    var pnlLast=(_bsPutPrice(insLow, strike, T, iv)-premium)*qty;
+    var diff=pnlLast-pnlFirst;
+    var cls=diff>=0?'color:var(--green)':'color:#d32f2f';
+    html+='<td style="padding:2px 6px;text-align:right" class="'+cls+'">$'+F(diff,2)+'</td>';
+  });
+  html+='</tr>';
   tbody.innerHTML=html;
 }
 
