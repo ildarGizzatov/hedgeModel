@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "docs/203-anchor-selection-algorithm.md",
+                "file": "T007-option-card.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "203-anchor-selection-algorithm"
+              "title": "T007-option-card"
             }
           }
         ]
@@ -188,20 +188,23 @@
   "lastOpenFiles": [
     "hedge_model.db-wal",
     "hedge_model.db-shm",
-    "dashboard/sedmBabWA",
-    "dashboard/sedpPOXVG",
-    "dashboard/sedo1tNOo",
-    "dashboard/sed7Fz0U0",
-    "dashboard/sedpbGj6I",
-    "dashboard/sedEWtetR",
+    "dashboard/seddyLlDR",
+    "dashboard/sedbD5mR5",
+    "dashboard/sedC09kXu",
+    "dashboard/sedi7Fzpr",
+    "dashboard/sedgRsM69",
+    "dashboard/sedobNn3H",
+    "dashboard/sedrUbxoX",
+    "dashboard/sedKPfjzv",
+    "dashboard/sedMnArfY",
+    "Kanban.md",
+    "T007-option-card.md",
+    "README.md",
+    "docs/203-anchor-selection-algorithm.md",
     "docs/204-active-layer-selection.md",
     "docs/201-selection-criteria.md",
-    "docs/203-anchor-selection-algorithm.md",
     "docs/300-pipeline.md",
     "T006-anchor-selection.md",
-    "tools/excel/lu620380fccq5.tmp",
-    "dashboard/sedHh0a13",
-    "dashboard/sedCfhPLX",
     "docs/101-anchor-layer.md",
     "docs/102-adaptation-layer.md",
     "docs/103-active-layer.md",
@@ -211,16 +214,13 @@
     "T004-monitor-open-options.md",
     "docs/200-budget-allocation.md",
     "T009-active-layer-selection.md",
-    "Kanban.md",
     "docs/210-active-layer-selection.md",
     "2026-06-30.md",
     "2026-06-29.md",
     "2026-06-25.md",
-    "README.md",
     "T007-dashboard.md",
     "docs/104-active-closing-rules.md",
     "T008-conditions-active-closing.md",
-    "AGENTS.md",
-    "venv/lib/python3.12/site-packages/numpy-2.4.6.dist-info/licenses/numpy/random/src/pcg64/LICENSE.md"
+    "AGENTS.md"
   ]
 }

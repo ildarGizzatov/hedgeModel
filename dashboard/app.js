@@ -1002,11 +1002,10 @@ function addDistant(symbol){
     localStorage.setItem('selectedDistant',JSON.stringify(selList));
   }
   syncDistantSelected();
-  renderDistantProfile();
-  renderDistantPnlChart();
   renderDistantGammaChart();
   renderDistantDeltaMatrix();
   renderDistantPnlMatrix();
+  renderDistantSummaryMatrix();
 }
 
 // === Distant: render selected table ===
@@ -1048,11 +1047,10 @@ function syncDistantSelected(){
     html+='</tr>';
   }
   tbody.innerHTML=html;
-  renderDistantProfile();
-  renderDistantPnlChart();
   renderDistantGammaChart();
   renderDistantDeltaMatrix();
   renderDistantPnlMatrix();
+  renderDistantSummaryMatrix();
 }
 
 window._onDistantToggle=function(idx,val){
@@ -1062,11 +1060,10 @@ window._onDistantToggle=function(idx,val){
     if(selList[idx]) selList[idx].checked=val;
     localStorage.setItem('selectedDistant',JSON.stringify(selList));
     syncDistantSelected();
-    renderDistantProfile();
-    renderDistantPnlChart();
     renderDistantGammaChart();
     renderDistantDeltaMatrix();
     renderDistantPnlMatrix();
+  renderDistantSummaryMatrix();
   }
 };
 
@@ -1077,11 +1074,10 @@ window._onDistantQtyChange=function(idx,val){
     if(selList[idx]) selList[idx].qty=selectedOption.distant[idx].qty;
     localStorage.setItem('selectedDistant',JSON.stringify(selList));
     syncDistantSelected();
-    renderDistantProfile();
-    renderDistantPnlChart();
     renderDistantGammaChart();
     renderDistantDeltaMatrix();
     renderDistantPnlMatrix();
+  renderDistantSummaryMatrix();
   }
 };
 
@@ -1091,86 +1087,83 @@ window._onDistantRemove=function(idx){
   selList.splice(idx,1);
   localStorage.setItem('selectedDistant',JSON.stringify(selList));
   syncDistantSelected();
-  renderDistantProfile();
-  renderDistantPnlChart();
   renderDistantGammaChart();
   renderDistantDeltaMatrix();
   renderDistantPnlMatrix();
+  renderDistantSummaryMatrix();
 };
 
-// === Distant: profile table (Цена, Δ, Γ, PnL) ===
-function renderDistantProfile(){
-  var tbody=document.getElementById('distantProfileTable');
-  if(!tbody){ console.log('Profile: no tbody'); return; }
+// === BS Put Price (r=0) ===
+function _bsPutPrice(S, K, T, iv){
+  if(T<=0||iv<=0||S<=0||K<=0) return Math.max(K-S, 0);
+  var d1=(Math.log(S/K)+(iv*iv/2)*T)/(iv*Math.sqrt(T));
+  var a1=0.254829592,a2=-0.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,p0=0.3275911;
+  var sign=d1<0?-1:1;
+  var ax=Math.abs(d1)/Math.sqrt(2);
+  var t=1/(1+p0*ax);
+  var poly=((( (a5*t+a4)*t+a3 )*t+a2)*t+a1)*t;
+  var y=poly*Math.exp(-ax*ax);
+  var Nd1=0.5*(1+sign*(1-y));
+  var d2=d1-iv*Math.sqrt(T);
+  sign=d2<0?-1:1;
+  ax=Math.abs(d2)/Math.sqrt(2);
+  t=1/(1+p0*ax);
+  poly=((( (a5*t+a4)*t+a3 )*t+a2)*t+a1)*t;
+  y=poly*Math.exp(-ax*ax);
+  var Nd2=0.5*(1+sign*(1-y));
+  return K*(1-Nd2)-S*(1-Nd1);
+}
+
+// === Distant: PnL Matrix ===
+function renderDistantPnlMatrix(){
+  var tbody=document.querySelector('#distantPnlMatrix tbody');
+  var thead=document.querySelector('#distantPnlMatrix thead tr');
+  if(!tbody||!thead) return;
   var allOpts=selectedOption.distant||[];
   var opts=allOpts.filter(function(o){return o.checked!==false;});
-  console.log('Profile: allOpts='+allOpts.length+' opts='+opts.length+' checked='+opts.map(function(o){return o.symbol+' c='+o.checked}).join(','));
-  if(opts.length===0){tbody.innerHTML='<tr><td colspan="5" style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';return;}
-  
+  if(opts.length===0){tbody.innerHTML='<tr><td colspan="2" style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';thead.innerHTML='<tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0"><th style="text-align:right;padding:2px 6px">Цена</th><th style="text-align:right;padding:2px 6px">%Просадка</th></tr>';return;}
   var data=window.layerData_distant;
-  if(!data||!data.spot_price){ console.log('Profile: no data/spot'); return; }
+  if(!data||!data.spot_price) return;
   var spot=data.spot_price;
-  console.log('Profile: spot='+spot+' insHigh='+Math.round(spot*0.85)+' insLow='+Math.round(spot*0.70));
-  
-  // Insurance range: 15-30% drop from spot
-  var insHigh=Math.round(spot*(1-0.15));
-  var insLow=Math.round(spot*(1-0.30));
-  
-  // BS helper functions (r=0 как в black_scholes.py)
-  function _ncdf(x){
-    // Abramowitz & Stegun approximation (no Math.erf needed)
-    var a1=0.254829592, a2=-0.284496736, a3=1.421413741, a4=-1.453152027, a5=1.061405429, p=0.3275911;
-    var sign=x<0?-1:1;
-    var ax=Math.abs(x)/Math.sqrt(2);
-    var t=1/(1+p*ax);
-    var poly=((( (a5*t+a4)*t+a3 )*t+a2)*t+a1)*t;
-    var y=poly*Math.exp(-ax*ax);
-    return 0.5*(1+sign*(1-y));
-  }
-  function _npdf(x){
-    return Math.exp(-0.5*x*x)/Math.sqrt(2*Math.PI);
-  }
-  function bs_greeks(S, K, T, sigma){
-    if(T<=0||sigma<=0||S<=0||K<=0){
-      return {delta: S<=K?-1:0, gamma:0};
-    }
-    var d1=(Math.log(S/K)+(sigma*sigma/2)*T)/(sigma*Math.sqrt(T));
-    var delta=_ncdf(d1)-1; // put delta
-    var gamma=_npdf(d1)/(S*sigma*Math.sqrt(T));
-    return {delta:delta, gamma:gamma};
-  }
-  function bs_put_price(S, K, T, sigma){
-    if(T<=0||sigma<=0||S<=0||K<=0) return Math.max(K-S, 0);
-    var d1=(Math.log(S/K)+(sigma*sigma/2)*T)/(sigma*Math.sqrt(T));
-    var d2=d1-sigma*Math.sqrt(T);
-    return K*(1-_ncdf(d2)) - S*(1-_ncdf(d1));
-  }
-  
+  var insLow=Math.round(spot*0.70);
+  var insHigh=Math.round(spot*0.85);
+  var dropPct20=Math.round(spot*0.80);
+  var dropPct25=Math.round(spot*0.75);
+  thead.innerHTML='';
+  var thPrice=document.createElement('th');
+  thPrice.style.cssText='text-align:right;padding:2px 6px';
+  thPrice.textContent='Цена';
+  thead.appendChild(thPrice);
+  var thDrop=document.createElement('th');
+  thDrop.style.cssText='text-align:right;padding:2px 6px';
+  thDrop.textContent='%Просадка';
+  thead.appendChild(thDrop);
+  opts.forEach(function(o){
+    var th=document.createElement('th');
+    th.style.cssText='text-align:right;padding:2px 6px';
+    th.textContent=o.symbol.replace('-P','');
+    thead.appendChild(th);
+  });
   var html='';
   for(var p=insHigh;p>=insLow;p--){
-    var sumDelta=0, sumGamma=0, sumPnL=0;
-    opts.forEach(function(opt){
-      var qty=opt.qty||1;
-      var strike=opt.strike||0;
-      var premium=opt.price||0;
-      var iv=opt.iv||0.3;
-      var dte=opt.dte||30;
-      var T=Math.max(dte/365, 1/365);
-      var greeks=bs_greeks(p, strike, T, iv);
-      sumDelta+=greeks.delta*qty;
-      sumGamma+=greeks.gamma*qty;
-      var bsPrice=bs_put_price(p, strike, T, iv);
-      var pnl=bsPrice-premium;
-      sumPnL+=pnl*qty;
-    });
-    var pnlCls=sumPnL>=0?'color:var(--green)':'color:#d32f2f';
-    var dropPct = ((spot-p)/spot*100);
-    html+='<tr style="height:22px">';
+    var is20=(p===dropPct20);
+    var is25=(p===dropPct25);
+    var bg=is25?'background:#ff000030':(is20?'background:#ffaa0020':'');
+    html+='<tr style="height:20px;'+bg+'">';
     html+='<td style="padding:2px 6px;text-align:right">$'+p+'</td>';
-    html+='<td style="padding:2px 6px;text-align:right">'+F(dropPct,1)+'%</td>';
-    html+='<td style="padding:2px 6px;text-align:right">'+F(sumDelta,2)+'</td>';
-    html+='<td style="padding:2px 6px;text-align:right">'+F(sumGamma,4)+'</td>';
-    html+='<td style="padding:2px 6px;text-align:right" class="'+pnlCls+'">$'+F(sumPnL,2)+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right">'+F((spot-p)/spot*100,1)+'%</td>';
+    opts.forEach(function(o){
+      var qty=o.qty||1;
+      var strike=o.strike||0;
+      var premium=o.price||0;
+      var iv=o.iv||0.3;
+      var dte=Math.max(o.dte||30,1);
+      var T=dte/365;
+      var bsPrice=_bsPutPrice(p, strike, T, iv);
+      var pnl=(bsPrice-premium)*qty;
+      var cls=pnl>=0?'color:var(--green)':'color:#d32f2f';
+      html+='<td style="padding:2px 6px;text-align:right" class="'+cls+'">$'+F(pnl,2)+'</td>';
+    });
     html+='</tr>';
   }
   tbody.innerHTML=html;
@@ -1236,41 +1229,14 @@ function renderDistantDeltaMatrix(){
   tbody.innerHTML=html;
 }
 
-function _bsPrice(S, K, T, sigma){
-  if(T<=0||sigma<=0||S<=0||K<=0) return 0;
-  var a1=0.254829592,a2=-0.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,p0=0.3275911;
-  var sign=x<0?-1:1;
-  var ax=Math.abs(x)/Math.sqrt(2);
-  var t=1/(1+p0*ax);
-  var poly=((( (a5*t+a4)*t+a3 )*t+a2)*t+a1)*t;
-  var y=poly*Math.exp(-ax*ax);
-  return 0.5*(1+sign*(1-y));
-}
-function _ncdf(x){
-  var a1=0.254829592,a2=-0.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,p0=0.3275911;
-  var sign=x<0?-1:1;
-  var ax=Math.abs(x)/Math.sqrt(2);
-  var t=1/(1+p0*ax);
-  var poly=((( (a5*t+a4)*t+a3 )*t+a2)*t+a1)*t;
-  var y=poly*Math.exp(-ax*ax);
-  return 0.5*(1+sign*(1-y));
-}
-function _bsPutPrice(S, K, T, sigma){
-  if(T<=0||sigma<=0||S<=0||K<=0) return Math.max(K-S, 0);
-  var d1=(Math.log(S/K)+(sigma*sigma/2)*T)/(sigma*Math.sqrt(T));
-  var d2=d1-sigma*Math.sqrt(T);
-  var N_d1=_ncdf(d1);
-  var N_d2=_ncdf(d2);
-  return K*(1-N_d2) - S*(1-N_d1);
-}
-// === Distant: PnL Matrix ===
-function renderDistantPnlMatrix(){
-  var tbody=document.querySelector('#distantPnlMatrix tbody');
-  var thead=document.querySelector('#distantPnlMatrix thead tr');
+// === Distant: Summary Matrix ===
+function renderDistantSummaryMatrix(){
+  var tbody=document.querySelector('#distantSummaryMatrix tbody');
+  var thead=document.querySelector('#distantSummaryMatrix thead tr');
   if(!tbody||!thead) return;
   var allOpts=selectedOption.distant||[];
   var opts=allOpts.filter(function(o){return o.checked!==false;});
-  if(opts.length===0){tbody.innerHTML='<tr><td colspan="2" style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';thead.innerHTML='<tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0"><th style="text-align:right;padding:2px 6px">Цена</th><th style="text-align:right;padding:2px 6px">%Просадка</th></tr>';return;}
+  if(opts.length===0){tbody.innerHTML='<tr><td colspan="5" style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';return;}
   var data=window.layerData_distant;
   if(!data||!data.spot_price) return;
   var spot=data.spot_price;
@@ -1278,29 +1244,14 @@ function renderDistantPnlMatrix(){
   var insHigh=Math.round(spot*0.85);
   var dropPct20=Math.round(spot*0.80);
   var dropPct25=Math.round(spot*0.75);
-  thead.innerHTML='';
-  var thPrice=document.createElement('th');
-  thPrice.style.cssText='text-align:right;padding:2px 6px';
-  thPrice.textContent='Цена';
-  thead.appendChild(thPrice);
-  var thDrop=document.createElement('th');
-  thDrop.style.cssText='text-align:right;padding:2px 6px';
-  thDrop.textContent='%Просадка';
-  thead.appendChild(thDrop);
-  opts.forEach(function(o){
-    var th=document.createElement('th');
-    th.style.cssText='text-align:right;padding:2px 6px';
-    th.textContent=o.symbol.replace('-P','');
-    thead.appendChild(th);
-  });
   var html='';
   for(var p=insHigh;p>=insLow;p--){
     var is20=(p===dropPct20);
     var is25=(p===dropPct25);
     var bg=is25?'background:#ff000030':(is20?'background:#ffaa0020':'');
-    html+='<tr style="height:20px;'+bg+'">';
-    html+='<td style="padding:2px 6px;text-align:right">$'+p+'</td>';
-    html+='<td style="padding:2px 6px;text-align:right">'+F((spot-p)/spot*100,1)+'%</td>';
+    var totalPnl=0;
+    var totalDelta=0;
+    var totalGamma=0;
     opts.forEach(function(o){
       var qty=o.qty||1;
       var strike=o.strike||0;
@@ -1310,193 +1261,32 @@ function renderDistantPnlMatrix(){
       var T=dte/365;
       var bsPrice=_bsPutPrice(p, strike, T, iv);
       var pnl=(bsPrice-premium)*qty;
-      var cls=pnl>=0?'color:var(--green)':'color:#d32f2f';
-      html+='<td style="padding:2px 6px;text-align:right" class="'+cls+'">$'+F(pnl,2)+'</td>';
+      totalPnl+=pnl;
+      var d1=(Math.log(p/strike)+(iv*iv/2)*T)/(iv*Math.sqrt(T));
+      var a1=0.254829592,a2=-0.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,p0=0.3275911;
+      var sign=d1<0?-1:1;
+      var ax=Math.abs(d1)/Math.sqrt(2);
+      var t=1/(1+p0*ax);
+      var poly=((( (a5*t+a4)*t+a3 )*t+a2)*t+a1)*t;
+      var y=poly*Math.exp(-ax*ax);
+      var cdf=0.5*(1+sign*(1-y));
+      var delta=cdf-1;
+      totalDelta+=delta*qty;
+      var npdf=Math.exp(-d1*d1/2)/Math.sqrt(2*Math.PI);
+      var gamma=npdf/(p*iv*Math.sqrt(T));
+      totalGamma+=gamma*qty;
     });
+    html+='<tr style="height:20px;'+bg+'">';
+    html+='<td style="padding:2px 6px;text-align:right">$'+p+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right">'+F((spot-p)/spot*100,1)+'%</td>';
+    var pnlCls=totalPnl>=0?'color:var(--green)':'color:#d32f2f';
+    html+='<td style="padding:2px 6px;text-align:right" class="'+pnlCls+'">$'+F(totalPnl,2)+'</td>';
+    var deltaCls=totalDelta>=0?'color:var(--green)':'color:#d32f2f';
+    html+='<td style="padding:2px 6px;text-align:right" class="'+deltaCls+'">'+F(totalDelta,2)+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right">'+F(totalGamma,4)+'</td>';
     html+='</tr>';
   }
   tbody.innerHTML=html;
-}
-
-// === Distant: PnL chart ===
-function renderDistantPnlChart(){
-  var container=document.getElementById('distantPnlChart');
-  if(!container) return;
-  var allOpts=selectedOption.distant||[];
-  var opts=allOpts.filter(function(o){return o.checked!==false && (o.qty||0)>0;});
-  if(opts.length===0){container.innerHTML='Нет выбранных опционов';return;}
-  
-  var data=window.layerData_distant;
-  if(!data||!data.spot_price){container.innerHTML='Нет данных';return;}
-  var spot=data.spot_price;
-  
-  // Insurance range for x-axis
-  var insLow=Math.round(spot*0.70);
-  var insHigh=Math.round(spot*0.85);
-  var xMin=insLow-1;
-  var xMax=insHigh+1;
-  
-  // Collect all PnL points per option
-  var allPoints=[];
-  var colors=['#3b82f6','#ef4444','#22c55e','#f59e0b','#8b5cf6','#ec4899'];
-  var totalPremium=0;
-  opts.forEach(function(opt,si){
-    var strike=opt.strike||0;
-    var premium=opt.price||0;
-    var qty=opt.qty||1;
-    var iv=opt.iv||0.3;
-    var dte=Math.max(opt.dte||30,1);
-    var T=dte/365;
-    var points=[];
-    var pnlSumInIns=0;
-    var pnlCountInIns=0;
-    for(var p=xMin;p<=xMax;p+=1){
-      var bsPrice=_bsPutPrice(p, strike, T, iv);
-      var pnl=(bsPrice-premium)*qty;
-      points.push({price:p, pnl:pnl});
-      if(p>=insLow && p<=insHigh){
-        pnlSumInIns+=pnl;
-        pnlCountInIns++;
-      }
-    }
-    var avgPnlIns=pnlCountInIns>0?pnlSumInIns/pnlCountInIns:0;
-    var gammaEff=premium>0?avgPnlIns/premium:0;
-    allPoints.push({symbol:opt.symbol, points:points, strike:strike, premium:premium, color:colors[si%colors.length], avgPnlIns:avgPnlIns, gammaEff:gammaEff});
-    totalPremium+=premium*qty;
-  });
-  
-  // Use same step as points for stacked
-  var stacked=[];
-  for(var p=xMin;p<=xMax;p+=1){
-    var totalPnl=0;
-    allPoints.forEach(function(s){
-      for(var i=0;i<s.points.length;i++){
-        if(s.points[i].price===p){ totalPnl+=s.points[i].pnl; break; }
-      }
-    });
-    stacked.push({price:p, total:totalPnl});
-  }
-  
-  var yMax=0, yMin=0;
-  allPoints.forEach(function(s){
-    s.points.forEach(function(pt){
-      if(pt.pnl>yMax) yMax=pt.pnl;
-      if(pt.pnl<yMin) yMin=pt.pnl;
-    });
-  });
-  
-  // Add some padding
-  var yPad=Math.max(Math.abs(yMax)*0.15, Math.abs(yMin)*0.15, 1);
-  yMax+=yPad;
-  yMin-=yPad;
-  
-  var w=container.clientWidth||450;
-  var h=container.clientHeight||280;
-  var pad={l:60, r:20, t:30, b:40};
-  var cw=w-pad.l-pad.r;
-  var ch=h-pad.t-pad.b;
-  
-  // Build SVG
-  var svgW=w, svgH=h;
-  var svg='<svg width="'+svgW+'" height="'+svgH+'" xmlns="http://www.w3.org/2000/svg">';
-  
-  // Grid and axes
-  var xRange=xMax-xMin;
-  var yRange=yMax-yMin;
-  
-  function xPos(p){ return pad.l+(p-xMin)/xRange*cw; }
-  function yPos(v){ return pad.t+(1-(v-yMin)/yRange)*ch; }
-  
-  // Defs for clip — full width
-  var clipW=cw;
-  svg+='<defs><clipPath id="chartArea"><rect x="'+pad.l+'" y="'+pad.t+'" width="'+clipW+'" height="'+ch+'"/></clipPath></defs>';
-  
-  // Background
-  svg+='<rect x="0" y="0" width="'+svgW+'" height="'+svgH+'" fill="var(--surface)"/>';
-  
-  // Zero line
-  if(yMin<=0 && yMax>=0){
-    var zeroY=yPos(0);
-    svg+='<line x1="'+pad.l+'" y1="'+zeroY+'" x2="'+(pad.l+cw)+'" y2="'+zeroY+'" stroke="#666" stroke-width="1"/>';
-  }
-  
-  // Green insurance zone
-  var zoneLeft=xPos(insLow);
-  var zoneRight=xPos(insHigh);
-  var zoneW=zoneRight-zoneLeft;
-  svg+='<rect x="'+zoneLeft+'" y="'+pad.t+'" width="'+zoneW+'" height="'+ch+'" fill="rgba(34,197,94,0.12)"/>';
-  svg+='<text x="'+(zoneLeft+zoneW/2)+'" y="'+(pad.t+14)+'" text-anchor="middle" fill="#22c55e" font-size="9">страховка</text>';
-  
-  // Y-axis grid lines
-  var yStep=1; if(yRange>50) yStep=5; if(yRange>100) yStep=10;
-  for(var vy=Math.ceil(yMin/yStep)*yStep;vy<=yMax;vy+=yStep){
-    var yy=yPos(vy);
-    svg+='<line x1="'+pad.l+'" y1="'+yy+'" x2="'+(pad.l+cw)+'" y2="'+yy+'" stroke="#333" stroke-width="0.5"/>';
-    svg+='<text x="'+(pad.l-5)+'" y="'+(yy+4)+'" text-anchor="end" fill="#888" font-size="10">$'+vy+'</text>';
-  }
-  
-  // X-axis grid lines - step $1
-  for(var vx=xMin;vx<=xMax;vx+=1){
-    var xx=xPos(vx);
-    svg+='<line x1="'+xx+'" y1="'+pad.t+'" x2="'+xx+'" y2="'+(pad.t+ch)+'" stroke="#333" stroke-width="0.5"/>';
-    svg+='<text x="'+xx+'" y="'+(pad.t+ch+12)+'" text-anchor="middle" fill="#888" font-size="8">$'+vx+'</text>';
-  }
-  
-  // Axis labels
-  var centerLabel=pad.l+cw/2;
-  svg+='<text x="'+centerLabel+'" y="'+(h-5)+'" text-anchor="middle" fill="#aaa" font-size="11">Цена SOL</text>';
-  svg+='<text x="12" y="'+(pad.t+ch/2)+'" text-anchor="middle" fill="#aaa" font-size="11" transform="rotate(-90,12,'+(pad.t+ch/2)+')">PnL ($)</text>';
-  
-  // Draw grouped PnL bars: one bar per option at each price, no gap
-  var cellW=cw/(xMax-xMin+1);
-  var barW=cellW/allPoints.length;
-  svg+='<g clip-path="url(#chartArea)">';
-  
-  for(var idx=0;idx<stacked.length;idx++){
-    var sp=stacked[idx];
-    var bx=xPos(sp.price);
-    var cellStart=bx-cellW/2;
-    
-    for(var oi=0;oi<allPoints.length;oi++){
-      var series=allPoints[oi];
-      var segPnl=0;
-      for(var i=0;i<series.points.length;i++){
-        if(series.points[i].price===sp.price){ segPnl=series.points[i].pnl; break; }
-      }
-      
-      var by=yPos(0);
-      var bt=yPos(segPnl);
-      var h=Math.abs(bt-by);
-      
-      if(h>0.5){
-        var fillColor=segPnl>=0?series.color:'#d32f2f';
-        svg+='<rect x="'+(cellStart+oi*barW)+'" y="'+(segPnl>=0?bt:by)+'" width="'+barW+'" height="'+h+'" fill="'+fillColor+'" opacity="0.75"/>';
-      }
-    }
-  }
-  svg+='</g>';
-  
-  // Legend
-  allPoints.forEach(function(s,i){
-    var ly=pad.t+15+i*14;
-    svg+='<text x="'+(pad.l+5)+'" y="'+ly+'" fill="'+s.color+'" font-size="10">'+s.symbol+' K=$'+s.strike+' Eff='+F(s.gammaEff,3)+'</text>';
-  });
-  
-  // Spot marker (only if within insurance range)
-  if(spot<=insHigh){
-    var spotX=xPos(spot);
-    svg+='<line x1="'+spotX+'" y1="'+pad.t+'" x2="'+spotX+'" y2="'+(pad.t+ch)+'" stroke="#fff" stroke-width="1" stroke-dasharray="2,2"/>';
-    svg+='<text x="'+spotX+'" y="'+(pad.t-5)+'" text-anchor="middle" fill="#fff" font-size="9">spot $'+spot+'</text>';
-  }
-  
-  // Total PnL summary
-  if(totalPremium>0){
-    var totalCost='-$'+totalPremium.toFixed(2);
-    svg+='<text x="'+centerLabel+'" y="'+(pad.t-5)+'" text-anchor="middle" fill="#aaa" font-size="10">Всего премий: '+totalCost+'</text>';
-  }
-  
-  svg+='</svg>';
-  container.innerHTML=svg;
 }
 
 // === Distant: Gamma Profile Chart ===
@@ -2538,6 +2328,9 @@ function loadAll(){
       renderLayer(results[6]);
       renderLayer(results[7]);
       renderLayer(results[8]);
+      renderDistantDeltaMatrix();
+      renderDistantPnlMatrix();
+      renderDistantSummaryMatrix();
 
       // Build global purchased symbols lookup
       globalPurchasedSymbols={};
@@ -2555,11 +2348,10 @@ function loadAll(){
     if(sd.length>0) selectedOption.distant=sd;
   } catch(e){}
   syncDistantSelected();
-  renderDistantProfile();
-  renderDistantPnlChart();
   renderDistantGammaChart();
   renderDistantDeltaMatrix();
   renderDistantPnlMatrix();
+  renderDistantSummaryMatrix();
 }
 
 initAggregator();
