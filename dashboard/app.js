@@ -1226,6 +1226,22 @@ function renderDistantDeltaMatrix(){
     });
     html+='</tr>';
   }
+  // Delta difference row (last - first)
+  html+='<tr style="height:20px;font-weight:bold;background:var(--bg);border-top:2px solid var(--border)">';
+  html+='<td style="padding:2px 6px;text-align:right" colspan="2">Разница Δ:</td>';
+  opts.forEach(function(o){
+    var qty=o.qty||1;
+    var strike=o.strike||0;
+    var iv=o.iv||0.3;
+    var dte=Math.max(o.dte||30,1);
+    var T=dte/365;
+    var deltaFirst=(function(){var d1=(Math.log(insHigh/strike)+(iv*iv/2)*T)/(iv*Math.sqrt(T));var s=d1<0?-1:1;var a=Math.abs(d1)/Math.sqrt(2);var t=1/(1+0.3275911*a);var p=((( (1.061405429*t+-1.453152027)*t+1.421413741 )*t+-0.284496736)*t+0.254829592)*t;var y=p*Math.exp(-a*a);return 0.5*(1+s*(1-y))-1;})();
+    var deltaLast=(function(){var d1=(Math.log(insLow/strike)+(iv*iv/2)*T)/(iv*Math.sqrt(T));var s=d1<0?-1:1;var a=Math.abs(d1)/Math.sqrt(2);var t=1/(1+0.3275911*a);var p=((( (1.061405429*t+-1.453152027)*t+1.421413741 )*t+-0.284496736)*t+0.254829592)*t;var y=p*Math.exp(-a*a);return 0.5*(1+s*(1-y))-1;})();
+    var diff=(deltaLast-deltaFirst)*qty;
+    var cls=diff<0?'color:var(--green)':'color:#d32f2f';
+    html+='<td style="padding:2px 6px;text-align:right" class="'+cls+'">'+F(diff,2)+'</td>';
+  });
+  html+='</tr>';
   tbody.innerHTML=html;
 }
 
