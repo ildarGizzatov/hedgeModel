@@ -576,7 +576,7 @@ function renderOptions(opt, pos){
   });
   optT.innerHTML=rows;
   optT.querySelectorAll('.opt-select').forEach(function(cb){
-    cb.addEventListener('change',function(){renderTargetPnlProfile(window._lastOptionsData);});
+    cb.addEventListener('change',function(){renderTargetPnlProfile(window._lastOptionsData);renderLayerPnlProfile(window._lastOptionsData);});
   });
   // Net Greeks - итоговая строка внизу таблицы
   var tEl=document.getElementById("optTable");
@@ -597,6 +597,7 @@ function renderOptions(opt, pos){
       window._pnlProfileData[p]=dbData[p]!==undefined?dbData[p]:0;
     }
     renderTargetPnlProfile(opt);
+    renderLayerPnlProfile(opt);
   });
 }
 
@@ -651,6 +652,71 @@ function renderTargetPnlProfile(opt){
     rows+='</tr>';
   }
   var el=document.getElementById('targetPnlProfile');
+  if(el) el.innerHTML=rows;
+}
+
+function renderLayerPnlProfile(opt){
+  if(!opt||!opt.options||opt.options.length===0){
+    var el=document.getElementById('layerPnlProfile');
+    if(el) el.innerHTML='<tr><td colspan="7" style="padding:12px;text-align:center;color:var(--text-dim)">Нет позиций</td></tr>';
+    return;
+  }
+  var spot=opt.spot_price||0;
+  if(!spot){
+    var el=document.getElementById('layerPnlProfile');
+    if(el) el.innerHTML='<tr><td colspan="7" style="padding:12px;text-align:center;color:var(--text-dim)">Нет spot</td></tr>';
+    return;
+  }
+  var low=Math.round(spot*0.65);
+  var rows="";
+  var prevLayer={active:0,adaptation:0,anchor:0};
+  var prevD={active:0,adaptation:0,anchor:0};
+  for(var p=Math.round(spot);p>=low;p--){
+    var drawdownPct=((spot-p)/spot*100);
+    if(drawdownPct>30) break;
+    var layerPnl={active:0,adaptation:0,anchor:0};
+    var totalPnl=0;
+    opt.options.forEach(function(o){
+      var cb=document.querySelector('.opt-select[data-id="'+o.id+'"]');
+      if(cb && !cb.checked) return;
+      var qty=o.qty||0;
+      var strike=o.strike||0;
+      var premium=o.entry_price||0;
+      var iv=o.iv||0.3;
+      var dte=Math.max(o.dte||30,1);
+      var T=dte/365;
+      if(p<=0||strike<=0||iv<=0||T<=0){totalPnl+=qty*premium;return;}
+      var bsPrice=_bsPutPrice(p,strike,T,iv);
+      var pnl=(bsPrice-premium)*qty;
+      totalPnl+=pnl;
+      if(o.layer==='active'){layerPnl.active+=pnl;}
+      else if(o.layer==='adaptation'){layerPnl.adaptation+=pnl;}
+      else if(o.layer==='anchor'){layerPnl.anchor+=pnl;}
+    });
+    var totalPct=totalPnl!==0?100:0;
+    var activePct=totalPnl!==0?(layerPnl.active/totalPnl*100):0;
+    var adaptPct=totalPnl!==0?(layerPnl.adaptation/totalPnl*100):0;
+    var anchorPct=totalPnl!==0?(layerPnl.anchor/totalPnl*100):0;
+    var isFirst=(p===Math.round(spot));
+    var activeD=isFirst?0:(layerPnl.active-prevLayer.active);
+    var adaptD=isFirst?0:(layerPnl.adaptation-prevLayer.adaptation);
+    var anchorD=isFirst?0:(layerPnl.anchor-prevLayer.anchor);
+    var activeDd=isFirst?0:(activeD-prevD.active);
+    var adaptDd=isFirst?0:(adaptD-prevD.adaptation);
+    var anchorDd=isFirst?0:(anchorD-prevD.anchor);
+    prevD={active:activeD,adaptation:adaptD,anchor:anchorD};
+    prevLayer={active:layerPnl.active,adaptation:layerPnl.adaptation,anchor:layerPnl.anchor};
+    rows+='<tr>';
+    rows+='<td style="padding:2px 6px;text-align:right">$'+p+'</td>';
+    rows+='<td style="padding:2px 6px;text-align:right">'+F(layerPnl.active,2)+'$ <span style="color:var(--yellow)">('+F(activePct,1)+'%)</span></td>';
+    rows+='<td style="padding:2px 6px;text-align:right">'+F(layerPnl.adaptation,2)+'$ <span style="color:var(--yellow)">('+F(adaptPct,1)+'%)</span></td>';
+    rows+='<td style="padding:2px 6px;text-align:right">'+F(layerPnl.anchor,2)+'$ <span style="color:var(--yellow)">('+F(anchorPct,1)+'%)</span></td>';
+    rows+='<td style="padding:2px 6px;text-align:right;color:'+(activeD>=0?'var(--green)':'#d32f2f')+'">'+F(activeD,2)+' <span style="color:var(--yellow)">('+F(activeDd,2)+')</span></td>';
+    rows+='<td style="padding:2px 6px;text-align:right;color:'+(adaptD>=0?'var(--green)':'#d32f2f')+'">'+F(adaptD,2)+' <span style="color:var(--yellow)">('+F(adaptDd,2)+')</span></td>';
+    rows+='<td style="padding:2px 6px;text-align:right;color:'+(anchorD>=0?'var(--green)':'#d32f2f')+'">'+F(anchorD,2)+' <span style="color:var(--yellow)">('+F(anchorDd,2)+')</span></td>';
+    rows+='</tr>';
+  }
+  var el=document.getElementById('layerPnlProfile');
   if(el) el.innerHTML=rows;
 }
 
