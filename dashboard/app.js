@@ -580,99 +580,41 @@ function renderOptions(opt, pos){
     tEl.insertAdjacentHTML("beforeend",
       '<tr style="background:var(--surface);border-top:2px solid var(--border);font-weight:700"><td colspan="4" style="color:var(--blue);font-size:15px">Итого</td><td></td><td></td><td></td><td style="'+clr(t.total_pnl)+';font-size:15px">'+U(t.total_pnl)+'</td><td style="font-size:15px">'+F(t.net_delta,4)+'</td><td style="font-size:15px">'+F(t.net_gamma,4)+'</td><td style="font-size:15px">'+F(t.net_theta,4)+'</td><td></td><td></td></tr>');
   }
-  renderTotalPnlProfile(opt);
-  renderTargetPnlProfile2(opt);
-}
-
-function renderTargetPnlProfile2(opt){
-  if(!opt||!opt.options||opt.options.length===0){
-    var el=document.getElementById('targetPnlProfile2');
-    if(el) el.innerHTML='<tr><td colspan="2" style="padding:12px;text-align:center;color:var(--text-dim)">Нет позиций</td></tr>';
-    return;
-  }
-  var spot=opt.spot_price||0;
-  if(!spot){
-    var el=document.getElementById('targetPnlProfile2');
-    if(el) el.innerHTML='<tr><td colspan="2" style="padding:12px;text-align:center;color:var(--text-dim)">Нет spot</td></tr>';
-    return;
-  }
   // Загружаем данные из БД
   api('/api/pnl-profile').then(function(res){
     var dbData={};
     if(res&&res.status==='ok'&&res.rows){
       res.rows.forEach(function(r){dbData[Number(r.price)]=r.target_pnl;});
     }
-    console.log('DB load: spot='+spot+' dbData keys='+Object.keys(dbData).join(','));
+    var spot=opt.spot_price||0;
     var low=Math.round(spot*0.65);
-    var rows="";
     window._pnlProfileData={};
     for(var p=Math.round(spot);p>=low;p--){
-      var targetPnl=dbData[p]!==undefined?dbData[p]:0;
-      var cls=targetPnl>=0?'var(--green)':'#d32f2f';
-      rows+='<tr>';
-      rows+='<td style="padding:2px 6px;text-align:right">$'+p+'</td>';
-      rows+='<td style="padding:2px 6px;text-align:right;color:'+cls+'">$'+F(targetPnl,2)+'</td>';
-      rows+='</tr>';
-      window._pnlProfileData[p]=targetPnl;
+      window._pnlProfileData[p]=dbData[p]!==undefined?dbData[p]:0;
     }
-    console.log('_pnlProfileData keys='+Object.keys(window._pnlProfileData).join(','));
-    var el=document.getElementById('targetPnlProfile2');
-    if(el) el.innerHTML=rows;
     renderTargetPnlProfile(opt);
   });
 }
 
-function renderTotalPnlProfile(opt){
-  if(!opt||!opt.options||opt.options.length===0){
-    var el=document.getElementById('totalPnlProfile');
-    if(el) el.innerHTML='<tr><td colspan="2" style="padding:12px;text-align:center;color:var(--text-dim)">Нет позиций</td></tr>';
-    return;
-  }
-  var spot=opt.spot_price||0;
-  if(!spot){
-    var el=document.getElementById('totalPnlProfile');
-    if(el) el.innerHTML='<tr><td colspan="2" style="padding:12px;text-align:center;color:var(--text-dim)">Нет spot</td></tr>';
-    return;
-  }
-  var low=Math.round(spot*0.65);
-  var rows="";
-  for(var p=Math.round(spot);p>=low;p--){
-    var totalPnl=0;
-    opt.options.forEach(function(o){
-      var qty=o.qty||0;
-      var strike=o.strike||0;
-      var premium=o.entry_price||0;
-      var iv=o.iv||0.3;
-      var dte=Math.max(o.dte||30,1);
-      var T=dte/365;
-      if(p<=0||strike<=0||iv<=0||T<=0){totalPnl+=qty*premium;return;}
-      var bsPrice=_bsPutPrice(p,strike,T,iv);
-      totalPnl+=(bsPrice-premium)*qty;
-    });
-    var cls=totalPnl>=0?'var(--green)':'#d32f2f';
-    rows+='<tr><td style="padding:2px 6px;text-align:right">$'+p+'</td>';
-    rows+='<td style="padding:2px 6px;text-align:right;color:'+cls+'">$'+F(totalPnl,2)+'</td>';
-    rows+='</tr>';
-  }
-  var el=document.getElementById('totalPnlProfile');
-  if(el) el.innerHTML=rows;
-}
+
 
 function renderTargetPnlProfile(opt){
   if(!opt||!opt.options||opt.options.length===0){
     var el=document.getElementById('targetPnlProfile');
-    if(el) el.innerHTML='<tr><td colspan="4" style="padding:12px;text-align:center;color:var(--text-dim)">Нет позиций</td></tr>';
+    if(el) el.innerHTML='<tr><td colspan="5" style="padding:12px;text-align:center;color:var(--text-dim)">Нет позиций</td></tr>';
     return;
   }
   var spot=opt.spot_price||0;
   if(!spot){
     var el=document.getElementById('targetPnlProfile');
-    if(el) el.innerHTML='<tr><td colspan="4" style="padding:12px;text-align:center;color:var(--text-dim)">Нет spot</td></tr>';
+    if(el) el.innerHTML='<tr><td colspan="5" style="padding:12px;text-align:center;color:var(--text-dim)">Нет spot</td></tr>';
     return;
   }
   var low=Math.round(spot*0.65);
   var rows="";
   for(var p=Math.round(spot);p>=low;p--){
+    var drawdownPct=((spot-p)/spot*100);
+    if(drawdownPct>30) break;
     var targetPnl=window._pnlProfileData&&window._pnlProfileData[Number(p)]!==undefined?window._pnlProfileData[Number(p)]:0;
     var currentPnl=0;
     opt.options.forEach(function(o){
@@ -689,8 +631,14 @@ function renderTargetPnlProfile(opt){
     var diff=targetPnl-currentPnl;
     var currCls=currentPnl>=0?'var(--green)':'#d32f2f';
     var diffCls=diff>=0?'var(--green)':'#d32f2f';
-    rows+='<tr>';
+    var drawdown=drawdownPct.toFixed(1);
+    var zoneBg='';
+    if(drawdownPct>=3&&drawdownPct<=10){zoneBg='background:rgba(63,185,80,0.18);';}
+    else if(drawdownPct>=8&&drawdownPct<=15){zoneBg='background:rgba(59,130,246,0.18);';}
+    else if(drawdownPct>=15&&drawdownPct<=30){zoneBg='background:rgba(234,179,8,0.18);';}
+    rows+='<tr style="'+zoneBg+'">';
     rows+='<td style="padding:2px 6px;text-align:right">$'+p+'</td>';
+    rows+='<td style="padding:2px 6px;text-align:right;color:var(--yellow)">'+drawdown+'%</td>';
     rows+='<td style="padding:2px 6px;text-align:right;color:'+diffCls+'">$'+F(targetPnl,2)+'</td>';
     rows+='<td style="padding:2px 6px;text-align:right;color:'+currCls+'">$'+F(currentPnl,2)+'</td>';
     rows+='<td style="padding:2px 6px;text-align:right;color:'+diffCls+'">$'+F(diff,2)+'</td>';
@@ -2633,19 +2581,19 @@ function loadAll(){
 initAggregator();
 loadAll();
 window.savePnlProfile=function(){
-  var btn=document.querySelector('#tab-options .btn-action');
+  var btn=document.getElementById('targetPnlProfile').closest('.card').querySelector('.btn-action');
   if(!btn) return;
   btn.textContent='⏳ Сохранение...';
   btn.disabled=true;
   var rows=[];
-  var tbody=document.getElementById('totalPnlProfile');
+  var tbody=document.getElementById('targetPnlProfile');
   if(!tbody) return;
   var trs=tbody.querySelectorAll('tr');
   for(var i=0;i<trs.length;i++){
     var tds=trs[i].querySelectorAll('td');
-    if(tds.length>=2){
+    if(tds.length>=4){
       var priceStr=tds[0].textContent.replace('$','').trim().replace(/\./g,'').replace(',','.');
-      var pnlStr=tds[1].textContent.replace('$','').trim().replace(/\./g,'').replace(',','.');
+      var pnlStr=tds[3].textContent.replace('$','').trim().replace(/\./g,'').replace(',','.');
       rows.push({price:parseFloat(priceStr),current_pnl:parseFloat(pnlStr)});
     }
   }
@@ -2660,7 +2608,7 @@ window.savePnlProfile=function(){
         }
         window._pnlProfileData=dbData;
         var opt=window._lastOptionsData;
-        if(opt){renderTargetPnlProfile2(opt);renderTargetPnlProfile(opt);}
+        if(opt){renderTargetPnlProfile(opt);}
       });
       setTimeout(function(){btn.textContent='💾 Сохранить';btn.disabled=false;},2000);
     }else{btn.textContent='❌ Ошибка';setTimeout(function(){btn.textContent='💾 Сохранить';btn.disabled=false;},2000);console.error('Save error:',res);}
