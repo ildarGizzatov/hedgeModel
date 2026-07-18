@@ -545,7 +545,7 @@ function renderPortfolio(data){
 function renderOptions(opt, pos){
   var optT=document.getElementById("optTable");
   if(!opt){
-    optT.innerHTML='<tr><td colspan="13" style="color:var(--red);text-align:center">Ошибка загрузки</td></tr>';
+    optT.innerHTML='<tr><td colspan="14" style="color:var(--red);text-align:center">Ошибка загрузки</td></tr>';
     return;
   }
   var t=opt.totals;
@@ -555,6 +555,7 @@ function renderOptions(opt, pos){
     var ivClr=o.iv_change>=0?"green":"red";
     var symEsc=o.symbol.replace(/'/g,"\'");
     rows+='<tr style="text-align:left">';
+    rows+='<td style="text-align:center"><input type="checkbox" class="opt-select" data-id="'+o.id+'" checked></td>';
     rows+='<td>'+o.symbol+'</td>';
     var layerDisplay = o.layer && LAYER_LABELS[o.layer] ? LAYER_LABELS[o.layer] : (o.layer || '-').toUpperCase();
     var nextLayer = o.layer && LAYER_CYCLE.indexOf(o.layer) >= 0 ? LAYER_LABELS[LAYER_CYCLE[(LAYER_CYCLE.indexOf(o.layer)+1)%3]] : '';
@@ -574,11 +575,14 @@ function renderOptions(opt, pos){
     rows+='</tr>';
   });
   optT.innerHTML=rows;
+  optT.querySelectorAll('.opt-select').forEach(function(cb){
+    cb.addEventListener('change',function(){renderTargetPnlProfile(window._lastOptionsData);});
+  });
   // Net Greeks - итоговая строка внизу таблицы
   var tEl=document.getElementById("optTable");
   if(tEl){
     tEl.insertAdjacentHTML("beforeend",
-      '<tr style="background:var(--surface);border-top:2px solid var(--border);font-weight:700"><td colspan="4" style="color:var(--blue);font-size:15px">Итого</td><td></td><td></td><td></td><td style="'+clr(t.total_pnl)+';font-size:15px">'+U(t.total_pnl)+'</td><td style="font-size:15px">'+F(t.net_delta,4)+'</td><td style="font-size:15px">'+F(t.net_gamma,4)+'</td><td style="font-size:15px">'+F(t.net_theta,4)+'</td><td></td><td></td></tr>');
+      '<tr style="background:var(--surface);border-top:2px solid var(--border);font-weight:700"><td colspan="5" style="color:var(--blue);font-size:15px">Итого</td><td></td><td></td><td></td><td style="'+clr(t.total_pnl)+';font-size:15px">'+U(t.total_pnl)+'</td><td style="font-size:15px">'+F(t.net_delta,4)+'</td><td style="font-size:15px">'+F(t.net_gamma,4)+'</td><td style="font-size:15px">'+F(t.net_theta,4)+'</td><td></td><td></td></tr>');
   }
   // Загружаем данные из БД
   api('/api/pnl-profile').then(function(res){
@@ -618,6 +622,8 @@ function renderTargetPnlProfile(opt){
     var targetPnl=window._pnlProfileData&&window._pnlProfileData[Number(p)]!==undefined?window._pnlProfileData[Number(p)]:0;
     var currentPnl=0;
     opt.options.forEach(function(o){
+      var cb=document.querySelector('.opt-select[data-id="'+o.id+'"]');
+      if(cb && !cb.checked) return;
       var qty=o.qty||0;
       var strike=o.strike||0;
       var premium=o.entry_price||0;
