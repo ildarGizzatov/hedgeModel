@@ -21,11 +21,15 @@ kanban-plugin: board
 - [ ] [[T004-monitor-open-options]]
 - [ ] [[T001-conditions-closing]]
 - [ ] [[T009-active-layer-selection]]
+- [ ] [[T010-layer-resource-management]] — Создать docs/105-layer-resource-management.md: концепция управления ресурсом слоя (бюджет, время, гамма, theta). Основной принцип модели.
+- [ ] [[T011-layer-health-monitoring]] — Создать docs/106-layer-health-monitoring.md: два вида проверок (качество защиты + жизнеспособность). Прогноз деградации vs констатация факта.
+- [ ] [[T012-update-algorithms]] — Обновить 203 и 204: добавить ссылку на 105 (ресурс) и 106 (здоровье). Учет жизнеспособности при выборе опционов.
 
 
 ## ✅ В работе
 
 - [ ] [[T006-anchor-selection]]
+- [ ] [[T009-active-layer-selection]] — Перенести сюда при начале работы
 
 
 ## 🏁 Готово
