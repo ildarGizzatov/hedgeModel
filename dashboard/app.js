@@ -14,6 +14,35 @@ document.querySelectorAll(".tab").forEach(function(t){
       tabEl.style.setProperty("display","block","important");
       console.log('🔘 tabEl display set to block, computed:', window.getComputedStyle(tabEl).display);
     }
+    // Render near layer on tab click - use correct container for tab-near
+    if(t.dataset.tab==='near' && layerData_near){
+      console.log('🔘 near tab clicked, rendering layerData_near into tab-near');
+      var el=document.getElementById("layerContent-near-tab");
+      if(el){
+        var hedges={near:{min:3,max:10},mid:{min:8,max:15},distant:{min:15,max:30}};
+        var html='<div style="margin-bottom:8px;font-size:15px;font-weight:bold">Хедж: '+hedges.near.min+'-'+hedges.near.max+'% просадка | Всего: <b>'+layerData_near.count+'</b></div>';
+        html+='<div style="max-height:250px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0">';
+        html+='<th style="text-align:left;padding:2px 4px">Символ</th><th style="padding:2px 4px;text-align:center">Drop%</th><th style="padding:2px 4px;text-align:right">Strike</th><th style="padding:2px 4px;text-align:center">DTE</th><th style="padding:2px 4px;text-align:right">Premium</th><th style="padding:2px 4px;text-align:right">Δ</th><th style="padding:2px 4px;text-align:right">Γ</th><th style="padding:2px 4px;text-align:right">Θ</th><th style="padding:2px 4px;text-align:right">IV</th><th style="padding:2px 4px;text-align:right">OI</th><th style="padding:2px 4px;text-align:right">Volume</th><th style="padding:2px 4px;text-align:right">Spread</th></tr></thead><tbody>';
+        var opts=layerData_near.options||[];
+        var spot=layerData_near.spot_price||0;
+        var h=hedges.near;
+        var lowStrike=spot*(1-h.max/100);
+        var highStrike=spot*(1-h.min/100);
+        var insLow=lowStrike, insHigh=highStrike;
+        opts.sort(function(a,b){if(b.strike-a.strike!==0)return b.strike-a.strike;return b.dte-a.dte;});
+        opts.forEach(function(o){
+          var sym=o.symbol.replace(/'/g,"\\'");
+          var dropPct=spot>0?((spot-o.strike)/spot*100):0;
+          var dropCls=dropPct>=0?'color:var(--green)':'color:#d32f2f';
+          var dropStr=(dropPct>=0?'+':'')+F(dropPct,2)+'%';
+          var rowBg='';
+          if(o.strike>=insLow && o.strike<=insHigh){rowBg='background:rgba(63,185,80,0.12);';}
+          html+='<tr style="text-align:left;height:22px;cursor:pointer;'+rowBg+' onclick="window.__so(\'near\',\''+sym+'\')" ondblclick="event.preventDefault();event.stopPropagation();window.__as(\'near\',\''+sym+'\')" title="Клик: выделить, двойной: добавить"><td style="padding:2px 4px;font-weight:bold">'+o.symbol+'</td><td style="padding:2px 4px;text-align:center;color:'+dropCls+'"><b>'+dropStr+'</b></td><td style="padding:2px 4px;text-align:right">'+(o.strike>=insLow&&o.strike<=insHigh?'<b style="color:var(--green)">🛡️':'')+o.strike+'</td><td style="padding:2px 4px;text-align:center">'+o.dte+'</td><td style="padding:2px 4px;text-align:right">$'+F(o.price,4)+'</td><td style="padding:2px 4px;text-align:right">'+F(o.delta,4)+'</td><td style="padding:2px 4px;text-align:right">'+F(o.gamma,4)+'</td><td style="padding:2px 4px;text-align:right">'+F(o.theta,4)+'</td><td style="padding:2px 4px;text-align:right">'+F(o.iv,4)+'</td><td style="padding:2px 4px;text-align:right">'+(o.open_interest||0)+'</td><td style="padding:2px 4px;text-align:right">'+(o.volume||o.open_interest||0)+'</td><td style="padding:2px 4px;text-align:right">'+(o.spread||'-')+'</td></tr>';
+        });
+        html+='</tbody></table></div>';
+        el.innerHTML=html;
+      }
+    }
 
   });
 });
@@ -576,7 +605,7 @@ function renderOptions(opt, pos){
   });
   optT.innerHTML=rows;
   optT.querySelectorAll('.opt-select').forEach(function(cb){
-    cb.addEventListener('change',function(){renderTargetPnlProfile(window._lastOptionsData);renderLayerPnlProfile(window._lastOptionsData);});
+    cb.addEventListener('change',function(){renderTargetPnlProfile(window._lastOptionsData);renderLayerPnlProfile(window._lastOptionsData);renderGammaChart(window._lastOptionsData);});
   });
   // Net Greeks - итоговая строка внизу таблицы
   var tEl=document.getElementById("optTable");
@@ -718,6 +747,123 @@ function renderLayerPnlProfile(opt){
   }
   var el=document.getElementById('layerPnlProfile');
   if(el) el.innerHTML=rows;
+  renderGammaChart(opt);
+}
+
+// === Gamma Chart ===
+function renderGammaChart(opt){
+  if(!opt||!opt.options||opt.options.length===0){
+    var el=document.getElementById('gammaChart');
+    if(el) el.innerHTML='<text x="50%" y="50%" text-anchor="middle" fill="var(--text-dim)">Нет позиций</text>';
+    return;
+  }
+  var spot=opt.spot_price||0;
+  if(!spot){return;}
+  var low=Math.round(spot*0.65);
+  var high=Math.round(spot*1.05);
+  var layerColors={active:'#3b82f6',adaptation:'#ef4444',anchor:'#10b981'};
+  var zoneColors={active:'rgba(63,185,80,0.12)',adaptation:'rgba(59,130,246,0.12)',anchor:'rgba(234,179,8,0.12)'};
+  var svg=document.getElementById('gammaChart');
+  if(!svg)return;
+  var container=svg.parentElement;
+  var W=container?container.clientWidth:400;
+  var H=container?container.clientHeight:400;
+  if(W<=0||H<=0){var el=document.getElementById('gammaChart');if(el)el.innerHTML='<text x="50%" y="50%" text-anchor="middle" fill="var(--text-dim)">Загрузка...</text>';return;}
+  var pad={top:30,right:20,bottom:60,left:55};
+  var cW=W-pad.left-pad.right;
+  var cH=H-pad.top-pad.bottom;
+  if(cW<=0||cH<=0)return;
+  var layerGamma={active:[],adaptation:[],anchor:[]};
+  var allGamma=[];
+  for(var p=low;p<=high;p+=0.5){
+    var lg={active:0,adaptation:0,anchor:0};
+    opt.options.forEach(function(o){
+      var cb=document.querySelector('.opt-select[data-id="'+o.id+'"]');
+      if(cb && !cb.checked) return;
+      var layer=o.layer||'active';
+      var strike=o.strike||0;
+      var iv=o.iv||0.3;
+      var dte=Math.max(o.dte||30,1);
+      var T=dte/365;
+      if(p<=0||strike<=0||iv<=0||T<=0){return;}
+      var g=_bsPutGamma(p,strike,T,iv)*(o.qty||0);
+      lg[layer]+=g;
+      allGamma.push(g);
+    });
+    layerGamma.active.push(lg.active);
+    layerGamma.adaptation.push(lg.adaptation);
+    layerGamma.anchor.push(lg.anchor);
+  }
+  var minG=Math.min(0,Math.min.apply(null,allGamma));
+  var maxG=Math.max(0,Math.max.apply(null,allGamma));
+  var rangeG=maxG-minG||1;
+  var minP=low-1;
+  var maxP=high+1;
+  var rangeP=maxP-minP||1;
+  var xScale=function(p){return pad.left+((p-minP)/rangeP)*cW;};
+  var yScale=function(g){return pad.top+cH-((g-minG)/rangeG)*cH;};
+  var svgStr='';
+  // Insurance zones
+  var zones=[
+    {from:Math.round(spot*0.90),to:Math.round(spot*0.97),color:zoneColors.active},
+    {from:Math.round(spot*0.85),to:Math.round(spot*0.92),color:zoneColors.adaptation},
+    {from:Math.round(spot*0.70),to:Math.round(spot*0.85),color:zoneColors.anchor}
+  ];
+  zones.forEach(function(z){
+    var x1=xScale(Math.max(z.from,low));
+    var x2=xScale(Math.min(z.to,high));
+    svgStr+='<rect x="'+x1+'" y="'+pad.top+'" width="'+Math.max(x2-x1,0)+'" height="'+cH+'" fill="'+z.color+'"/>';
+  });
+  // grid
+  for(var i=0;i<=5;i++){
+    var gY=pad.top+(cH/5)*i;
+    var gVal=maxG-(rangeG/5)*i;
+    svgStr+='<line x1="'+pad.left+'" y1="'+gY+'" x2="'+(W-pad.right)+'" y2="'+gY+'" stroke="var(--border)" stroke-width="0.5"/>';
+    svgStr+='<text x="'+(pad.left-3)+'" y="'+(gY+3)+'" text-anchor="end" fill="var(--text-dim)">'+F(gVal,4)+'</text>';
+  }
+  // x axis
+  svgStr+='<line x1="'+pad.left+'" y1="'+(pad.top+cH)+'" x2="'+(W-pad.right)+'" y2="'+(pad.top+cH)+'" stroke="var(--border)" stroke-width="1"/>';
+  for(var p=Math.ceil(minP);p<=maxP;p+=5){
+    svgStr+='<line x1="'+xScale(p)+'" y1="'+(pad.top+cH)+'" x2="'+xScale(p)+'" y2="'+(pad.top+cH+5)+'" stroke="var(--border)" stroke-width="1"/>';
+    svgStr+='<text x="'+xScale(p)+'" y="'+(pad.top+cH+10)+'" text-anchor="middle" fill="var(--text-dim)">$'+p+'</text>';
+  }
+  // zero line
+  var zeroY=yScale(0);
+  svgStr+='<line x1="'+pad.left+'" y1="'+zeroY+'" x2="'+(W-pad.right)+'" y2="'+zeroY+'" stroke="var(--text-dim)" stroke-width="0.5" stroke-dasharray="3,3"/>';
+  // layer paths
+  var layerKeys=['active','adaptation','anchor'];
+  layerKeys.forEach(function(lk){
+    var data=layerGamma[lk];
+    if(!data||data.length===0)return;
+    var path='';
+    data.forEach(function(g,i){
+      var px=low+i*0.5;
+      var x=xScale(px);
+      var y=yScale(g);
+      if(i===0)path+='M'+x+','+y;else path+='L'+x+','+y;
+    });
+    svgStr+='<path d="'+path+'" fill="none" stroke="'+layerColors[lk]+'" stroke-width="1.5"/>';
+  });
+  // legend
+  var legendY=pad.top+5;
+  var legendX=pad.left+5;
+  layerKeys.forEach(function(lk){
+    var label=LAYER_LABELS[lk]||lk;
+    svgStr+='<line x1="'+legendX+'" y1="'+legendY+'" x2="'+(legendX+15)+'" y2="'+legendY+'" stroke="'+layerColors[lk]+'" stroke-width="1.5"/>';
+    svgStr+='<text x="'+(legendX+18)+'" y="'+(legendY+4)+'" fill="'+layerColors[lk]+'">'+label+'</text>';
+    legendY+=12;
+  });
+  svg.setAttribute('viewBox','0 0 '+W+' '+H);
+  svg.style.width=W+'px';
+  svg.style.height=H+'px';
+  svg.innerHTML=svgStr;
+}
+
+function _bsPutGamma(S, K, T, iv){
+  if(T<=0||iv<=0||S<=0||K<=0) return 0;
+  var d1=(Math.log(S/K)+(iv*iv/2)*T)/(iv*Math.sqrt(T));
+  var nd1=Math.exp(-0.5*d1*d1)/(Math.sqrt(2*Math.PI));
+  return nd1/(S*iv*Math.sqrt(T));
 }
 
 // === Distant: Budget ===
@@ -959,13 +1105,19 @@ window.__as = function(layer,symbol){
 
 function renderLayer(data){
   try {
-  console.log('>>> renderLayer START data:', data ? 'exists' : 'null');
+  console.log('>>> renderLayer START data:', data ? 'exists' : 'null', JSON.stringify(data).substring(0,100));
   if(!data) { console.log('>>> no data'); return; }
   var layer=data.layer;
   var el=document.getElementById("layerContent-"+layer);
   var t=document.getElementById("layerTitle-"+layer);
+  console.log('>>> renderLayer: layer='+layer+' el='+!!el+' count='+data.count+' opts='+data.options.length);
   if(!el) { console.log('>>> no el for layerContent-'+layer); return; }
-  console.log('>>> renderLayer: layer='+layer+' count='+data.count+' options='+data.options.length);
+  if(!data.options || data.options.length===0){
+    el.innerHTML='<div style="padding:12px;color:var(--text-dim)">Нет опционов</div>';
+    console.log('>>> renderLayer: no options');
+    return;
+  }
+  console.log('>>> renderLayer: rendering '+data.options.length+' options');
   // Don't overwrite static HTML headers
   // if(t) t.textContent=data.label;
   var spot=data.spot_price||0;
@@ -2618,12 +2770,41 @@ function loadAll(){
     layerData_distant=results[6];
     layerData_mid=results[7];
     layerData_near=results[8];
+    console.log('loadAll: rendering layers — distant='+JSON.stringify(results[6]).substring(0,80)+' mid='+JSON.stringify(results[7]).substring(0,80)+' near='+JSON.stringify(results[8]).substring(0,80));
+    renderLayer(results[6]);
+    renderLayer(results[7]);
+    renderLayer(results[8]);
+    // Render near layer into tab-near container (different from tab-near-layer)
+    if(results[8] && results[8].options && results[8].options.length > 0){
+      var elTab=document.getElementById("layerContent-near-tab");
+      if(elTab){
+        var hedges={near:{min:3,max:10},mid:{min:8,max:15},distant:{min:15,max:30}};
+        var h=hedges.near;
+        var spot=results[8].spot_price||0;
+        var lowStrike=spot*(1-h.max/100);
+        var highStrike=spot*(1-h.min/100);
+        var insLow=lowStrike, insHigh=highStrike;
+        var opts=results[8].options||[];
+        var html='<div style="margin-bottom:8px;font-size:15px;font-weight:bold">Хедж: '+h.min+'-'+h.max+'% просадка | Strike $'+F(lowStrike,1)+'-$'+F(highStrike,1)+' | Всего: <b>'+results[8].count+'</b></div>';
+        html+='<div style="max-height:250px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0">';
+        html+='<th style="text-align:left;padding:2px 4px">Символ</th><th style="padding:2px 4px;text-align:center">Drop%</th><th style="padding:2px 4px;text-align:right">Strike</th><th style="padding:2px 4px;text-align:center">DTE</th><th style="padding:2px 4px;text-align:right">Premium</th><th style="padding:2px 4px;text-align:right">Δ</th><th style="padding:2px 4px;text-align:right">Γ</th><th style="padding:2px 4px;text-align:right">Θ</th><th style="padding:2px 4px;text-align:right">IV</th><th style="padding:2px 4px;text-align:right">OI</th><th style="padding:2px 4px;text-align:right">Volume</th><th style="padding:2px 4px;text-align:right">Spread</th></tr></thead><tbody>';
+        opts.sort(function(a,b){if(b.strike-a.strike!==0)return b.strike-a.strike;return b.dte-a.dte;});
+        opts.forEach(function(o){
+          var sym=o.symbol.replace(/'/g,"\\'");
+          var dropPct=spot>0?((spot-o.strike)/spot*100):0;
+          var dropCls=dropPct>=0?'color:var(--green)':'color:#d32f2f';
+          var dropStr=(dropPct>=0?'+':'')+F(dropPct,2)+'%';
+          var rowBg='';
+          if(o.strike>=insLow && o.strike<=insHigh){rowBg='background:rgba(63,185,80,0.12);';}
+          html+='<tr style="text-align:left;height:22px;cursor:pointer;'+rowBg+' onclick="window.__so(\'near\',\''+sym+'\')" ondblclick="event.preventDefault();event.stopPropagation();window.__as(\'near\',\''+sym+'\')" title="Клик: выделить, двойной: добавить"><td style="padding:2px 4px;font-weight:bold">'+o.symbol+'</td><td style="padding:2px 4px;text-align:center;color:'+dropCls+'"><b>'+dropStr+'</b></td><td style="padding:2px 4px;text-align:right">'+(o.strike>=insLow&&o.strike<=insHigh?'<b style="color:var(--green)">🛡️':'')+o.strike+'</td><td style="padding:2px 4px;text-align:center">'+o.dte+'</td><td style="padding:2px 4px;text-align:right">$'+F(o.price,4)+'</td><td style="padding:2px 4px;text-align:right">'+F(o.delta,4)+'</td><td style="padding:2px 4px;text-align:right">'+F(o.gamma,4)+'</td><td style="padding:2px 4px;text-align:right">'+F(o.theta,4)+'</td><td style="padding:2px 4px;text-align:right">'+F(o.iv,4)+'</td><td style="padding:2px 4px;text-align:right">'+(o.open_interest||0)+'</td><td style="padding:2px 4px;text-align:right">'+(o.volume||o.open_interest||0)+'</td><td style="padding:2px 4px;text-align:right">'+(o.spread||'-')+'</td></tr>';
+        });
+        html+='</tbody></table></div>';
+        elTab.innerHTML=html;
+      }
+    }
     showDataStatus();
     api("/api/purchased-options").then(function(p){
       purchasedOptions={distant:p.distant||[],mid:p.mid||[],near:p.near||[]};
-      renderLayer(results[6]);
-      renderLayer(results[7]);
-      renderLayer(results[8]);
       renderDistantDeltaMatrix();
       renderDistantPnlMatrix();
       renderDistantSummaryMatrix();
