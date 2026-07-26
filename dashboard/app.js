@@ -1358,16 +1358,28 @@ function calcMetrics(bsData){
   var premium=bsData.entry_premium||0;
   var dte=bsData.dte||1;
   var rows=bsData.rows;
+  // Filter rows: 0.5 <= |delta| <= 0.85 (same as renderOptionGreeks)
+  var filtered=[];
+  for(var i=0;i<rows.length;i++){
+    var absD=Math.abs(rows[i].delta);
+    if(absD>=0.5&&absD<=0.85){filtered.push(rows[i]);}
+  }
+  if(filtered.length===0) return null;
+  // Working window from filtered rows (same as renderOptionGreeks)
+  var priceDelta50=filtered[0].price;
+  var priceDelta85=filtered[filtered.length-1].price;
+  // Hedge range from API
   var hedgeRange=bsData.hedge_range;
   var hedgeLow=hedgeRange.low;
   var hedgeHigh=hedgeRange.high;
   var hedgeLen=Math.abs(hedgeHigh-hedgeLow);
+  // Insurance range
   var hedges={near:{min:3,max:10}};
   var h=hedges.near||{min:5,max:20};
   var insLow=Math.round(spot*(1-h.max/100));
   var insHigh=Math.round(spot*(1-h.min/100));
   var insLen=Math.abs(insHigh-insLow);
-  // Coverage
+  // Coverage: intersection(gamma_range, insurance_range) / insurance_range
   var covLow=Math.max(hedgeLow,insLow);
   var covHigh=Math.min(hedgeHigh,insHigh);
   var covLen=Math.max(0,covHigh-covLow);
@@ -1384,7 +1396,7 @@ function calcMetrics(bsData){
   var gammaProtection=premium>0?sumGamma/premium:0;
   // Cost/Day
   var costPerDay=dte>0?premium/dte:0;
-  // WeightedPnL
+  // WeightedPnL (same logic as renderOptionGreeks)
   var weightedPnL=0;
   var bsMap={};
   for(var i=0;i<rows.length;i++){bsMap[rows[i].price]=rows[i].bs_price;}
@@ -1392,7 +1404,7 @@ function calcMetrics(bsData){
     if(bsMap[p]!==undefined)return bsMap[p];
     var lo=null,hi=null;
     for(var k=Math.floor(p);k>=0;k--){if(bsMap[k]!==undefined){lo=k;break;}}
-    for(var k=Math.ceil(p);k<=Math.ceil(spot)+20;k++){if(bsMap[k]!==undefined){hi=k;break;}}
+    for(var k=Math.ceil(p);k<=spot+20;k++){if(bsMap[k]!==undefined){hi=k;break;}}
     if(lo===null||hi===null)return 0;
     if(lo===hi)return bsMap[lo];
     var frac=(p-lo)/(hi-lo);

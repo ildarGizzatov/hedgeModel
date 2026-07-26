@@ -186,9 +186,9 @@
   },
   "active": "61de22f5b4a7b078",
   "lastOpenFiles": [
-    "AGENTS.md",
     "hedge_model.db-wal",
     "hedge_model.db-shm",
+    "AGENTS.md",
     "T009-active-layer-selection.md",
     "docs/204-active-layer-selection.md",
     "T011-layer-health-monitoring.md",
@@ -220,7 +220,6 @@
     "docs/101-anchor-layer.md",
     "docs/102-adaptation-layer.md",
     "docs/103-active-layer.md",
-    "T003-roll-economics.md",
-    "T001-conditions-closing.md"
+    "T003-roll-economics.md"
   ]
 }
