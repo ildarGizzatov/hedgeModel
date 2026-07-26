@@ -1358,45 +1358,27 @@ function calcMetrics(bsData){
   var premium=bsData.entry_premium||0;
   var dte=bsData.dte||1;
   var rows=bsData.rows;
-  // Filter rows: 0.5 <= |delta| <= 0.85 (same as renderOptionGreeks)
-  var filtered=[];
-  for(var i=0;i<rows.length;i++){
-    var absD=Math.abs(rows[i].delta);
-    if(absD>=0.5&&absD<=0.85){filtered.push(rows[i]);}
-  }
-  if(filtered.length===0) return null;
-  // Working window from filtered rows (same as renderOptionGreeks)
-  var priceDelta50=filtered[0].price;
-  var priceDelta85=filtered[filtered.length-1].price;
-  // Hedge range from API
   var hedgeRange=bsData.hedge_range;
   var hedgeLow=hedgeRange.low;
   var hedgeHigh=hedgeRange.high;
   var hedgeLen=Math.abs(hedgeHigh-hedgeLow);
-  // Insurance range
   var hedges={near:{min:3,max:10}};
   var h=hedges.near||{min:5,max:20};
-  var insLow=Math.round(spot*(1-h.max/100));
-  var insHigh=Math.round(spot*(1-h.min/100));
+  var insLow=Math.round(bsData.spot*(1-h.max/100));
+  var insHigh=Math.round(bsData.spot*(1-h.min/100));
   var insLen=Math.abs(insHigh-insLow);
-  // Coverage: intersection(gamma_range, insurance_range) / insurance_range
   var covLow=Math.max(hedgeLow,insLow);
   var covHigh=Math.min(hedgeHigh,insHigh);
   var covLen=Math.max(0,covHigh-covLow);
   var coverage=insLen>0?covLen/insLen:0;
-  // Accuracy
   var accLen=Math.max(0,Math.min(hedgeHigh,insHigh)-Math.max(hedgeLow,insLow));
   var accuracy=hedgeLen>0?accLen/hedgeLen:0;
-  // SumGamma in intersection
   var sumGamma=0;
   for(var i=0;i<rows.length;i++){
     if(rows[i].price>=covLow&&rows[i].price<=covHigh){sumGamma+=rows[i].gamma;}
   }
-  // GammaProtection
   var gammaProtection=premium>0?sumGamma/premium:0;
-  // Cost/Day
   var costPerDay=dte>0?premium/dte:0;
-  // WeightedPnL (same logic as renderOptionGreeks)
   var weightedPnL=0;
   var bsMap={};
   for(var i=0;i<rows.length;i++){bsMap[rows[i].price]=rows[i].bs_price;}
@@ -1440,17 +1422,31 @@ function syncNearSelected(){
   var html='';
   var sumTotal=0;
   // Fetch metrics for each option
+  var currentSpot=window.layerData_near&&window.layerData_near.spot_price?window.layerData_near.spot_price:'';
   var promises=opts.map(function(opt,idx){
-    var spot=opt.spot_price||opt.spot_at_entry||'';
+    var spot=currentSpot||opt.spot_price||opt.spot_at_entry||'';
     if(!spot||!opt.strike||!opt.dte||!opt.iv) return Promise.resolve(null);
     return api('/api/bs-greeks?symbol='+encodeURIComponent(opt.symbol)+'&strike='+opt.strike+'&dte='+opt.dte+'&iv='+opt.iv+'&spot='+spot+'&premium='+opt.price+'&layer=near')
       .then(function(d){return calcMetrics(d);})
       .catch(function(e){return null;});
   });
   Promise.all(promises).then(function(metricsArr){
+    // Pass 1: find max for each metric column
+    var maxVal={cov:-1e9,sG:-1e9,gP:-1e9,acc:-1e9,wPnL:-1e9};
+    for(var i=0;i<metricsArr.length;i++){
+      var m=metricsArr[i];
+      if(!m) continue;
+      if(m.coverage>maxVal.cov)maxVal.cov=m.coverage;
+      if(m.sumGamma>maxVal.sG)maxVal.sG=m.sumGamma;
+      if(m.gammaProtection>maxVal.gP)maxVal.gP=m.gammaProtection;
+      if(m.accuracy>maxVal.acc)maxVal.acc=m.accuracy;
+      if(m.weightedPnL>maxVal.wPnL)maxVal.wPnL=m.weightedPnL;
+    }
+    // Pass 2: build rows
     html='';
     sumTotal=0;
-    opts.forEach(function(opt,idx){
+    for(var idx=0;idx<opts.length;idx++){
+      var opt=opts[idx];
       var checked=opt.checked!==false;
       var strike=opt.strike||'-';
       var delta=opt.delta||0;
@@ -1463,6 +1459,13 @@ function syncNearSelected(){
         pctFromRemaining=F(total/remainingBudget*100,1)+'%';
       }
       var m=metricsArr[idx];
+      var covMax=m&&(Math.abs(m.coverage-maxVal.cov)<1e-9);
+      var sGMax=m&&(Math.abs(m.sumGamma-maxVal.sG)<1e-9);
+      var gPMax=m&&(Math.abs(m.gammaProtection-maxVal.gP)<1e-9);
+      var accMax=m&&(Math.abs(m.accuracy-maxVal.acc)<1e-9);
+      var wPMax=m&&(Math.abs(m.weightedPnL-maxVal.wPnL)<1e-9);
+      var bkgd='';
+      if(covMax)bkgd+='background:rgba(220,38,38,0.15);';
       html+='<tr style="height:22px">';
       html+='<td style="padding:2px 6px;text-align:center"><input type="checkbox" '+(checked?'checked':'')+' onchange="window._onNearToggle('+idx+',this.checked)"></td>';
       html+='<td style="padding:2px 6px;font-weight:bold">'+opt.symbol+'</td>';
@@ -1473,14 +1476,14 @@ function syncNearSelected(){
       html+='<td style="padding:2px 6px;text-align:right">$'+F(total,2)+'</td>';
       html+='<td style="padding:2px 6px;text-align:right">'+pctFromRemaining+'</td>';
       html+='<td style="padding:2px 6px;text-align:right">'+F(delta,4)+'</td>';
-      html+='<td style="padding:2px 6px;text-align:right">'+(m?F(m.coverage*100,0)+'%':'-')+'</td>';
-      html+='<td style="padding:2px 6px;text-align:right">'+(m?F(m.sumGamma,6):'-')+'</td>';
-      html+='<td style="padding:2px 6px;text-align:right">'+(m?F(m.gammaProtection,2):'-')+'</td>';
-      html+='<td style="padding:2px 6px;text-align:right">'+(m?F(m.accuracy*100,0)+'%':'-')+'</td>';
-      html+='<td style="padding:2px 6px;text-align:right">'+(m?'$'+F(m.weightedPnL,2):'-')+'</td>';
+      html+='<td style="padding:2px 6px;text-align:right;'+(covMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?F(m.coverage*100,0)+'%':'-')+'</td>';
+      html+='<td style="padding:2px 6px;text-align:right;'+(sGMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?F(m.sumGamma,6):'-')+'</td>';
+      html+='<td style="padding:2px 6px;text-align:right;'+(gPMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?F(m.gammaProtection,2):'-')+'</td>';
+      html+='<td style="padding:2px 6px;text-align:right;'+(accMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?F(m.accuracy*100,0)+'%':'-')+'</td>';
+      html+='<td style="padding:2px 6px;text-align:right;'+(wPMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?'$'+F(m.weightedPnL,2):'-')+'</td>';
       html+='<td style="padding:2px 6px;text-align:center"><button style="background:none;border:none;cursor:pointer;color:#d32f2f;font-size:14px" onclick="window._onNearRemove('+idx+')">✕</button></td>';
       html+='</tr>';
-    });
+    }
     if(html===''){
       html='<tr><td colspan="15" style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';
     } else {
@@ -1491,7 +1494,7 @@ function syncNearSelected(){
       var pctTotal='';
       if(remainingBudget>0&&sumTotal>0) pctTotal=F(sumTotal/remainingBudget*100,1)+'%';
       html+='<td style="padding:2px 6px;text-align:right">'+pctTotal+'</td>';
-      html+='<td colspan="5"></td>';
+      html+='<td></td><td></td><td></td><td></td><td></td>';
       html+='<td></td>';
       html+='</tr>';
     }
