@@ -14,36 +14,24 @@ document.querySelectorAll(".tab").forEach(function(t){
       tabEl.style.setProperty("display","block","important");
       console.log('🔘 tabEl display set to block, computed:', window.getComputedStyle(tabEl).display);
     }
-    // Render near layer on tab click - use correct container for tab-near
-    if(t.dataset.tab==='near' && layerData_near){
+    // Render near layer on tab click - unified function
+    if(t.dataset.tab==='near' && window.layerData_near){
       console.log('🔘 near tab clicked, rendering layerData_near into tab-near');
-      var el=document.getElementById("layerContent-near-tab");
-      if(el){
-        var hedges={near:{min:3,max:10},mid:{min:8,max:15},distant:{min:15,max:30}};
-        var html='<div style="margin-bottom:8px;font-size:15px;font-weight:bold">Хедж: '+hedges.near.min+'-'+hedges.near.max+'% просадка | Всего: <b>'+layerData_near.count+'</b></div>';
-        html+='<div style="max-height:250px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0">';
-        html+='<th style="text-align:left;padding:2px 4px">Символ</th><th style="padding:2px 4px;text-align:center">Drop%</th><th style="padding:2px 4px;text-align:right">Strike</th><th style="padding:2px 4px;text-align:center">DTE</th><th style="padding:2px 4px;text-align:right">Premium</th><th style="padding:2px 4px;text-align:right">Δ</th><th style="padding:2px 4px;text-align:right">Γ</th><th style="padding:2px 4px;text-align:right">Θ</th><th style="padding:2px 4px;text-align:right">IV</th><th style="padding:2px 4px;text-align:right">OI</th><th style="padding:2px 4px;text-align:right">Volume</th><th style="padding:2px 4px;text-align:right">Spread</th></tr></thead><tbody>';
-        var opts=layerData_near.options||[];
-        var spot=layerData_near.spot_price||0;
-        var h=hedges.near;
-        var lowStrike=spot*(1-h.max/100);
-        var highStrike=spot*(1-h.min/100);
-        var insLow=lowStrike, insHigh=highStrike;
-        opts.sort(function(a,b){if(b.strike-a.strike!==0)return b.strike-a.strike;return b.dte-a.dte;});
-        opts.forEach(function(o){
-          var sym=o.symbol.replace(/'/g,"\\'");
-          var dropPct=spot>0?((spot-o.strike)/spot*100):0;
-          var dropCls=dropPct>=0?'color:var(--green)':'color:#d32f2f';
-          var dropStr=(dropPct>=0?'+':'')+F(dropPct,2)+'%';
-          var rowBg='';
-          if(o.strike>=insLow && o.strike<=insHigh){rowBg='background:rgba(63,185,80,0.12);';}
-          html+='<tr style="text-align:left;height:22px;cursor:pointer;'+rowBg+' onclick="window.__so(\'near\',\''+sym+'\')" ondblclick="event.preventDefault();event.stopPropagation();window.__as(\'near\',\''+sym+'\')" title="Клик: выделить, двойной: добавить"><td style="padding:2px 4px;font-weight:bold">'+o.symbol+'</td><td style="padding:2px 4px;text-align:center;color:'+dropCls+'"><b>'+dropStr+'</b></td><td style="padding:2px 4px;text-align:right">'+(o.strike>=insLow&&o.strike<=insHigh?'<b style="color:var(--green)">🛡️':'')+o.strike+'</td><td style="padding:2px 4px;text-align:center">'+o.dte+'</td><td style="padding:2px 4px;text-align:right">$'+F(o.price,4)+'</td><td style="padding:2px 4px;text-align:right">'+F(o.delta,4)+'</td><td style="padding:2px 4px;text-align:right">'+F(o.gamma,4)+'</td><td style="padding:2px 4px;text-align:right">'+F(o.theta,4)+'</td><td style="padding:2px 4px;text-align:right">'+F(o.iv,4)+'</td><td style="padding:2px 4px;text-align:right">'+(o.open_interest||0)+'</td><td style="padding:2px 4px;text-align:right">'+(o.volume||o.open_interest||0)+'</td><td style="padding:2px 4px;text-align:right">'+(o.spread||'-')+'</td></tr>';
-        });
-        html+='</tbody></table></div>';
-        el.innerHTML=html;
-      }
+      renderAvailableOptions('near', 'layerContent-near-tab', window.layerData_near);
     }
 
+  });
+});
+
+// === Subtabs (near-layer) ===
+document.querySelectorAll(".subtab").forEach(function(s){
+  s.addEventListener("click",function(){
+    document.querySelectorAll(".subtab").forEach(function(x){x.classList.remove("active")});
+    document.querySelectorAll(".subtab-content").forEach(function(x){x.style.display="none"; x.classList.remove("active")});
+    s.classList.add("active");
+    var subEl=document.getElementById(s.dataset.subtab);
+    if(subEl){ subEl.style.display="block"; subEl.classList.add("active"); }
+    if(s.dataset.subtab==='new-options') syncNearSelected();
   });
 });
 
@@ -885,6 +873,24 @@ function renderDistantBudget(l){
   el.innerHTML=html;
 }
 
+function renderNearBudget(l){
+  var el=document.getElementById('nearBudgetContent');
+  if(!el) return;
+  if(!l||!l.layers) { el.innerHTML='Нет данных'; return; }
+  var active=l.layers.find(function(x){return x.name==='Active';});
+  if(!active) { el.innerHTML='Нет данных'; return; }
+  var usedPct=0;
+  if(active.budget && active.budget>0) usedPct=parseFloat(active.spent)/parseFloat(active.budget)*100;
+  var barColor=usedPct>=90?'var(--red)':usedPct>=50?'var(--yellow)':'var(--green)';
+  var html='';
+  html+='<div style="font-size:16px;font-weight:600;margin-bottom:6px">$'+F(active.budget,2)+' бюджет</div>';
+  html+='<div style="font-size:14px;color:var(--text-dim);margin-bottom:6px">$'+F(active.spent,2)+' потрачено ('+Math.round(usedPct)+'%)</div>';
+  html+='<div style="height:8px;background:#30363d;border-radius:4px;overflow:hidden;margin-bottom:6px"><div style="width:'+Math.min(usedPct,100)+'%;height:100%;background:'+barColor+';border-radius:4px"></div></div>';
+  html+='<div style="font-size:14px;color:var(--text-dim)">PnL: <span style="color:'+(active.pnl>=0?'var(--green)':'#d32f2f')+'">'+(active.pnl>=0?'+':'')+'$'+F(active.pnl,2)+'</span></div>';
+  html+='<div style="font-size:14px;color:var(--text-dim)">Опционов: '+active.count+'</div>';
+  el.innerHTML=html;
+}
+
 // === TAB 3: RECOMMENDATIONS ===
 function renderLayers(l){
   if(!l){return;}
@@ -1095,6 +1101,8 @@ window.__as = function(layer,symbol){
     localStorage.setItem('selectedOptions',JSON.stringify(selList));
   }
 
+  // Sync near-layer selected table for near layer
+  if(layer==='near') syncNearSelected();
   // Create dynamic sub-tab for this option
   if(found && layer==='near') {
     createOptionTab(layer, found);
@@ -1103,105 +1111,95 @@ window.__as = function(layer,symbol){
   createAggregatorTab(layer);
 };
 
-function renderLayer(data){
+// === Unified function: render available options table for any layer ===
+function renderAvailableOptions(layer, containerId, data){
   try {
-  console.log('>>> renderLayer START data:', data ? 'exists' : 'null', JSON.stringify(data).substring(0,100));
-  if(!data) { console.log('>>> no data'); return; }
-  var layer=data.layer;
-  var el=document.getElementById("layerContent-"+layer);
-  var t=document.getElementById("layerTitle-"+layer);
-  console.log('>>> renderLayer: layer='+layer+' el='+!!el+' count='+data.count+' opts='+data.options.length);
-  if(!el) { console.log('>>> no el for layerContent-'+layer); return; }
-  if(!data.options || data.options.length===0){
-    el.innerHTML='<div style="padding:12px;color:var(--text-dim)">Нет опционов</div>';
-    console.log('>>> renderLayer: no options');
-    return;
-  }
-  console.log('>>> renderLayer: rendering '+data.options.length+' options');
-  // Don't overwrite static HTML headers
-  // if(t) t.textContent=data.label;
-  var spot=data.spot_price||0;
-  // Hedging range: % drop from spot
-  var hedges={near:{min:3,max:10},mid:{min:8,max:15},distant:{min:15,max:30}};
-  var h=hedges[layer]||{min:5,max:20};
-  var lowStrike=spot*(1-h.max/100);
-  var highStrike=spot*(1-h.min/100);
-  // Insurance range for highlighting
-  var insLow=lowStrike, insHigh=highStrike;
-  var html='<div style="margin-bottom:8px;font-size:15px;font-weight:bold">Хедж: '+h.min+'-'+h.max+'% просадка | Strike $'+F(lowStrike,1)+'-$'+F(highStrike,1)+' | Всего: <b>'+data.count+'</b></div>';
-  var opts=data.options||[];
-  if(opts.length===0){html+='<div style="padding:12px;color:var(--text-dim)">Нет опционов</div>';el.innerHTML=html;return;}
-  // Sort by strike desc, then DTE desc
-  opts.sort(function(a,b){
-    if(b.strike-a.strike!==0) return b.strike-a.strike;
-    return b.dte-a.dte;
-  });
-  // Find closest strikes to spot price
-  var spot=data.spot_price || 0;
-  var strikes=[];
-  var strikeSet={};
-  opts.forEach(function(o){
-    var k=o.strike;
-    if(!strikeSet[k]){strikeSet[k]=true;strikes.push(k);}
-  });
-  strikes.sort(function(a,b){return a-b;});
-  var closest2=[];
-  var idx=0;
-  for(var i=0;i<strikes.length;i++){
-    if(strikes[i]<=spot) idx=i;
-  }
-  if(idx<strikes.length) closest2.push(strikes[idx]);
-  if(idx+1<strikes.length) closest2.push(strikes[idx+1]);
-  // Build purchased symbols lookup
-  var purchSymbols={};
-  (purchasedOptions[layer]||[]).forEach(function(p){purchSymbols[p.symbol]=p.qty;});
-
-  // For distant: store layer info on tbody for dblclick handler
-  var tbodyId=(layer==='distant')?'distantLayerBody':'layerBody-'+layer;
-  
-  html+='<div style="max-height:250px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0">';
-  html+='<th style="text-align:left;padding:2px 4px">Символ</th><th style="padding:2px 4px;text-align:center">Drop%</th><th style="padding:2px 4px;text-align:right">Strike</th><th style="padding:2px 4px;text-align:center">DTE</th><th style="padding:2px 4px;text-align:right">Premium</th><th style="padding:2px 4px;text-align:right">Δ</th><th style="padding:2px 4px;text-align:right">Γ</th><th style="padding:2px 4px;text-align:right">Θ</th><th style="padding:2px 4px;text-align:right">IV</th><th style="padding:2px 4px;text-align:right">OI</th><th style="padding:2px 4px;text-align:right">Volume</th><th style="padding:2px 4px;text-align:right">Spread</th></tr></thead><tbody id="'+tbodyId+'">';
-  opts.forEach(function(o){
-    var sym=o.symbol.replace(/'/g,"\\'");
-    var dropPct=spot>0?((spot-o.strike)/spot*100):0;
-    var dropCls=dropPct>=0?'color:var(--green)':'color:#d32f2f';
-    var dropStr=(dropPct>=0?'+':'')+F(dropPct,2)+'%';
-    var title='Один клик: выделить, двойной: добавить | IV ATM: '+F(o.iv_atm,4);
-    var purchased=purchSymbols[o.symbol];
-    if(purchased) title+=' | 📌 Куплено: '+purchased;
-    // Highlight insurance range strikes in green
-    var rowBg='';
-    if(o.strike>=insLow && o.strike<=insHigh){rowBg='background:rgba(63,185,80,0.12);';}
-    if(layer==='distant'){
-      html+='<tr style="text-align:left;height:22px;cursor:pointer;'+rowBg+' data-symbol="'+o.symbol+'" ondblclick="event.preventDefault();event.stopPropagation();addDistant(\''+o.symbol.replace(/'/g,"\\'")+'\')" title="'+title+'">';
-    } else {
-      html+='<tr style="text-align:left;height:22px;cursor:pointer;'+rowBg+' onclick="window.__so(\''+layer+'\',\''+o.symbol.replace(/'/g,"\\'")+'\')" ondblclick="event.preventDefault();event.stopPropagation();window.__as(\''+layer+'\',\''+o.symbol.replace(/'/g,"\\'")+'\')" title="'+title+'">';
+    if(!data) { return; }
+    var el=document.getElementById(containerId);
+    if(!el) { return; }
+    if(!data.options || data.options.length===0){
+      el.innerHTML='<div style="padding:12px;color:var(--text-dim)">Нет опционов</div>';
+      // Save data for __as lookup
+      if(layer==='near') window.layerData_near=data;
+      else if(layer==='mid') window.layerData_mid=data;
+      else if(layer==='distant') window.layerData_distant=data;
+      return;
     }
-    html+='<td style="padding:2px 4px;font-weight:bold">'+o.symbol+(purchased?'<span style="color:#f0ad4e">📌'+purchased+'</span>':'')+'</td>';
-    html+='<td style="padding:2px 4px;text-align:center;color:'+dropCls+'"><b>'+dropStr+'</b></td>';
-    var strikeCell='';
-    if(o.strike>=insLow && o.strike<=insHigh){strikeCell='<b style="color:var(--green)" title="Диапазон страхования">🛡️ $'+o.strike+'</b>';}else if(closest2.indexOf(o.strike)!==-1){strikeCell='<b style="color:var(--blue)" title="Ближайший к spot">🎯 $'+o.strike+'</b>';}else{strikeCell='$'+o.strike;}
-    html+='<td style="padding:2px 4px;text-align:right">'+strikeCell+'</td>';
-    html+='<td style="padding:2px 4px;text-align:center">'+o.dte+'</td>';
-    html+='<td style="padding:2px 4px;text-align:right">$'+F(o.price,4)+'</td>';
-    html+='<td style="padding:2px 4px;text-align:right">'+F(o.delta,4)+'</td>';
-    html+='<td style="padding:2px 4px;text-align:right">'+F(o.gamma,4)+'</td>';
-    html+='<td style="padding:2px 4px;text-align:right">'+F(o.theta,4)+'</td>';
-    html+='<td style="padding:2px 4px;text-align:right">'+F(o.iv,4)+'</td>';
-    html+='<td style="padding:2px 4px;text-align:right">'+(o.open_interest||0)+'</td>';
-    html+='<td style="padding:2px 4px;text-align:right">'+(o.volume||o.open_interest||0)+'</td>';
-    html+='<td style="padding:2px 4px;text-align:right">'+(o.spread||'-')+'</td>';
-    html+='</tr>';
-  });
-  html+='</tbody></table></div>';
-  el.innerHTML=html;
-  
-  // Save data for __as lookup
-  if(layer==='near') window.layerData_near=data;
-  else if(layer==='mid') window.layerData_mid=data;
-  else if(layer==='distant') { window.layerData_distant=data; console.log('>>> renderLayer: set layerData_distant, options='+data.options.length); }
-  console.log('>>> renderLayer DONE');
-  } catch(e){ console.error('>>> renderLayer ERROR:', e); }
+    var spot=data.spot_price||0;
+    var hedges={near:{min:3,max:10},mid:{min:8,max:15},distant:{min:15,max:30}};
+    var h=hedges[layer]||{min:5,max:20};
+    var lowStrike=spot*(1-h.max/100);
+    var highStrike=spot*(1-h.min/100);
+    var insLow=lowStrike, insHigh=highStrike;
+    var opts=data.options||[];
+    // Sort by strike desc, then DTE desc
+    opts.sort(function(a,b){
+      if(b.strike-a.strike!==0) return b.strike-a.strike;
+      return b.dte-a.dte;
+    });
+    // Find closest strikes to spot price
+    var strikes=[];
+    var strikeSet={};
+    opts.forEach(function(o){
+      var k=o.strike;
+      if(!strikeSet[k]){strikeSet[k]=true;strikes.push(k);}
+    });
+    strikes.sort(function(a,b){return a-b;});
+    var closest2=[];
+    var idx=0;
+    for(var i=0;i<strikes.length;i++){
+      if(strikes[i]<=spot) idx=i;
+    }
+    if(idx<strikes.length) closest2.push(strikes[idx]);
+    if(idx+1<strikes.length) closest2.push(strikes[idx+1]);
+    // Build purchased symbols lookup
+    var purchSymbols={};
+    (purchasedOptions[layer]||[]).forEach(function(p){purchSymbols[p.symbol]=p.qty;});
+    // tbody id for distant dblclick handler
+    var tbodyId=(layer==='distant')?'distantLayerBody':'layerBody-'+layer;
+    // Build table
+    var html='<div style="max-height:250px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0">';
+    html+='<th style="text-align:left;padding:2px 4px;font-size:13px">Символ</th><th style="padding:2px 4px;text-align:center;font-size:13px">Drop%</th><th style="padding:2px 4px;text-align:right;font-size:13px">Strike</th><th style="padding:2px 4px;text-align:center;font-size:13px">DTE</th><th style="padding:2px 4px;text-align:right;font-size:13px">CPD</th><th style="padding:2px 4px;text-align:right;font-size:13px">Premium</th><th style="padding:2px 4px;text-align:right;font-size:13px">Δ</th><th style="padding:2px 4px;text-align:right;font-size:13px">Γ</th><th style="padding:2px 4px;text-align:right;font-size:13px">Θ</th><th style="padding:2px 4px;text-align:right;font-size:13px">IV</th><th style="padding:2px 4px;text-align:right;font-size:13px">OI</th><th style="padding:2px 4px;text-align:right;font-size:13px">Volume</th><th style="padding:2px 4px;text-align:right;font-size:13px">Spread</th></tr></thead><tbody id="'+tbodyId+'">';
+    opts.forEach(function(o){
+      var sym=o.symbol.replace(/'/g,"\\'");
+      var dropPct=spot>0?((spot-o.strike)/spot*100):0;
+      var dropCls=dropPct>=0?'color:var(--green)':'color:#d32f2f';
+      var dropStr=(dropPct>=0?'+':'')+F(dropPct,2)+'%';
+      var title='Один клик: выделить, двойной: добавить | IV ATM: '+F(o.iv_atm,4);
+      var purchased=purchSymbols[o.symbol];
+      if(purchased) title+=' | 📌 Куплено: '+purchased;
+      var rowBg='';
+      if(o.strike>=insLow && o.strike<=insHigh){rowBg='background:rgba(63,185,80,0.12);';}
+      if(layer==='distant'){
+        html+='<tr style="text-align:left;height:22px;cursor:pointer;'+rowBg+' data-symbol="'+o.symbol+'" ondblclick="event.preventDefault();event.stopPropagation();addDistant(\''+o.symbol.replace(/'/g,"\\'")+'\')" title="'+title+'">';
+      } else {
+        html+='<tr style="text-align:left;height:22px;cursor:pointer;'+rowBg+' onclick="window.__so(\''+layer+'\',\''+o.symbol.replace(/'/g,"\\'")+'\')" ondblclick="event.preventDefault();event.stopPropagation();window.__as(\''+layer+'\',\''+o.symbol.replace(/'/g,"\\'")+'\')" title="'+title+'">';
+      }
+      html+='<td style="padding:2px 4px;font-weight:bold">'+o.symbol+(purchased?'<span style="color:#f0ad4e">📌'+purchased+'</span>':'')+'</td>';
+      html+='<td style="padding:2px 4px;text-align:center;color:'+dropCls+'"><b>'+dropStr+'</b></td>';
+      var strikeCell='';
+      if(o.strike>=insLow && o.strike<=insHigh){strikeCell='<b style="color:var(--green)" title="Диапазон страхования">🛡️ $'+o.strike+'</b>';}else if(closest2.indexOf(o.strike)!==-1){strikeCell='<b style="color:var(--blue)" title="Ближайший к spot">🎯 $'+o.strike+'</b>';}else{strikeCell='$'+o.strike;}
+      html+='<td style="padding:2px 4px;text-align:right">'+strikeCell+'</td>';
+      html+='<td style="padding:2px 4px;text-align:center">'+o.dte+'</td>';
+      var cpd=o.dte>0?(o.price/o.dte):0;
+      html+='<td style="padding:2px 4px;text-align:right">$'+F(cpd,2)+'</td>';
+      html+='<td style="padding:2px 4px;text-align:right">$'+F(o.price,4)+'</td>';
+      html+='<td style="padding:2px 4px;text-align:right">'+F(o.delta,4)+'</td>';
+      html+='<td style="padding:2px 4px;text-align:right">'+F(o.gamma,4)+'</td>';
+      html+='<td style="padding:2px 4px;text-align:right">'+F(o.theta,4)+'</td>';
+      html+='<td style="padding:2px 4px;text-align:right">'+F(o.iv,4)+'</td>';
+      html+='<td style="padding:2px 4px;text-align:right">'+(o.open_interest||0)+'</td>';
+      html+='<td style="padding:2px 4px;text-align:right">'+(o.volume||o.open_interest||0)+'</td>';
+      html+='<td style="padding:2px 4px;text-align:right">'+(o.spread||'-')+'</td>';
+      html+='</tr>';
+    });
+    html+='</tbody></table></div>';
+    el.innerHTML=html;
+    // Save data for __as lookup
+    if(layer==='near') window.layerData_near=data;
+    else if(layer==='mid') window.layerData_mid=data;
+    else if(layer==='distant') window.layerData_distant=data;
+  } catch(e){ console.error('>>> renderAvailableOptions ERROR:', e); }
 }
 
 function selectOption(layer,symbol,o){
@@ -1223,7 +1221,7 @@ function selectOption(layer,symbol,o){
     console.log('selectOption:', layer, selectedOption[layer]);
   } catch(e){ console.error('selectOption error:',e); }
   var params=layerFilterParams[layer]?"?"+layerFilterParams[layer]:"";
-  api("/api/layer/"+layer+params).then(function(d){renderLayer(d);});
+  api("/api/layer/"+layer+params).then(function(d){renderAvailableOptions(layer, "layerContent-"+layer, d);});
 }
 
 window._dbClick=function(layer,symbol){
@@ -1351,6 +1349,82 @@ window._onDistantRemove=function(idx){
   selList.splice(idx,1);
   localStorage.setItem('selectedDistant',JSON.stringify(selList));
   syncDistantSelected();
+};
+
+// === Near layer: render selected table ===
+function syncNearSelected(){
+  var tbody=document.getElementById('nearSelectedTable');
+  if(!tbody) return;
+  // Остаток бюджета Ближнего слоя
+  var activeLayer=null;
+  if(window._lastLayersData&&window._lastLayersData.layers){
+    activeLayer=window._lastLayersData.layers.find(function(x){return x.name==='Active';});
+  }
+  var remainingBudget=0;
+  if(activeLayer&&activeLayer.budget>0){
+    remainingBudget=activeLayer.budget-activeLayer.spent;
+    if(remainingBudget<0) remainingBudget=0;
+  }
+  var opts=selectedOption.near||[];
+  var html='';
+  var sumTotal=0;
+  opts.forEach(function(opt,idx){
+    var checked=opt.checked!==false;
+    var strike=opt.strike||'-';
+    var delta=opt.delta||0;
+    var price=opt.price||0;
+    var qty=opt.qty||1;
+    var total=price*qty;
+    if(checked) sumTotal+=total;
+    var pctFromRemaining='';
+    if(remainingBudget>0&&checked){
+      pctFromRemaining=F(total/remainingBudget*100,1)+'%';
+    }
+    html+='<tr style="height:22px">';
+    html+='<td style="padding:2px 6px;text-align:center"><input type="checkbox" '+(checked?'checked':'')+' onchange="window._onNearToggle('+idx+',this.checked)"></td>';
+    html+='<td style="padding:2px 6px;font-weight:bold">'+opt.symbol+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right">$'+strike+'</td>';
+    html+='<td style="padding:2px 6px;text-align:center">'+(opt.dte||'-')+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right">'+F(delta,4)+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right">$'+F(price,4)+'</td>';
+    html+='<td style="padding:2px 6px;text-align:center"><input type="number" min="0" step="1" value="'+qty+'" style="width:50px;text-align:center;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px 4px;border-radius:4px" onchange="window._onNearQtyChange('+idx+',this.value)"></td>';
+    html+='<td style="padding:2px 6px;text-align:right">$'+F(total,2)+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right">'+pctFromRemaining+'</td>';
+    html+='<td style="padding:2px 6px;text-align:center"><button style="background:none;border:none;cursor:pointer;color:#d32f2f;font-size:14px" onclick="window._onNearRemove('+idx+')">✕</button></td>';
+    html+='</tr>';
+  });
+  if(html===''){
+    html='<tr><td colspan="10" style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';
+  } else {
+    html+='<tr style="height:22px;font-weight:bold;background:var(--bg);border-top:2px solid var(--border)">';
+    html+='<td style="padding:2px 6px;text-align:center"></td>';
+    html+='<td style="padding:2px 6px" colspan="6">Итого:</td>';
+    html+='<td style="padding:2px 6px;text-align:right">$'+F(sumTotal,2)+'</td>';
+    var pctTotal='';
+    if(remainingBudget>0&&sumTotal>0) pctTotal=F(sumTotal/remainingBudget*100,1)+'%';
+    html+='<td style="padding:2px 6px;text-align:right">'+pctTotal+'</td>';
+    html+='<td></td>';
+    html+='</tr>';
+  }
+  tbody.innerHTML=html;
+  // Budget info above table
+  var budgetEl=document.getElementById('nearBudgetInfo');
+  if(budgetEl && activeLayer){
+    var usedPct=activeLayer.budget>0?Math.round(activeLayer.spent/activeLayer.budget*100):0;
+    budgetEl.textContent='💰 Бюджет: $'+F(activeLayer.budget,2)+' | Потрачено: $'+F(activeLayer.spent,2)+' ('+usedPct+'%) | Осталось: $'+F(remainingBudget,2);
+  }
+}
+window._onNearToggle=function(idx,val){
+  if(selectedOption.near[idx]) selectedOption.near[idx].checked=val;
+  syncNearSelected();
+};
+window._onNearQtyChange=function(idx,val){
+  if(selectedOption.near[idx]) selectedOption.near[idx].qty=parseInt(val)||0;
+  syncNearSelected();
+};
+window._onNearRemove=function(idx){
+  selectedOption.near.splice(idx,1);
+  syncNearSelected();
 };
 
 // === BS Put Price (r=0) ===
@@ -2657,7 +2731,7 @@ function applyFilters(layer){
   if(inputs[3]) p.dte_max=inputs[3].value;
   var qs=Object.keys(p).length?"?"+Object.entries(p).map(function(e){return e[0]+"="+e[1]}).join("&"):"";
   layerFilterParams[layer]=qs;
-  api("/api/layer/"+layer+qs).then(function(data){renderLayer(data);});
+  api("/api/layer/"+layer+qs).then(function(data){renderAvailableOptions(layer, "layerContent-"+layer, data);});
 }
 
 function resetFilters(layer){
@@ -2672,7 +2746,7 @@ function resetFilters(layer){
     return r.json();
   }).then(function(data){
     console.log('RESET: count='+data.count);
-    renderLayer(data);
+    renderAvailableOptions(layer, "layerContent-"+layer, data);
   }).catch(function(e){
     console.error('RESET error:', e);
   });
@@ -2682,7 +2756,7 @@ function refreshLayers(layer){
   var params=layerFilterParams[layer]?"?"+layerFilterParams[layer]:"";
   if(params&&!params.includes("refresh=1")) params+="&refresh=1";
   if(!params) params="?refresh=1";
-  api("/api/layer/"+layer+params).then(function(data){renderLayer(data);});
+  api("/api/layer/"+layer+params).then(function(data){renderAvailableOptions(layer, "layerContent-"+layer, data);});
 }
 
 // === Load all ===
@@ -2771,40 +2845,14 @@ function loadAll(){
     layerData_mid=results[7];
     layerData_near=results[8];
     console.log('loadAll: rendering layers — distant='+JSON.stringify(results[6]).substring(0,80)+' mid='+JSON.stringify(results[7]).substring(0,80)+' near='+JSON.stringify(results[8]).substring(0,80));
-    renderLayer(results[6]);
-    renderLayer(results[7]);
-    renderLayer(results[8]);
-    // Render near layer into tab-near container (different from tab-near-layer)
-    if(results[8] && results[8].options && results[8].options.length > 0){
-      var elTab=document.getElementById("layerContent-near-tab");
-      if(elTab){
-        var hedges={near:{min:3,max:10},mid:{min:8,max:15},distant:{min:15,max:30}};
-        var h=hedges.near;
-        var spot=results[8].spot_price||0;
-        var lowStrike=spot*(1-h.max/100);
-        var highStrike=spot*(1-h.min/100);
-        var insLow=lowStrike, insHigh=highStrike;
-        var opts=results[8].options||[];
-        var html='<div style="margin-bottom:8px;font-size:15px;font-weight:bold">Хедж: '+h.min+'-'+h.max+'% просадка | Strike $'+F(lowStrike,1)+'-$'+F(highStrike,1)+' | Всего: <b>'+results[8].count+'</b></div>';
-        html+='<div style="max-height:250px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0">';
-        html+='<th style="text-align:left;padding:2px 4px">Символ</th><th style="padding:2px 4px;text-align:center">Drop%</th><th style="padding:2px 4px;text-align:right">Strike</th><th style="padding:2px 4px;text-align:center">DTE</th><th style="padding:2px 4px;text-align:right">Premium</th><th style="padding:2px 4px;text-align:right">Δ</th><th style="padding:2px 4px;text-align:right">Γ</th><th style="padding:2px 4px;text-align:right">Θ</th><th style="padding:2px 4px;text-align:right">IV</th><th style="padding:2px 4px;text-align:right">OI</th><th style="padding:2px 4px;text-align:right">Volume</th><th style="padding:2px 4px;text-align:right">Spread</th></tr></thead><tbody>';
-        opts.sort(function(a,b){if(b.strike-a.strike!==0)return b.strike-a.strike;return b.dte-a.dte;});
-        opts.forEach(function(o){
-          var sym=o.symbol.replace(/'/g,"\\'");
-          var dropPct=spot>0?((spot-o.strike)/spot*100):0;
-          var dropCls=dropPct>=0?'color:var(--green)':'color:#d32f2f';
-          var dropStr=(dropPct>=0?'+':'')+F(dropPct,2)+'%';
-          var rowBg='';
-          if(o.strike>=insLow && o.strike<=insHigh){rowBg='background:rgba(63,185,80,0.12);';}
-          html+='<tr style="text-align:left;height:22px;cursor:pointer;'+rowBg+' onclick="window.__so(\'near\',\''+sym+'\')" ondblclick="event.preventDefault();event.stopPropagation();window.__as(\'near\',\''+sym+'\')" title="Клик: выделить, двойной: добавить"><td style="padding:2px 4px;font-weight:bold">'+o.symbol+'</td><td style="padding:2px 4px;text-align:center;color:'+dropCls+'"><b>'+dropStr+'</b></td><td style="padding:2px 4px;text-align:right">'+(o.strike>=insLow&&o.strike<=insHigh?'<b style="color:var(--green)">🛡️':'')+o.strike+'</td><td style="padding:2px 4px;text-align:center">'+o.dte+'</td><td style="padding:2px 4px;text-align:right">$'+F(o.price,4)+'</td><td style="padding:2px 4px;text-align:right">'+F(o.delta,4)+'</td><td style="padding:2px 4px;text-align:right">'+F(o.gamma,4)+'</td><td style="padding:2px 4px;text-align:right">'+F(o.theta,4)+'</td><td style="padding:2px 4px;text-align:right">'+F(o.iv,4)+'</td><td style="padding:2px 4px;text-align:right">'+(o.open_interest||0)+'</td><td style="padding:2px 4px;text-align:right">'+(o.volume||o.open_interest||0)+'</td><td style="padding:2px 4px;text-align:right">'+(o.spread||'-')+'</td></tr>';
-        });
-        html+='</tbody></table></div>';
-        elTab.innerHTML=html;
-      }
-    }
     showDataStatus();
     api("/api/purchased-options").then(function(p){
       purchasedOptions={distant:p.distant||[],mid:p.mid||[],near:p.near||[]};
+      renderAvailableOptions('distant', 'layerContent-distant', results[6]);
+      renderAvailableOptions('mid', 'layerContent-mid', results[7]);
+      renderAvailableOptions('near', 'layerContent-near', results[8]);
+      renderAvailableOptions('near', 'layerContent-near-tab', results[8]);
+      renderNearBudget(results[4]);
       renderDistantDeltaMatrix();
       renderDistantPnlMatrix();
       renderDistantSummaryMatrix();

@@ -12,6 +12,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg
 .tab{padding:10px 20px;cursor:pointer;border-bottom:2px solid transparent;color:var(--text-dim);font-size:13px;font-weight:500}
 .tab:hover{color:var(--text)}.tab.active{color:var(--blue);border-bottom-color:var(--blue)}
 .tab-content{display:none}.tab-content.active{display:block}
+.subtab{padding:6px 14px;cursor:pointer;border-bottom:2px solid transparent;color:var(--text-dim);font-size:12px;font-weight:500}
+.subtab:hover{color:var(--text)}.subtab.active{color:var(--blue);border-bottom-color:var(--blue)}
+.subtab-content{display:none}.subtab-content.active{display:block}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:16px;margin-bottom:16px}
 .card h2{font-size:15px;font-weight:600;margin-bottom:12px}
 .summary-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px}
@@ -75,7 +78,7 @@ tr:hover td{background:rgba(88,166,255,.05)}
 <div class="header"><h1>HedgeModel Dashboard</h1><div style="display:flex;align-items:center;gap:12px"><span id="headerSpot" style="color:var(--blue);font-weight:600"></span><button class="btn-action" onclick="loadAll()">🔄 Обновить</button><span id="ds-badge" class="ds-live" style="font-size:12px">🟢 live</span><div id="headerUpdated" style="color:var(--text-dim);font-size:12px">Загрузка...</div></div></div>
 <div id="dataStatusBanner" style="display:none"></div>
 <div class="tabs" style="padding:0 24px;display:flex;align-items:center;justify-content:space-between">
-<div style="display:flex;gap:0"><div class="tab active" data-tab="positions">Позиции</div><div class="tab" data-tab="options">Опционы</div><div class="tab" data-tab="distant-layer">Дальний слой</div><div class="tab" data-tab="near-layer">Ближний слой</div><div class="tab" data-tab="mid">Средний</div><div class="tab" data-tab="near">Ближний</div><div class="tab" data-tab="recommendations">Рекомендации</div><div class="tab" data-tab="summary">Сводка</div></div>
+<div style="display:flex;gap:0"><div class="tab active" data-tab="positions">Позиции</div><div class="tab" data-tab="options">Опционы</div><div class="tab" data-tab="near-layer">Ближний слой</div><div class="tab" data-tab="distant-layer">Дальний слой</div><div class="tab" data-tab="mid">Средний</div><div class="tab" data-tab="near">Ближний</div><div class="tab" data-tab="recommendations">Рекомендации</div><div class="tab" data-tab="summary">Сводка</div></div>
 </div>
 <div style="padding:20px 24px">
 <div class="tab-content active" id="tab-positions">
@@ -134,6 +137,29 @@ tr:hover td{background:rgba(88,166,255,.05)}
   </div>
 </div>
 
+<div class="tab-content" id="tab-near-layer">
+<div style="display:flex;gap:16px;align-items:flex-start;margin-bottom:16px">
+<div style="width:100%;flex-shrink:0;display:flex;flex-direction:column;gap:16px">
+<div class="card" style="width:100%">
+<h2 id="layerTitle-near">Доступные опционы</h2>
+<div id="layerContent-near"></div>
+</div>
+</div>
+</div>
+<div style="width:100%;margin-top:16px">
+<div style="display:flex;gap:8px;margin-bottom:8px">
+<div class="subtab active" data-subtab="near-options">Опционы ближнего слоя</div>
+<div class="subtab" data-subtab="new-options">Новые опционы</div>
+<div class="subtab" data-subtab="purchased-options">Купленные опционы</div>
+</div>
+<div class="subtab-content" id="near-options"></div>
+<div class="subtab-content" id="new-options" style="display:none"><div class="card" style="width:100%"><h2>Выбранные опционы</h2><div id="nearBudgetInfo" style="padding:8px;font-size:14px;font-weight:600;margin-bottom:4px"></div><div style="max-height:250px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0">
+<th style="text-align:center;padding:3px 6px;width:30px">✔</th><th style="text-align:left;padding:3px 6px">Опцион</th><th style="padding:3px 6px;text-align:right">Страйк</th><th style="padding:3px 6px;text-align:center">DTE</th><th style="padding:3px 6px;text-align:right">Δ</th><th style="padding:3px 6px;text-align:right">Price</th><th style="padding:3px 6px;text-align:center">Кол-во</th><th style="padding:3px 6px;text-align:right">Стоимость</th><th style="padding:3px 6px;text-align:right">% от остатка</th><th style="padding:3px 6px;text-align:center">✕</th>
+</tr></thead><tbody id="nearSelectedTable"></tbody></table></div></div></div>
+<div class="subtab-content" id="purchased-options" style="display:none"><div style="padding:12px;color:var(--text-dim)">Нет купленных опционов</div></div>
+</div>
+</div>
+
 <div class="tab-content" id="tab-distant-layer">
 <div style="display:flex;gap:16px;align-items:flex-start">
 <div style="width:50%;flex-shrink:0;display:flex;flex-direction:column;gap:16px">
@@ -166,26 +192,6 @@ tr:hover td{background:rgba(88,166,255,.05)}
 <div style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:4px;padding:8px;background:var(--surface)"><div id="distantDeltaDteChart" style="height:250px"></div></div>
 </div>
 
-</div>
-</div>
-</div>
-<div class="tab-content" id="tab-near-layer">
-<div style="display:flex;gap:16px;align-items:flex-start">
-<div style="width:50%;flex-shrink:0;display:flex;flex-direction:column;gap:16px">
-<div class="card" style="width:100%">
-<h2 id="layerTitle-near">Доступные опционы</h2>
-<div id="layerContent-near"></div>
-</div>
-</div>
-<div style="width:50%;flex-shrink:0;display:flex;flex-direction:column;gap:16px">
-<div class="card" style="width:100%" id="nearBudgetCard"><h2>Бюджет Ближнего слоя</h2><div id="nearBudgetContent" style="padding:8px;font-size:14px;color:var(--text-dim)">Загрузка...</div></div>
-<div class="card" style="width:100%">
-<h2>Выбранные опционы</h2>
-<div style="max-height:250px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0">
-<th style="text-align:center;padding:3px 6px;width:30px">✔</th><th style="text-align:left;padding:3px 6px">Опцион</th><th style="padding:3px 6px;text-align:right">Страйк</th><th style="padding:3px 6px;text-align:center">DTE</th><th style="padding:3px 6px;text-align:right">Δ</th><th style="padding:3px 6px;text-align:right">Price</th><th style="padding:3px 6px;text-align:center">Кол-во</th><th style="padding:3px 6px;text-align:right">Стоимость</th><th style="padding:3px 6px;text-align:right">% от остатка</th><th style="padding:3px 6px;text-align:center">✕</th>
-</tr></thead><tbody id="nearSelectedTable"></tbody></table></div>
-</div>
-</div>
 </div>
 </div>
 </div>
@@ -232,6 +238,6 @@ tr:hover td{background:rgba(88,166,255,.05)}
 
 </div>
 
-<script src="app.js?t=20260724_fix2"></script>
+<script src="app.js?t=20260724_fix12"></script>
 </body>
 </html>
