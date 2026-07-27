@@ -31,7 +31,7 @@ document.querySelectorAll(".subtab").forEach(function(s){
     s.classList.add("active");
     var subEl=document.getElementById(s.dataset.subtab);
     if(subEl){ subEl.style.display="block"; subEl.classList.add("active"); }
-    if(s.dataset.subtab==='new-options') syncNearSelected();
+    if(s.dataset.subtab==='new-options'){syncNearSelected();setTimeout(function(){renderNearGammaMatrix();renderNearLayerGammaChart();},200);}
   });
 });
 
@@ -854,6 +854,167 @@ function _bsPutGamma(S, K, T, iv){
   return nd1/(S*iv*Math.sqrt(T));
 }
 
+// === Near Layer: Gamma Matrix ===
+function renderNearGammaMatrix(){
+  var opts=selectedOption.near||[];
+  if(opts.length===0){
+    var t=document.getElementById('nearGammaMatrix');
+    if(t) t.innerHTML='<tr><td style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';
+    return;
+  }
+  var spot=window.layerData_near&&window.layerData_near.spot_price?window.layerData_near.spot_price:0;
+  if(!spot) spot=opts[0].spot_price||opts[0].spot_at_entry||0;
+  if(!spot) return;
+
+  var low=Math.round(spot*0.90);
+  var high=Math.round(spot*0.97);
+
+  var html='<thead><tr style="background:var(--bg)"><th style="padding:3px 6px;text-align:right;border-bottom:2px solid var(--border)">Цена</th>';
+  var colors=['#3b82f6','#ef4444','#10b981','#f59e0b','#8b5cf6','#ec4899','#14b8a6','#f97316'];
+  for(var i=0;i<opts.length;i++){
+    var name=opts[i].symbol?opts[i].symbol.replace('-P',''):('O'+(i+1));
+    html+='<th style="padding:3px 6px;text-align:right;border-bottom:2px solid var(--border);color:'+colors[i%8]+'">'+name+'</th>';
+  }
+  html+='</tr></thead><tbody>';
+
+  for(var p=low;p<=high;p++){
+    html+='<tr><td style="padding:2px 6px;text-align:right;border-bottom:1px solid var(--border);font-weight:600">'+p+'</td>';
+    for(var i=0;i<opts.length;i++){
+      var co=opts[i];
+      var strike=co.strike||co.k||0;
+      var iv=co.iv||co.vol||0;
+      var dte=co.dte||co.d||0;
+      var T=dte/365;
+      var g=_bsPutGamma(p,strike,T,iv);
+      html+='<td style="padding:2px 6px;text-align:right;border-bottom:1px solid var(--border)">'+g.toFixed(6)+'</td>';
+    }
+    html+='</tr>';
+  }
+  html+='</tbody>';
+
+  var t=document.getElementById('nearGammaMatrix');
+  if(t) t.innerHTML=html;
+}
+
+// === Near Layer: Gamma Profile Chart ===
+function renderNearLayerGammaChart(){
+  var opts=selectedOption.near||[];
+  if(opts.length===0){
+    var svg=document.getElementById('nearGammaChart');
+    if(svg) svg.innerHTML='<text x="50%" y="50%" text-anchor="middle" fill="var(--text-dim)">Нет выбранных</text>';
+    return;
+  }
+  var spot=window.layerData_near&&window.layerData_near.spot_price?window.layerData_near.spot_price:0;
+  if(!spot) spot=opts[0].spot_price||opts[0].spot_at_entry||0;
+  if(!spot) return;
+
+  var low=Math.round(spot*0.65);
+  var high=Math.round(spot*1.05);
+  var svg=document.getElementById('nearGammaChart');
+  if(!svg) return;
+  var container=svg.parentElement;
+  var W=container?container.clientWidth:400;
+  var H=container?container.clientHeight:400;
+  if(W<=0||H<=0){ setTimeout(renderNearLayerGammaChart,100); return; }
+  var pad={top:30,right:20,bottom:60,left:55};
+  var cW=W-pad.left-pad.right;
+  var cH=H-pad.top-pad.bottom;
+  if(cW<=0||cH<=0) return;
+
+  // Calculate individual option gamma profiles
+  var optProfiles=[];
+  var optColors=['#3b82f6','#ef4444','#10b981','#f59e0b','#8b5cf6','#ec4899','#14b8a6','#f97316'];
+  var allGamma=[];
+  for(var i=0;i<opts.length;i++){
+    var co=opts[i];
+    var strike=co.strike||co.k||0;
+    var iv=co.iv||co.vol||0;
+    var dte=co.dte||co.d||0;
+    var T=dte/365;
+    var profile=[];
+    for(var p=low;p<=high;p+=0.5){
+      var g=_bsPutGamma(p,strike,T,iv)*(co.qty||1);
+      profile.push(g);
+      allGamma.push(g);
+    }
+    optProfiles.push({profile:profile,color:optColors[i%optColors.length],name:co.symbol?co.symbol.replace('-P',''):('O'+(i+1))});
+  }
+
+  if(allGamma.length===0) return;
+
+  var minG=Math.min(0,Math.min.apply(null,allGamma));
+  var maxG=Math.max(0,Math.max.apply(null,allGamma));
+  var rangeG=maxG-minG||1;
+  var minP=low-1;
+  var maxP=high+1;
+  var rangeP=maxP-minP||1;
+  var xScale=function(p){return pad.left+((p-minP)/rangeP)*cW;};
+  var yScale=function(g){return pad.top+cH-((g-minG)/rangeG)*cH;};
+
+  var svgStr='';
+  // Grid
+  for(var i=0;i<=5;i++){
+    var gY=pad.top+(cH/5)*i;
+    var gVal=maxG-(rangeG/5)*i;
+    svgStr+='<line x1="'+pad.left+'" y1="'+gY+'" x2="'+(W-pad.right)+'" y2="'+gY+'" stroke="var(--border)" stroke-width="0.5"/>';
+    svgStr+='<text x="'+(pad.left-3)+'" y="'+(gY+3)+'" text-anchor="end" fill="var(--text-dim)">'+F(gVal,4)+'</text>';
+  }
+  // X axis
+  svgStr+='<line x1="'+pad.left+'" y1="'+(pad.top+cH)+'" x2="'+(W-pad.right)+'" y2="'+(pad.top+cH)+'" stroke="var(--border)" stroke-width="1"/>';
+  for(var p=Math.ceil(minP);p<=maxP;p+=5){
+    svgStr+='<line x1="'+xScale(p)+'" y1="'+(pad.top+cH)+'" x2="'+xScale(p)+'" y2="'+(pad.top+cH+5)+'" stroke="var(--border)" stroke-width="1"/>';
+    svgStr+='<text x="'+xScale(p)+'" y="'+(pad.top+cH+10)+'" text-anchor="middle" fill="var(--text-dim)">$'+p+'</text>';
+  }
+  // Zero line
+  var zeroY=yScale(0);
+  svgStr+='<line x1="'+pad.left+'" y1="'+zeroY+'" x2="'+(W-pad.right)+'" y2="'+zeroY+'" stroke="var(--text-dim)" stroke-width="0.5" stroke-dasharray="3,3"/>';
+  // Individual option profiles
+  for(var i=0;i<optProfiles.length;i++){
+    var op=optProfiles[i];
+    var path='';
+    for(var j=0;j<op.profile.length;j++){
+      var px=low+j*0.5;
+      var x=xScale(px);
+      var y=yScale(op.profile[j]);
+      path+=(j===0?'M':'L')+x.toFixed(1)+','+y.toFixed(1);
+    }
+    svgStr+='<path d="'+path+'" fill="none" stroke="'+op.color+'" stroke-width="1.5" stroke-dasharray="4,2"/>';
+  }
+  // Sum gamma profile
+  var sumProfile=[];
+  for(var j=0;j<optProfiles[0].profile.length;j++){
+    var sum=0;
+    for(var i=0;i<optProfiles.length;i++) sum+=optProfiles[i].profile[j];
+    sumProfile.push(sum);
+  }
+  var sumPath='';
+  for(var j=0;j<sumProfile.length;j++){
+    var px=low+j*0.5;
+    var x=xScale(px);
+    var y=yScale(sumProfile[j]);
+    sumPath+=(j===0?'M':'L')+x.toFixed(1)+','+y.toFixed(1);
+  }
+  svgStr+='<path d="'+sumPath+'" fill="none" stroke="#f59e0b" stroke-width="2.5"/>';
+
+  // Legend
+  var legendX=pad.left+5;
+  var legendY=pad.top+5;
+  for(var i=0;i<optProfiles.length;i++){
+    var op=optProfiles[i];
+    svgStr+='<line x1="'+legendX+'" y1="'+legendY+'" x2="'+(legendX+15)+'" y2="'+legendY+'" stroke="'+op.color+'" stroke-width="1.5" stroke-dasharray="4,2"/>';
+    svgStr+='<text x="'+(legendX+18)+'" y="'+(legendY+4)+'" fill="'+op.color+'" font-size="9">'+op.name+'</text>';
+    legendY+=10;
+  }
+  svgStr+='<line x1="'+legendX+'" y1="'+legendY+'" x2="'+(legendX+15)+'" y2="'+legendY+'" stroke="#f59e0b" stroke-width="2.5"/>';
+  svgStr+='<text x="'+(legendX+18)+'" y="'+(legendY+4)+'" fill="#f59e0b" font-size="10" font-weight="bold">Σ Γ</text>';
+  svgStr+='<text x="'+(W/2)+'" y="'+(H-10)+'" text-anchor="middle" fill="var(--text-dim)" font-size="12">Цена SOL</text>';
+
+  svg.setAttribute('viewBox','0 0 '+W+' '+H);
+  svg.style.width=W+'px';
+  svg.style.height=H+'px';
+  svg.innerHTML=svgStr;
+}
+
 // === Distant: Budget ===
 function renderDistantBudget(l){
   var el=document.getElementById('distantBudgetContent');
@@ -1510,14 +1671,20 @@ function syncNearSelected(){
 window._onNearToggle=function(idx,val){
   if(selectedOption.near[idx]) selectedOption.near[idx].checked=val;
   syncNearSelected();
+  renderNearGammaMatrix();
+  renderNearLayerGammaChart();
 };
 window._onNearQtyChange=function(idx,val){
   if(selectedOption.near[idx]) selectedOption.near[idx].qty=parseInt(val)||0;
   syncNearSelected();
+  renderNearGammaMatrix();
+  renderNearLayerGammaChart();
 };
 window._onNearRemove=function(idx){
   selectedOption.near.splice(idx,1);
   syncNearSelected();
+  renderNearGammaMatrix();
+  renderNearLayerGammaChart();
 };
 
 // === BS Put Price (r=0) ===
