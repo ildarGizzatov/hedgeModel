@@ -31,7 +31,7 @@ document.querySelectorAll(".subtab").forEach(function(s){
     s.classList.add("active");
     var subEl=document.getElementById(s.dataset.subtab);
     if(subEl){ subEl.style.display="block"; subEl.classList.add("active"); }
-    if(s.dataset.subtab==='new-options'){syncNearSelected();setTimeout(function(){renderNearGammaMatrix();renderNearLayerGammaChart();},200);}
+    if(s.dataset.subtab==='new-options'){syncNearSelected();setTimeout(function(){renderNearLayerGammaChart();},200);}
   });
 });
 
@@ -854,48 +854,6 @@ function _bsPutGamma(S, K, T, iv){
   return nd1/(S*iv*Math.sqrt(T));
 }
 
-// === Near Layer: Gamma Matrix ===
-function renderNearGammaMatrix(){
-  var opts=selectedOption.near||[];
-  if(opts.length===0){
-    var t=document.getElementById('nearGammaMatrix');
-    if(t) t.innerHTML='<tr><td style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';
-    return;
-  }
-  var spot=window.layerData_near&&window.layerData_near.spot_price?window.layerData_near.spot_price:0;
-  if(!spot) spot=opts[0].spot_price||opts[0].spot_at_entry||0;
-  if(!spot) return;
-
-  var low=Math.round(spot*0.90);
-  var high=Math.round(spot*0.97);
-
-  var html='<thead><tr style="background:var(--bg)"><th style="padding:3px 6px;text-align:right;border-bottom:2px solid var(--border)">Цена</th>';
-  var colors=['#3b82f6','#ef4444','#10b981','#f59e0b','#8b5cf6','#ec4899','#14b8a6','#f97316'];
-  for(var i=0;i<opts.length;i++){
-    var name=opts[i].symbol?opts[i].symbol.replace('-P',''):('O'+(i+1));
-    html+='<th style="padding:3px 6px;text-align:right;border-bottom:2px solid var(--border);color:'+colors[i%8]+'">'+name+'</th>';
-  }
-  html+='</tr></thead><tbody>';
-
-  for(var p=low;p<=high;p++){
-    html+='<tr><td style="padding:2px 6px;text-align:right;border-bottom:1px solid var(--border);font-weight:600">'+p+'</td>';
-    for(var i=0;i<opts.length;i++){
-      var co=opts[i];
-      var strike=co.strike||co.k||0;
-      var iv=co.iv||co.vol||0;
-      var dte=co.dte||co.d||0;
-      var T=dte/365;
-      var g=_bsPutGamma(p,strike,T,iv);
-      html+='<td style="padding:2px 6px;text-align:right;border-bottom:1px solid var(--border)">'+g.toFixed(6)+'</td>';
-    }
-    html+='</tr>';
-  }
-  html+='</tbody>';
-
-  var t=document.getElementById('nearGammaMatrix');
-  if(t) t.innerHTML=html;
-}
-
 // === Near Layer: Gamma Profile Chart ===
 function renderNearLayerGammaChart(){
   var opts=selectedOption.near||[];
@@ -1671,19 +1629,16 @@ function syncNearSelected(){
 window._onNearToggle=function(idx,val){
   if(selectedOption.near[idx]) selectedOption.near[idx].checked=val;
   syncNearSelected();
-  renderNearGammaMatrix();
   renderNearLayerGammaChart();
 };
 window._onNearQtyChange=function(idx,val){
   if(selectedOption.near[idx]) selectedOption.near[idx].qty=parseInt(val)||0;
   syncNearSelected();
-  renderNearGammaMatrix();
   renderNearLayerGammaChart();
 };
 window._onNearRemove=function(idx){
   selectedOption.near.splice(idx,1);
   syncNearSelected();
-  renderNearGammaMatrix();
   renderNearLayerGammaChart();
 };
 

@@ -1171,6 +1171,10 @@ def api_combined_ladder(request: Request, min_price: int = None, max_price: int 
     open_opts = get_all_open_options()
     spot = current_price
 
+    # Fetch greeks ONCE before the price loop (not per-price-per-option!)
+    latest_greeks, _ = _get_live_greeks()
+    greeks_idx = latest_greeks
+
     r_rf = 0.05
     ladder = []
     for price in range(low, high + 1):
@@ -1188,9 +1192,6 @@ def api_combined_ladder(request: Request, min_price: int = None, max_price: int 
             dte = calc_dte(expiry)
             T_years = max(dte / 365.0, 1 / 365.0)
 
-            latest_greeks, _ = _get_live_greeks()
-            # latest_greeks уже dict {symbol: {...}} из Bybit
-            greeks_idx = latest_greeks
             greek = greeks_idx.get(opt["symbol"], {})
             iv = float(greek.get("iv") or 0)
 
