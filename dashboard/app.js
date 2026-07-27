@@ -974,39 +974,24 @@ function renderNearLayerGammaChart(){
 }
 
 // === Distant: Budget ===
-function renderDistantBudget(l){
-  var el=document.getElementById('distantBudgetContent');
+// === Unified: render budget for any layer ===
+function renderLayerBudget(layer, l){
+  var cfg={distant:{elId:'distantBudgetContent',name:'Anchor'},near:{elId:'nearBudgetContent',name:'Active'}}[layer];
+  if(!cfg) return;
+  var el=document.getElementById(cfg.elId);
   if(!el) return;
   if(!l||!l.layers) { el.innerHTML='Нет данных'; return; }
-  var anchor=l.layers.find(function(x){return x.name==='Anchor';});
-  if(!anchor) { el.innerHTML='Нет данных'; return; }
+  var ly=l.layers.find(function(x){return x.name===cfg.name;});
+  if(!ly) { el.innerHTML='Нет данных'; return; }
   var usedPct=0;
-  if(anchor.budget && anchor.budget>0) usedPct=parseFloat(anchor.spent)/parseFloat(anchor.budget)*100;
+  if(ly.budget && ly.budget>0) usedPct=parseFloat(ly.spent)/parseFloat(ly.budget)*100;
   var barColor=usedPct>=90?'var(--red)':usedPct>=50?'var(--yellow)':'var(--green)';
   var html='';
-  html+='<div style="font-size:16px;font-weight:600;margin-bottom:6px">$'+F(anchor.budget,2)+' бюджет</div>';
-  html+='<div style="font-size:14px;color:var(--text-dim);margin-bottom:6px">$'+F(anchor.spent,2)+' потрачено ('+Math.round(usedPct)+'%)</div>';
+  html+='<div style="font-size:16px;font-weight:600;margin-bottom:6px">$'+F(ly.budget,2)+' бюджет</div>';
+  html+='<div style="font-size:14px;color:var(--text-dim);margin-bottom:6px">$'+F(ly.spent,2)+' потрачено ('+Math.round(usedPct)+'%)</div>';
   html+='<div style="height:8px;background:#30363d;border-radius:4px;overflow:hidden;margin-bottom:6px"><div style="width:'+Math.min(usedPct,100)+'%;height:100%;background:'+barColor+';border-radius:4px"></div></div>';
-  html+='<div style="font-size:14px;color:var(--text-dim)">PnL: <span style="color:'+(anchor.pnl>=0?'var(--green)':'#d32f2f')+'">'+(anchor.pnl>=0?'+':'')+'$'+F(anchor.pnl,2)+'</span></div>';
-  html+='<div style="font-size:14px;color:var(--text-dim)">Опционов: '+anchor.count+'</div>';
-  el.innerHTML=html;
-}
-
-function renderNearBudget(l){
-  var el=document.getElementById('nearBudgetContent');
-  if(!el) return;
-  if(!l||!l.layers) { el.innerHTML='Нет данных'; return; }
-  var active=l.layers.find(function(x){return x.name==='Active';});
-  if(!active) { el.innerHTML='Нет данных'; return; }
-  var usedPct=0;
-  if(active.budget && active.budget>0) usedPct=parseFloat(active.spent)/parseFloat(active.budget)*100;
-  var barColor=usedPct>=90?'var(--red)':usedPct>=50?'var(--yellow)':'var(--green)';
-  var html='';
-  html+='<div style="font-size:16px;font-weight:600;margin-bottom:6px">$'+F(active.budget,2)+' бюджет</div>';
-  html+='<div style="font-size:14px;color:var(--text-dim);margin-bottom:6px">$'+F(active.spent,2)+' потрачено ('+Math.round(usedPct)+'%)</div>';
-  html+='<div style="height:8px;background:#30363d;border-radius:4px;overflow:hidden;margin-bottom:6px"><div style="width:'+Math.min(usedPct,100)+'%;height:100%;background:'+barColor+';border-radius:4px"></div></div>';
-  html+='<div style="font-size:14px;color:var(--text-dim)">PnL: <span style="color:'+(active.pnl>=0?'var(--green)':'#d32f2f')+'">'+(active.pnl>=0?'+':'')+'$'+F(active.pnl,2)+'</span></div>';
-  html+='<div style="font-size:14px;color:var(--text-dim)">Опционов: '+active.count+'</div>';
+  html+='<div style="font-size:14px;color:var(--text-dim)">PnL: <span style="color:'+(ly.pnl>=0?'var(--green)':'#d32f2f')+'">'+(ly.pnl>=0?'+':'')+'$'+F(ly.pnl,2)+'</span></div>';
+  html+='<div style="font-size:14px;color:var(--text-dim)">Опционов: '+ly.count+'</div>';
   el.innerHTML=html;
 }
 
@@ -1406,16 +1391,16 @@ function syncDistantSelected(){
       pctFromRemaining=F(total/remainingBudget*100,1)+'%';
     }
     html+='<tr style="height:22px">';
-    html+='<td style="padding:2px 6px;text-align:center"><input type="checkbox" '+(checked?'checked':'')+' onchange="window._onDistantToggle('+idx+',this.checked)"></td>';
+    html+='<td style="padding:2px 6px;text-align:center"><input type="checkbox" '+(checked?'checked':'')+' onchange="window._onSelectToggle(\'distant\','+idx+',this.checked)"></td>';
     html+='<td style="padding:2px 6px;font-weight:bold">'+opt.symbol+'</td>';
     html+='<td style="padding:2px 6px;text-align:right">$'+strike+'</td>';
     html+='<td style="padding:2px 6px;text-align:center">'+(opt.dte||'-')+'</td>';
     html+='<td style="padding:2px 6px;text-align:right">'+F(delta,4)+'</td>';
     html+='<td style="padding:2px 6px;text-align:right">$'+F(price,4)+'</td>';
-    html+='<td style="padding:2px 6px;text-align:center"><input type="number" min="0" step="1" value="'+qty+'" style="width:50px;text-align:center;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px 4px;border-radius:4px" onchange="window._onDistantQtyChange('+idx+',this.value)"></td>';
+    html+='<td style="padding:2px 6px;text-align:center"><input type="number" min="0" step="1" value="'+qty+'" style="width:50px;text-align:center;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px 4px;border-radius:4px" onchange="window._onSelectQtyChange(\'distant\','+idx+',this.value)"></td>';
     html+='<td style="padding:2px 6px;text-align:right">$'+F(total,2)+'</td>';
     html+='<td style="padding:2px 6px;text-align:right">'+pctFromRemaining+'</td>';
-    html+='<td style="padding:2px 6px;text-align:center"><button style="background:none;border:none;cursor:pointer;color:#d32f2f;font-size:14px" onclick="window._onDistantRemove('+idx+')">✕</button></td>';
+    html+='<td style="padding:2px 6px;text-align:center"><button style="background:none;border:none;cursor:pointer;color:#d32f2f;font-size:14px" onclick="window._onSelectRemove(\'distant\','+idx+')">✕</button></td>';
     html+='</tr>';
   });
   if(html===''){
@@ -1442,32 +1427,47 @@ function syncDistantSelected(){
   try{renderDistantSummaryMatrix();}catch(e){console.warn('renderDistantSummaryMatrix fail:',e);}
 }
 
-window._onDistantToggle=function(idx,val){
-  if(selectedOption.distant[idx]){
-    selectedOption.distant[idx].checked=val;
-    var selList=JSON.parse(localStorage.getItem('selectedDistant')||'[]');
-    if(selList[idx]) selList[idx].checked=val;
-    localStorage.setItem('selectedDistant',JSON.stringify(selList));
-    syncDistantSelected();
+// === Unified: sync selected table for any layer ===
+function syncSelected(layer){
+  if(layer==='distant') syncDistantSelected();
+  else if(layer==='near') syncNearSelected();
+}
+
+// === Unified handlers for toggle/qty/remove (all layers) ===
+window._onSelectToggle=function(layer,idx,val){
+  if(selectedOption[layer][idx]){
+    selectedOption[layer][idx].checked=val;
+    // Update localStorage
+    var key=layer==='distant'?'selectedDistant':'selectedOptions';
+    var isNested=layer!=='distant';
+    var selList=JSON.parse(localStorage.getItem(key)||((isNested)?'{}':'[]'));
+    if(isNested){if(!selList[layer]) selList[layer]=[]; if(selList[layer][idx]) selList[layer][idx].checked=val;}
+    else{if(selList[idx]) selList[idx].checked=val;}
+    localStorage.setItem(key,JSON.stringify(selList));
+    syncSelected(layer);
   }
 };
-
-window._onDistantQtyChange=function(idx,val){
-  if(selectedOption.distant[idx]){
-    selectedOption.distant[idx].qty=parseInt(val)||0;
-    var selList=JSON.parse(localStorage.getItem('selectedDistant')||'[]');
-    if(selList[idx]) selList[idx].qty=selectedOption.distant[idx].qty;
-    localStorage.setItem('selectedDistant',JSON.stringify(selList));
-    syncDistantSelected();
+window._onSelectQtyChange=function(layer,idx,val){
+  if(selectedOption[layer][idx]){
+    selectedOption[layer][idx].qty=parseInt(val)||0;
+    var key=layer==='distant'?'selectedDistant':'selectedOptions';
+    var isNested=layer!=='distant';
+    var selList=JSON.parse(localStorage.getItem(key)||((isNested)?'{}':'[]'));
+    if(isNested){if(!selList[layer]) selList[layer]=[]; if(selList[layer][idx]) selList[layer][idx].qty=selectedOption[layer][idx].qty;}
+    else{if(selList[idx]) selList[idx].qty=selectedOption[layer][idx].qty;}
+    localStorage.setItem(key,JSON.stringify(selList));
+    syncSelected(layer);
   }
 };
-
-window._onDistantRemove=function(idx){
-  selectedOption.distant.splice(idx,1);
-  var selList=JSON.parse(localStorage.getItem('selectedDistant')||'[]');
-  selList.splice(idx,1);
-  localStorage.setItem('selectedDistant',JSON.stringify(selList));
-  syncDistantSelected();
+window._onSelectRemove=function(layer,idx){
+  selectedOption[layer].splice(idx,1);
+  var key=layer==='distant'?'selectedDistant':'selectedOptions';
+  var isNested=layer!=='distant';
+  var selList=JSON.parse(localStorage.getItem(key)||((isNested)?'{}':'[]'));
+  if(isNested){if(selList[layer]) selList[layer].splice(idx,1);}
+  else{selList.splice(idx,1);}
+  localStorage.setItem(key,JSON.stringify(selList));
+  syncSelected(layer);
 };
 
 // === Near layer: render selected table ===
@@ -1586,12 +1586,12 @@ function syncNearSelected(){
       var bkgd='';
       if(covMax)bkgd+='background:rgba(220,38,38,0.15);';
       html+='<tr style="height:22px">';
-      html+='<td style="padding:2px 6px;text-align:center"><input type="checkbox" '+(checked?'checked':'')+' onchange="window._onNearToggle('+idx+',this.checked)"></td>';
+      html+='<td style="padding:2px 6px;text-align:center"><input type="checkbox" '+(checked?'checked':'')+' onchange="window._onSelectToggle(\'near\','+idx+',this.checked)"></td>';
       html+='<td style="padding:2px 6px;font-weight:bold">'+opt.symbol+'</td>';
       html+='<td style="padding:2px 6px;text-align:right">$'+strike+'</td>';
       html+='<td style="padding:2px 6px;text-align:center">'+(opt.dte||'-')+'</td>';
       html+='<td style="padding:2px 6px;text-align:right">$'+F(price,4)+'</td>';
-      html+='<td style="padding:2px 6px;text-align:center"><input type="number" min="0" step="1" value="'+qty+'" style="width:50px;text-align:center;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px 4px;border-radius:4px" onchange="window._onNearQtyChange('+idx+',this.value)"></td>';
+      html+='<td style="padding:2px 6px;text-align:center"><input type="number" min="0" step="1" value="'+qty+'" style="width:50px;text-align:center;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px 4px;border-radius:4px" onchange="window._onSelectQtyChange(\'near\','+idx+',this.value)"></td>';
       html+='<td style="padding:2px 6px;text-align:right">$'+F(total,2)+'</td>';
       html+='<td style="padding:2px 6px;text-align:right">'+pctFromRemaining+'</td>';
       html+='<td style="padding:2px 6px;text-align:right">'+F(delta,4)+'</td>';
@@ -1600,7 +1600,7 @@ function syncNearSelected(){
       html+='<td style="padding:2px 6px;text-align:right;'+(gPMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?F(m.gammaProtection,2):'-')+'</td>';
       html+='<td style="padding:2px 6px;text-align:right;'+(accMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?F(m.accuracy*100,0)+'%':'-')+'</td>';
       html+='<td style="padding:2px 6px;text-align:right;'+(wPMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?'$'+F(m.weightedPnL,2):'-')+'</td>';
-      html+='<td style="padding:2px 6px;text-align:center"><button style="background:none;border:none;cursor:pointer;color:#d32f2f;font-size:14px" onclick="window._onNearRemove('+idx+')">✕</button></td>';
+      html+='<td style="padding:2px 6px;text-align:center"><button style="background:none;border:none;cursor:pointer;color:#d32f2f;font-size:14px" onclick="window._onSelectRemove(\'near\','+idx+')">✕</button></td>';
       html+='</tr>';
     }
     if(html===''){
@@ -1626,21 +1626,7 @@ function syncNearSelected(){
     }
   });
 }
-window._onNearToggle=function(idx,val){
-  if(selectedOption.near[idx]) selectedOption.near[idx].checked=val;
-  syncNearSelected();
-  renderNearLayerGammaChart();
-};
-window._onNearQtyChange=function(idx,val){
-  if(selectedOption.near[idx]) selectedOption.near[idx].qty=parseInt(val)||0;
-  syncNearSelected();
-  renderNearLayerGammaChart();
-};
-window._onNearRemove=function(idx){
-  selectedOption.near.splice(idx,1);
-  syncNearSelected();
-  renderNearLayerGammaChart();
-};
+
 
 // === BS Put Price (r=0) ===
 function _bsPutPrice(S, K, T, iv){
@@ -3054,7 +3040,7 @@ function loadAll(){
     renderSummary(results[3], results[1]);
     renderLayers(results[4]);
     window._lastLayersData=results[4];
-    renderDistantBudget(results[4]);
+    renderLayerBudget('distant', results[4]);
     renderPnnLadderTable(results[0]);
     layerData_distant=results[6];
     layerData_mid=results[7];
@@ -3067,7 +3053,7 @@ function loadAll(){
       renderAvailableOptions('mid', 'layerContent-mid', results[7]);
       renderAvailableOptions('near', 'layerContent-near', results[8]);
       renderAvailableOptions('near', 'layerContent-near-tab', results[8]);
-      renderNearBudget(results[4]);
+      renderLayerBudget('near', results[4]);
       renderDistantDeltaMatrix();
       renderDistantPnlMatrix();
       renderDistantSummaryMatrix();
