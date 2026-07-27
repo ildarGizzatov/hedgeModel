@@ -1258,7 +1258,6 @@ def api_black_scholes() -> dict[str, Any]:
     greeks_idx = latest_greeks
     greek = greeks_idx.get(opt["symbol"], {})
 
-    spot = float(greek.get("current_price") or 0)
     iv = float(greek.get("iv") or 0)
 
     # Avg entry спота из buy_history
