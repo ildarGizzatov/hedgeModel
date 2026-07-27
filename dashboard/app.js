@@ -1267,6 +1267,232 @@ function syncNearSelected(){
       budgetEl.textContent='💰 Бюджет: $'+F(activeLayer.budget,2)+' | Потрачено: $'+F(activeLayer.spent,2)+' ('+usedPct+'%) | Осталось: $'+F(remainingBudget,2);
     }
   });
+  // Draw gamma chart after table
+  setTimeout(function(){drawNearSelectedGammaChart();}, 100);
+}
+
+// === Near Selected: Gamma Chart ===
+function _bsPutGamma(S, K, T, iv){
+  if(T<=0||iv<=0||S<=0||K<=0) return 0;
+  var d1=(Math.log(S/K)+(iv*iv/2)*T)/(iv*Math.sqrt(T));
+  var nd1=Math.exp(-0.5*d1*d1)/(Math.sqrt(2*Math.PI));
+  return nd1/(S*iv*Math.sqrt(T));
+}
+
+function drawNearSelectedGammaChart(){
+  var canvas=document.getElementById('nearSelectedGammaChart');
+  if(!canvas) return;
+  var opts=selectedOption.near||[];
+  if(opts.length===0){
+    var ctx=canvas.getContext('2d');
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle='var(--text-dim)';
+    ctx.font='14px sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText('Нет выбранных опционов',canvas.width/2,canvas.height/2);
+    document.getElementById('nearGammaLegend').innerHTML='';
+    return;
+  }
+
+  var spot=window.layerData_near&&window.layerData_near.spot_price?window.layerData_near.spot_price:0;
+  if(!spot) return;
+
+  // Insurance range for near layer: 3-10% below spot
+  var insLow=Math.round(spot*(1-10/100));
+  var insHigh=Math.round(spot*(1-3/100));
+  var padRange=3;
+  var chartLow=insLow-padRange;
+  var chartHigh=insHigh+padRange;
+  var step=1;
+  var prices=[];
+  for(var p=chartHigh;p>=chartLow;p-=step){prices.push(p);}
+
+  var colors=['#58a6ff','#f778ba','#7ee787','#d2a8ff','#ff7b72','#79c0ff','#ffa657','#bd97f5'];
+  var optionGammas=[];
+  var totalGamma=[];
+
+  // Calculate gamma for each option at each price
+  for(var i=0;i<opts.length;i++){
+    var opt=opts[i];
+    var strike=opt.strike||0;
+    var iv=opt.iv||0.3;
+    var dte=Math.max(opt.dte||30,1);
+    var T=dte/365;
+    var qty=opt.qty||1;
+    var gammas=[];
+    for(var j=0;j<prices.length;j++){
+      var g=_bsPutGamma(prices[j],strike,T,iv)*qty;
+      gammas.push(g);
+      if(!totalGamma[j]) totalGamma[j]=0;
+      totalGamma[j]+=g;
+    }
+    optionGammas.push(gammas);
+  }
+
+  var maxGamma=Math.max.apply(null,totalGamma)*1.15||1;
+
+  var W=canvas.width,H=canvas.height;
+  var pad={t:25,r:20,b:60,l:60};
+  var cW=W-pad.l-pad.r,cH=H-pad.t-pad.b;
+
+  function toX(p){return pad.l+(p-chartLow)/(chartHigh-chartLow)*cW;}
+  function toY(g){return pad.t+cH-(g/maxGamma)*cH;}
+
+  var ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,W,H);
+
+  // Background
+  ctx.fillStyle='#0d1117';
+  ctx.fillRect(0,0,W,H);
+
+  // Grid
+  ctx.strokeStyle='#21262d';ctx.lineWidth=1;
+  for(var i=0;i<=5;i++){
+    var y=pad.t+cH*(i/5);
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+cW,y);ctx.stroke();
+  }
+  for(var i=0;i<=5;i++){
+    var x=pad.l+cW*(i/5);
+    ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+cH);ctx.stroke();
+  }
+
+  // Insurance range zone
+  ctx.fillStyle='rgba(63,185,80,0.12)';
+  var ix1=toX(insLow),ix2=toX(insHigh);
+  ctx.fillRect(ix1,pad.t,ix2-ix1,cH);
+  ctx.strokeStyle='rgba(63,185,80,0.5)';ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(ix1,pad.t);ctx.lineTo(ix1,pad.t+cH);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(ix2,pad.t);ctx.lineTo(ix2,pad.t+cH);ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Spot line
+  if(spot>=insLow&&spot<=insHigh){
+    var sx=toX(spot);
+    ctx.strokeStyle='rgba(255,255,255,0.4)';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(sx,pad.t);ctx.lineTo(sx,pad.t+cH);ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='rgba(255,255,255,0.6)';ctx.font='10px monospace';
+    ctx.fillText('S='+spot,sx+3,pad.t+12);
+  }
+
+  // Individual option gammas + max markers
+  for(var i=0;i<optionGammas.length;i++){
+    var maxG=-1,maxJ=-1;
+    for(var j=0;j<optionGammas[i].length;j++){
+      if(optionGammas[i][j]>maxG){maxG=optionGammas[i][j];maxJ=j;}
+    }
+    ctx.beginPath();
+    ctx.strokeStyle=colors[i%colors.length];
+    ctx.lineWidth=1.5;ctx.setLineDash([4,3]);
+    for(var j=0;j<optionGammas[i].length;j++){
+      var x=toX(prices[j]),y=toY(optionGammas[i][j]);
+      if(j===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // Mark max for this option
+    if(maxJ>=0){
+      var mx=toX(prices[maxJ]),my=toY(optionGammas[i][maxJ]);
+      ctx.beginPath();ctx.arc(mx,my,5,0,Math.PI*2);
+      ctx.fillStyle=colors[i%colors.length];ctx.fill();
+      ctx.beginPath();ctx.arc(mx,my,8,0,Math.PI*2);
+      ctx.strokeStyle=colors[i%colors.length];ctx.lineWidth=2;ctx.stroke();
+      ctx.fillStyle=colors[i%colors.length];ctx.font='bold 9px monospace';ctx.textAlign='center';
+      ctx.fillText('Γ='+maxG.toFixed(5),mx,my-12);
+      ctx.fillText('$'+prices[maxJ],mx,my+16);
+    }
+  }
+
+  // Total gamma curve (filled)
+  ctx.beginPath();
+  ctx.strokeStyle='#f0883e';ctx.lineWidth=2.5;
+  for(var j=0;j<totalGamma.length;j++){
+    var x=toX(prices[j]),y=toY(totalGamma[j]);
+    if(j===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  }
+  ctx.stroke();
+
+  // Fill under total gamma
+  ctx.beginPath();
+  for(var j=0;j<totalGamma.length;j++){
+    var x=toX(prices[j]),y=toY(totalGamma[j]);
+    if(j===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+  }
+  ctx.lineTo(toX(prices[prices.length-1]),pad.t+cH);
+  ctx.lineTo(toX(prices[0]),pad.t+cH);
+  ctx.closePath();
+  var grad=ctx.createLinearGradient(0,pad.t,0,pad.t+cH);
+  grad.addColorStop(0,'rgba(240,136,62,0.3)');
+  grad.addColorStop(1,'rgba(240,136,62,0.02)');
+  ctx.fillStyle=grad;
+  ctx.fill();
+
+  // Data points on total
+  for(var j=0;j<totalGamma.length;j++){
+    if(j%3===0){
+      var x=toX(prices[j]),y=toY(totalGamma[j]);
+      ctx.beginPath();ctx.arc(x,y,2.5,0,Math.PI*2);
+      ctx.fillStyle='#f0883e';ctx.fill();
+    }
+  }
+
+  // Max gamma marker (total)
+  var maxIdx=totalGamma.indexOf(Math.max.apply(null,totalGamma));
+  if(maxIdx>=0){
+    var mx=toX(prices[maxIdx]),my=toY(totalGamma[maxIdx]);
+    ctx.beginPath();ctx.arc(mx,my,6,0,Math.PI*2);
+    ctx.fillStyle='#58a6ff';ctx.fill();
+    ctx.beginPath();ctx.arc(mx,my,9,0,Math.PI*2);
+    ctx.strokeStyle='#58a6ff';ctx.lineWidth=2;ctx.stroke();
+  }
+
+  // X axis
+  ctx.strokeStyle='#30363d';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(pad.l,pad.t+cH);ctx.lineTo(pad.l+cW,pad.t+cH);ctx.stroke();
+
+  // Price labels
+  ctx.fillStyle='#e6edf3';ctx.font='bold 11px monospace';ctx.textAlign='center';
+  for(var j=0;j<prices.length;j+=Math.max(1,Math.floor(prices.length/8))){
+    var x=toX(prices[j]);
+    if(x<pad.l-5||x>pad.l+cW+5) continue;
+    ctx.strokeStyle='#484f58';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(x,pad.t+cH);ctx.lineTo(x,pad.t+cH+6);ctx.stroke();
+    var text='$'+prices[j];
+    var tw=ctx.measureText(text).width;
+    ctx.fillStyle='rgba(13,17,23,0.95)';
+    ctx.fillRect(x-tw/2-3,pad.t+cH+6,tw+6,16);
+    ctx.strokeStyle='#30363d';ctx.lineWidth=1;
+    ctx.strokeRect(x-tw/2-3,pad.t+cH+6,tw+6,16);
+    ctx.fillStyle='#e6edf3';
+    ctx.fillText(text,x,pad.t+cH+19);
+  }
+
+  // Y axis labels
+  ctx.textAlign='right';ctx.fillStyle='#e6edf3';ctx.font='11px monospace';
+  for(var i=0;i<=5;i++){
+    var val=maxGamma*(1-i/5);
+    var y=pad.t+cH*(i/5);
+    ctx.fillText(val.toFixed(5),pad.l-5,y+4);
+  }
+  ctx.save();
+  ctx.translate(14,pad.t+cH/2);
+  ctx.rotate(-Math.PI/2);
+  ctx.textAlign='center';ctx.fillStyle='#8b949e';ctx.font='bold 12px sans-serif';
+  ctx.fillText('Γ',0,0);
+  ctx.restore();
+
+  // Title
+  ctx.fillStyle='#e6edf3';ctx.font='bold 13px sans-serif';ctx.textAlign='left';
+  ctx.fillText('Суммарная Γ (orange) + Γ каждого опциона (dashed)',pad.l,pad.t-8);
+
+  // Legend
+  var legendHtml='';
+  for(var i=0;i<opts.length;i++){
+    legendHtml+='<span style="color:'+colors[i%colors.length]+'">──</span> '+opts[i].symbol+' (K$'+opts[i].strike+') ';
+  }
+  legendHtml+='<br><span style="color:#f0883e;font-weight:bold">━━━━</span> Суммарная Γ (filled)<br>';
+  legendHtml+='<span style="color:rgba(255,255,255,0.6)">- - -</span> Spot='+spot;
+  document.getElementById('nearGammaLegend').innerHTML=legendHtml;
 }
 
 
