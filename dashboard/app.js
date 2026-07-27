@@ -19,6 +19,9 @@ document.querySelectorAll(".tab").forEach(function(t){
       console.log('🔘 near tab clicked, rendering layerData_near into tab-near');
       renderAvailableOptions('near', 'layerContent-near-tab', window.layerData_near);
     }
+    if(t.dataset.tab==='near-layer'){
+      setTimeout(function(){drawNearSelectedGammaChart();},50);
+    }
 
   });
 });
@@ -31,7 +34,14 @@ document.querySelectorAll(".subtab").forEach(function(s){
     s.classList.add("active");
     var subEl=document.getElementById(s.dataset.subtab);
     if(subEl){ subEl.style.display="block"; subEl.classList.add("active"); }
-    if(s.dataset.subtab==='new-options'){syncNearSelected();}
+    if(s.dataset.subtab==='new-options'){
+      syncNearSelected();
+      var gw=document.getElementById('gammaChartWrapper');
+      if(gw) gw.style.display='block';
+    } else {
+      var gw=document.getElementById('gammaChartWrapper');
+      if(gw) gw.style.display='none';
+    }
   });
 });
 
