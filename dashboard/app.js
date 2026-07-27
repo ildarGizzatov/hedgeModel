@@ -344,14 +344,8 @@ function runAnchor(){
   var id="3";
   setBtnAction(id, "🎯 Anchor Layer", true);
   // Перезагружаем рекомендации и позиции
-  Promise.all([
-    api("/api/positions"),
-    api("/api/recommendations"),
-    api("/api/summary"),
-  ]).then(function(results){
-    renderPositions(results[0]);
-    renderRecommendations(results[1]);
-    renderSummary(results[2], results[0]);
+  api("/api/positions").then(function(results){
+    renderPositions(results);
     setBtnAction(id, "✅ Обновлено", false);
   }).catch(function(e){
     setBtnAction(id, "❌ Ошибка", false);
@@ -593,7 +587,7 @@ function renderOptions(opt, pos){
   });
   optT.innerHTML=rows;
   optT.querySelectorAll('.opt-select').forEach(function(cb){
-    cb.addEventListener('change',function(){renderTargetPnlProfile(window._lastOptionsData);renderLayerPnlProfile(window._lastOptionsData);renderGammaChart(window._lastOptionsData);});
+    cb.addEventListener('change',function(){renderTargetPnlProfile(window._lastOptionsData);renderLayerPnlProfile(window._lastOptionsData);});
   });
   // Net Greeks - итоговая строка внизу таблицы
   var tEl=document.getElementById("optTable");
@@ -735,126 +729,8 @@ function renderLayerPnlProfile(opt){
   }
   var el=document.getElementById('layerPnlProfile');
   if(el) el.innerHTML=rows;
-  renderGammaChart(opt);
 }
 
-// === Gamma Chart ===
-function renderGammaChart(opt){
-  if(!opt||!opt.options||opt.options.length===0){
-    var el=document.getElementById('gammaChart');
-    if(el) el.innerHTML='<text x="50%" y="50%" text-anchor="middle" fill="var(--text-dim)">Нет позиций</text>';
-    return;
-  }
-  var spot=opt.spot_price||0;
-  if(!spot){return;}
-  var low=Math.round(spot*0.65);
-  var high=Math.round(spot*1.05);
-  var layerColors={active:'#3b82f6',adaptation:'#ef4444',anchor:'#10b981'};
-  var zoneColors={active:'rgba(63,185,80,0.12)',adaptation:'rgba(59,130,246,0.12)',anchor:'rgba(234,179,8,0.12)'};
-  var svg=document.getElementById('gammaChart');
-  if(!svg)return;
-  var container=svg.parentElement;
-  var W=container?container.clientWidth:400;
-  var H=container?container.clientHeight:400;
-  if(W<=0||H<=0){var el=document.getElementById('gammaChart');if(el)el.innerHTML='<text x="50%" y="50%" text-anchor="middle" fill="var(--text-dim)">Загрузка...</text>';return;}
-  var pad={top:30,right:20,bottom:60,left:55};
-  var cW=W-pad.left-pad.right;
-  var cH=H-pad.top-pad.bottom;
-  if(cW<=0||cH<=0)return;
-  var layerGamma={active:[],adaptation:[],anchor:[]};
-  var allGamma=[];
-  for(var p=low;p<=high;p+=0.5){
-    var lg={active:0,adaptation:0,anchor:0};
-    opt.options.forEach(function(o){
-      var cb=document.querySelector('.opt-select[data-id="'+o.id+'"]');
-      if(cb && !cb.checked) return;
-      var layer=o.layer||'active';
-      var strike=o.strike||0;
-      var iv=o.iv||0.3;
-      var dte=Math.max(o.dte||30,1);
-      var T=dte/365;
-      if(p<=0||strike<=0||iv<=0||T<=0){return;}
-      var g=_bsPutGamma(p,strike,T,iv)*(o.qty||0);
-      lg[layer]+=g;
-      allGamma.push(g);
-    });
-    layerGamma.active.push(lg.active);
-    layerGamma.adaptation.push(lg.adaptation);
-    layerGamma.anchor.push(lg.anchor);
-  }
-  var minG=Math.min(0,Math.min.apply(null,allGamma));
-  var maxG=Math.max(0,Math.max.apply(null,allGamma));
-  var rangeG=maxG-minG||1;
-  var minP=low-1;
-  var maxP=high+1;
-  var rangeP=maxP-minP||1;
-  var xScale=function(p){return pad.left+((p-minP)/rangeP)*cW;};
-  var yScale=function(g){return pad.top+cH-((g-minG)/rangeG)*cH;};
-  var svgStr='';
-  // Insurance zones
-  var zones=[
-    {from:Math.round(spot*0.90),to:Math.round(spot*0.97),color:zoneColors.active},
-    {from:Math.round(spot*0.85),to:Math.round(spot*0.92),color:zoneColors.adaptation},
-    {from:Math.round(spot*0.70),to:Math.round(spot*0.85),color:zoneColors.anchor}
-  ];
-  zones.forEach(function(z){
-    var x1=xScale(Math.max(z.from,low));
-    var x2=xScale(Math.min(z.to,high));
-    svgStr+='<rect x="'+x1+'" y="'+pad.top+'" width="'+Math.max(x2-x1,0)+'" height="'+cH+'" fill="'+z.color+'"/>';
-  });
-  // grid
-  for(var i=0;i<=5;i++){
-    var gY=pad.top+(cH/5)*i;
-    var gVal=maxG-(rangeG/5)*i;
-    svgStr+='<line x1="'+pad.left+'" y1="'+gY+'" x2="'+(W-pad.right)+'" y2="'+gY+'" stroke="var(--border)" stroke-width="0.5"/>';
-    svgStr+='<text x="'+(pad.left-3)+'" y="'+(gY+3)+'" text-anchor="end" fill="var(--text-dim)">'+F(gVal,4)+'</text>';
-  }
-  // x axis
-  svgStr+='<line x1="'+pad.left+'" y1="'+(pad.top+cH)+'" x2="'+(W-pad.right)+'" y2="'+(pad.top+cH)+'" stroke="var(--border)" stroke-width="1"/>';
-  for(var p=Math.ceil(minP);p<=maxP;p+=5){
-    svgStr+='<line x1="'+xScale(p)+'" y1="'+(pad.top+cH)+'" x2="'+xScale(p)+'" y2="'+(pad.top+cH+5)+'" stroke="var(--border)" stroke-width="1"/>';
-    svgStr+='<text x="'+xScale(p)+'" y="'+(pad.top+cH+10)+'" text-anchor="middle" fill="var(--text-dim)">$'+p+'</text>';
-  }
-  // zero line
-  var zeroY=yScale(0);
-  svgStr+='<line x1="'+pad.left+'" y1="'+zeroY+'" x2="'+(W-pad.right)+'" y2="'+zeroY+'" stroke="var(--text-dim)" stroke-width="0.5" stroke-dasharray="3,3"/>';
-  // layer paths
-  var layerKeys=['active','adaptation','anchor'];
-  layerKeys.forEach(function(lk){
-    var data=layerGamma[lk];
-    if(!data||data.length===0)return;
-    var path='';
-    data.forEach(function(g,i){
-      var px=low+i*0.5;
-      var x=xScale(px);
-      var y=yScale(g);
-      if(i===0)path+='M'+x+','+y;else path+='L'+x+','+y;
-    });
-    svgStr+='<path d="'+path+'" fill="none" stroke="'+layerColors[lk]+'" stroke-width="1.5"/>';
-  });
-  // legend
-  var legendY=pad.top+5;
-  var legendX=pad.left+5;
-  layerKeys.forEach(function(lk){
-    var label=LAYER_LABELS[lk]||lk;
-    svgStr+='<line x1="'+legendX+'" y1="'+legendY+'" x2="'+(legendX+15)+'" y2="'+legendY+'" stroke="'+layerColors[lk]+'" stroke-width="1.5"/>';
-    svgStr+='<text x="'+(legendX+18)+'" y="'+(legendY+4)+'" fill="'+layerColors[lk]+'">'+label+'</text>';
-    legendY+=12;
-  });
-  svg.setAttribute('viewBox','0 0 '+W+' '+H);
-  svg.style.width=W+'px';
-  svg.style.height=H+'px';
-  svg.innerHTML=svgStr;
-}
-
-function _bsPutGamma(S, K, T, iv){
-  if(T<=0||iv<=0||S<=0||K<=0) return 0;
-  var d1=(Math.log(S/K)+(iv*iv/2)*T)/(iv*Math.sqrt(T));
-  var nd1=Math.exp(-0.5*d1*d1)/(Math.sqrt(2*Math.PI));
-  return nd1/(S*iv*Math.sqrt(T));
-}
-
-// === Near Layer: Gamma Profile Chart ===
 
 // === Distant: Budget ===
 // === Unified: render budget for any layer ===
@@ -912,123 +788,6 @@ function renderLayers(l){
   cards.innerHTML=html;
 }
 
-function renderRecommendations(rec){
-  var ai=document.getElementById("anchorInfo");
-  var rl=document.getElementById("recList");
-  if(!rec){
-    ai.innerHTML='<div style="color:var(--red)">Ошибка загрузки</div>';
-    rl.innerHTML='<div style="color:var(--red)">Ошибка загрузки</div>';
-    return;
-  }
-  // Anchor info
-  if(rec.anchor&&rec.anchor.length){
-    var a=rec.anchor[0];
-    ai.innerHTML='<div class="rec-item"><div><b>Avg Buy:</b> $'+F(a.avg_price)+' | <b>Target:</b> $'+F(a.s_target)+'<br><b>Position Size:</b> $'+F(a.position_size)+' | <b>Anchor Budget:</b> $'+F(a.anchor_budget)+' | <b>SOL qty:</b> '+F(a.qty,2)+'</div></div>';
-  }
-  // Suggestions
-  var recs=rec.suggestions||[];
-  if(recs.length===0){
-    rl.innerHTML='<div style="color:var(--text-dim);padding:12px">Нет рекомендаций - все позиции в норме</div>';
-  } else {
-    var html="";
-    recs.forEach(function(s){
-      var ac=s.recommendation.action;
-      var cls="action-"+ac.toLowerCase();
-      html+='<div class="rec-item '+cls+'">'+
-        '<div class="rec-meta"><b>'+s.symbol+'</b><br>'+
-        'Strike $'+s.strike+' | DTE '+s.dte+' | PnL '+F(s.pnl_pct)+'%<br><br>'+
-        B(ac)+' '+PB(s.recommendation.priority)+'</div>'+
-        '<div class="rec-detail">'+ac+' - '+s.recommendation.reason+'</div></div>';
-    });
-    rl.innerHTML=html;
-  }
-}
-
-// === TAB 4: SUMMARY ===
-function renderSummary(sum, opt){
-  var ts=document.getElementById("totalSummary");
-  if(!sum){
-    ts.innerHTML='<div style="color:var(--red)">Ошибка загрузки</div>';
-    return;
-  }
-  var t=sum.total;
-  var assetsPnl=clr(sum.assets.total_pnl);
-  var optPnl=clr(sum.options.total_pnl);
-  var totalPnl=clr(t.total_pnl);
-  ts.innerHTML=
-    '<div class="summary-card"><div class="label">Assets PnL</div><div class="value '+assetsPnl+'">'+U(sum.assets.total_pnl)+'</div><div class="sub '+assetsPnl+'">'+P(sum.assets.total_pnl_pct)+'</div></div>'+
-    '<div class="summary-card"><div class="label">Options PnL</div><div class="value '+optPnl+'">'+U(sum.options.total_pnl)+'</div><div class="sub '+optPnl+'">'+P(sum.options.total_pnl_pct)+'</div></div>'+
-    '<div class="summary-card"><div class="label">Общий PnL</div><div class="value '+totalPnl+'">'+U(t.total_pnl)+'</div><div class="sub '+totalPnl+'">'+P(t.total_pnl_pct)+'</div></div>';
-
-  // Set ladder range inputs (default ±20% from avg)
-  if(sum.assets && sum.assets.total_cost > 0 && posData && posData.positions && posData.positions.length > 0){
-    var avgP = posData.positions[0].avg_price;
-    var defMin = Math.round(avgP * 0.8);
-    var defMax = Math.round(avgP * 1.2);
-    var minInput = document.getElementById("ladderMin");
-    var maxInput = document.getElementById("ladderMax");
-    if(minInput && maxInput){
-      if(!minInput.value) minInput.value = defMin;
-      if(!maxInput.value) maxInput.value = defMax;
-    }
-  }
-}
-
-function updateLadderRange(){
-  var minInput = document.getElementById("ladderMin");
-  var maxInput = document.getElementById("ladderMax");
-  if(!minInput || !maxInput) { alert('Поля не найдены'); return; }
-  var minVal = parseInt(minInput.value);
-  var maxVal = parseInt(maxInput.value);
-  if(isNaN(minVal) || isNaN(maxVal)){ alert('Введите числа'); return; }
-  fetch(API + "/api/combined-ladder?min_price=" + minVal + "&max_price=" + maxVal)
-    .then(function(r){ return r.json(); })
-    .then(function(comb){
-      if(!comb || !comb.ladder){ alert('Нет данных'); return; }
-      combinedLadder = comb;
-      renderPnnLadderTable(posData || {});
-    })
-    .catch(function(e){ alert('Ошибка: '+e.message); });
-}
-
-function resetLadderRange(){
-  var minInput = document.getElementById("ladderMin");
-  var maxInput = document.getElementById("ladderMax");
-  if(!minInput || !maxInput) return;
-  api("/api/positions").then(function(pos){
-    if(pos && pos.positions && pos.positions.length > 0){
-      var avgP = pos.positions[0].avg_price;
-      minInput.value = Math.round(avgP * 0.8);
-      maxInput.value = Math.round(avgP * 1.2);
-      updateLadderRange();
-    }
-  });
-}
-
-function renderPnnLadderTable(posData){
-  var ladderEl = document.getElementById("posLadder");
-  if(!ladderEl || !combinedLadder || !combinedLadder.ladder) return;
-  var solPnlMap = {};
-  (posData.pnl_ladder || []).forEach(function(row){ solPnlMap[row.price] = row.pnl; });
-  var html = "";
-  combinedLadder.ladder.forEach(function(row){
-    var cls = row.is_current ? "color:var(--blue);font-weight:700" : clr(row.total_pnl);
-    var icon = row.is_current ? " 🔵" : (row.is_avg ? " 📍" : (row.total_pnl >= 0 ? " 🟢" : " 🔴"));
-    // row содержит sol_pnl, opt_pnl, total_pnl из API
-    var solPnl = row.sol_pnl || solPnlMap[row.price] || 0;
-    var optPnl = row.opt_pnl || (row.total_pnl - solPnl);
-    var intrinsic = row.intrinsic_value || 0;
-    html += '<tr><td class="'+cls+'">$'+row.price+icon+'</td>';
-    html += '<td class="'+cls+'">'+P(row.total_pnl_pct)+'</td>';
-    html += '<td class="'+cls+'">'+U(solPnl)+'</td>';
-    html += '<td class="'+cls+'">'+U(row.total_pnl)+'</td>';
-    html += '<td class="'+clr(optPnl)+'">'+U(optPnl)+'</td>';
-    html += '<td class="'+clr(intrinsic)+'">'+U(intrinsic)+'</td></tr>';
-  });
-  ladderEl.innerHTML = html;
-}
-
-// Keep global posData reference for renderPnnLadderTable
 var posData = null;
 
 // === LAYER TABS ===
@@ -2844,7 +2603,7 @@ function refreshLayers(layer){
 }
 
 // === Load all ===
-var combinedLadder=null;
+
 function showDataStatus(){
   // Берём data_source из ближайшего слоя
   var sources = [
@@ -2904,39 +2663,32 @@ function loadAll(){
   Promise.all([
     api("/api/positions"),
     api("/api/options"),
-    api("/api/recommendations"),
-    api("/api/summary"),
     api("/api/layers"),
-    api("/api/combined-ladder"),
     api("/api/layer/distant"+distantQ),
     api("/api/layer/mid"+midQ),
     api("/api/layer/near"+nearQ)
   ]).then(function(results){
-    combinedLadder=results[5]||{ladder:[]};
     // Store options data for status check
     window._lastOptionsData = results[1] || {};
     updateDataSourceBadge(results[1] ? results[1].data_source : null);
     renderPositions(results[0]);
     loadPortfolio();
     renderOptions(results[1], results[0]);
-    renderRecommendations(results[2]);
-    renderSummary(results[3], results[1]);
-    renderLayers(results[4]);
-    window._lastLayersData=results[4];
-    renderLayerBudget('distant', results[4]);
-    renderPnnLadderTable(results[0]);
-    layerData_distant=results[6];
-    layerData_mid=results[7];
-    layerData_near=results[8];
-    console.log('loadAll: rendering layers — distant='+JSON.stringify(results[6]).substring(0,80)+' mid='+JSON.stringify(results[7]).substring(0,80)+' near='+JSON.stringify(results[8]).substring(0,80));
+    renderLayers(results[2]);
+    window._lastLayersData=results[2];
+    renderLayerBudget('distant', results[2]);
+    layerData_distant=results[3];
+    layerData_mid=results[4];
+    layerData_near=results[5];
+    console.log('loadAll: rendering layers — distant='+JSON.stringify(results[3]).substring(0,80)+' mid='+JSON.stringify(results[4]).substring(0,80)+' near='+JSON.stringify(results[5]).substring(0,80));
     showDataStatus();
     api("/api/purchased-options").then(function(p){
       purchasedOptions={distant:p.distant||[],mid:p.mid||[],near:p.near||[]};
-      renderAvailableOptions('distant', 'layerContent-distant', results[6]);
-      renderAvailableOptions('mid', 'layerContent-mid', results[7]);
-      renderAvailableOptions('near', 'layerContent-near', results[8]);
-      renderAvailableOptions('near', 'layerContent-near-tab', results[8]);
-      renderLayerBudget('near', results[4]);
+      renderAvailableOptions('distant', 'layerContent-distant', results[3]);
+      renderAvailableOptions('mid', 'layerContent-mid', results[4]);
+      renderAvailableOptions('near', 'layerContent-near', results[5]);
+      renderAvailableOptions('near', 'layerContent-near-tab', results[5]);
+      renderLayerBudget('near', results[2]);
       renderDistantDeltaMatrix();
       renderDistantPnlMatrix();
       renderDistantSummaryMatrix();

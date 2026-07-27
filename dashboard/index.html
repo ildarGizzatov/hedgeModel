@@ -78,7 +78,7 @@ tr:hover td{background:rgba(88,166,255,.05)}
 <div class="header"><h1>HedgeModel Dashboard</h1><div style="display:flex;align-items:center;gap:12px"><span id="headerSpot" style="color:var(--blue);font-weight:600"></span><button class="btn-action" onclick="loadAll()">🔄 Обновить</button><span id="ds-badge" class="ds-live" style="font-size:12px">🟢 live</span><div id="headerUpdated" style="color:var(--text-dim);font-size:12px">Загрузка...</div></div></div>
 <div id="dataStatusBanner" style="display:none"></div>
 <div class="tabs" style="padding:0 24px;display:flex;align-items:center;justify-content:space-between">
-<div style="display:flex;gap:0"><div class="tab active" data-tab="positions">Позиции</div><div class="tab" data-tab="options">Опционы</div><div class="tab" data-tab="near-layer">Ближний слой</div><div class="tab" data-tab="distant-layer">Дальний слой</div><div class="tab" data-tab="mid">Средний</div><div class="tab" data-tab="near">Ближний</div><div class="tab" data-tab="recommendations">Рекомендации</div><div class="tab" data-tab="summary">Сводка</div></div>
+<div style="display:flex;gap:0"><div class="tab active" data-tab="positions">Позиции</div><div class="tab" data-tab="options">Опционы</div><div class="tab" data-tab="near-layer">Ближний слой</div><div class="tab" data-tab="distant-layer">Дальний слой</div><div class="tab" data-tab="mid">Средний</div><div class="tab" data-tab="near">Ближний</div></div>
 </div>
 <div style="padding:20px 24px">
 <div class="tab-content active" id="tab-positions">
@@ -115,11 +115,7 @@ tr:hover td{background:rgba(88,166,255,.05)}
   <div style="width:50%;flex-shrink:0"><div class="card"><h2>Вклад слоёв в PnL</h2><div style="max-height:500px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0"><th style="text-align:right;padding:2px 6px">Цена</th><th style="text-align:right;padding:2px 6px">Active%</th><th style="text-align:right;padding:2px 6px">Adapt%</th><th style="text-align:right;padding:2px 6px">Anchor%</th><th style="text-align:right;padding:2px 6px">Active_D</th><th style="text-align:right;padding:2px 6px">Adapt_D</th><th style="text-align:right;padding:2px 6px">Anchor_D</th></tr></thead><tbody id="layerPnlProfile"></tbody></table></div></div></div>
   <div style="width:50%;flex-shrink:0"><div class="card"><h2 style="display:flex;align-items:center;gap:8px">Изменения в профиле PNL <button class="btn-action" onclick="savePnlProfile()" style="font-size:11px">💾 Сохранить</button></h2><div style="max-height:500px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0"><th style="text-align:right;padding:2px 6px">Цена</th><th style="text-align:right;padding:2px 6px">%Просадки</th><th style="text-align:right;padding:2px 6px">Целевой PnL</th><th style="text-align:right;padding:2px 6px">Текущий PnL</th><th style="text-align:right;padding:2px 6px">Разница</th></tr></thead><tbody id="targetPnlProfile"></tbody></table></div></div></div>
 </div>
-<div style="display:flex;gap:16px;margin-top:16px">
-  <div style="width:33%;flex-shrink:0"><div class="card" style="height:650px"><h2 style="margin:0 0 8px 0;padding:0">Общий профиль гаммы</h2><div style="height:calc(100% - 28px)"><svg id="gammaChart" style="display:block;width:100%;height:100%"></svg></div></div></div>
-  <div style="width:33%;flex-shrink:0"><div class="card"><h2>Сводка Gamma</h2><div id="gammaSummary" style="padding:12px;font-size:12px"></div></div></div>
-  <div style="width:33%;flex-shrink:0"><div class="card"><h2>Зоны страховки</h2><div id="insuranceZones" style="padding:12px;font-size:12px"></div></div></div>
-</div>
+
 </div>
 <div id="buyModal" class="modal-overlay" style="display:none">
   <div class="modal-box">
@@ -213,30 +209,7 @@ tr:hover td{background:rgba(88,166,255,.05)}
 </div>
 <div class="card" style="margin-top:24px"><h2>📊 Суммарный</h2><div id="aggregatorContent"></div></div>
 </div>
-<div class="tab-content" id="tab-recommendations">
-<div class="refresh-bar" id="refresh3"><span id="cd3"></span></div>
-<div class="card"><h2>Anchor Layer (T006)</h2><div id="anchorInfo"></div></div>
-<div class="card"><h2>Рекомендации</h2><div id="recList"></div></div>
-<div class="card"><h2>Опционные позиции</h2>
-<table><thead><tr><th>Символ</th><th>Cost</th><th>PnL</th><th>Layer</th><th>DTE</th><th>Δ</th><th>Γ</th><th>Θ</th><th>IV</th></tr></thead>
-<tbody id="optTableRec"></tbody></table></div>
-</div>
-<div class="tab-content" id="tab-summary">
-<div class="refresh-bar" id="refresh4"><span id="cd4"></span><button class="btn-action" onclick="updateOptions()">⚡ Обновить данные</button></div>
-<div class="summary-row" id="totalSummary"></div>
-<div class="card"><h2>PnL по цене (шаг $1, ±20% от avg)</h2>
-<div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
-  <span style="color:var(--text-dim);font-size:12px">Интервал:</span>
-  <label style="font-size:12px">Мин $: <input type="number" id="ladderMin" style="width:70px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px 6px;border-radius:4px"></label>
-  <label style="font-size:12px">Макс $: <input type="number" id="ladderMax" style="width:70px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px 6px;border-radius:4px"></label>
-  <button class="btn-action" onclick="updateLadderRange()" style="background:var(--blue);font-size:11px">⚡ Пересчитать</button>
-  <button class="btn-action" onclick="resetLadderRange()" style="background:var(--border);font-size:11px">Сброс</button>
-  <span style="font-size:12px;color:var(--text-dim)">Шаг: $1</span>
-</div>
-<div class="ladder-wrap" style="max-height:300px;overflow-y:auto"><table><thead><tr><th>Цена</th><th>PnL%</th><th>PnL</th><th>PnL+опции</th><th>Вклад опционов</th><th>Intrinsic</th></tr></thead>
-<tbody id="posLadder"></tbody></table></div></div>
 
-</div>
 
 <script src="app.js?t=20260728_gamma_fix"></script>
 </body>

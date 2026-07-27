@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "T009-active-layer-selection.md",
+                "file": "AGENTS.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "T009-active-layer-selection"
+              "title": "AGENTS"
             }
           }
         ]
@@ -184,12 +184,12 @@
       "obsidian-kanban:Create new board": false
     }
   },
-  "active": "61de22f5b4a7b078",
+  "active": "bd9c837cb873cf31",
   "lastOpenFiles": [
-    "hedge_model.db-wal",
     "hedge_model.db-shm",
-    "AGENTS.md",
+    "hedge_model.db-wal",
     "T009-active-layer-selection.md",
+    "AGENTS.md",
     "docs/204-active-layer-selection.md",
     "T011-layer-health-monitoring.md",
     "T010-layer-resource-management.md",
