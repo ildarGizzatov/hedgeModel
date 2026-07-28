@@ -42,6 +42,9 @@ document.querySelectorAll(".subtab").forEach(function(s){
       var gw=document.getElementById('gammaChartWrapper');
       if(gw) gw.style.display='none';
     }
+    if(s.dataset.subtab==='purchased-options'){
+      renderPurchasedNearOptions();
+    }
   });
 });
 
@@ -812,6 +815,43 @@ var layerDefaults={distant:{delta_min:0.05,delta_max:0.20,dte_min:25,dte_max:999
 var purchasedOptions={distant:[],mid:[],near:[]};
 var globalPurchasedSymbols={};
 
+function renderPurchasedNearOptions(){
+  var table=document.getElementById('purchasedOptionsTable');
+  if(!table) return;
+  var allOpts=(window._lastOptionsData||{}).options||[];
+  var opts=allOpts.filter(function(o){return (o.layer||'').toLowerCase()==='active';});
+  if(opts.length===0){
+    table.innerHTML='<tr><td colspan="17" style="text-align:center;padding:12px;color:var(--text-dim)">Нет купленных опционов ближнего слоя</td></tr>';
+    return;
+  }
+  var html='';
+  opts.forEach(function(o){
+    var c1=Math.abs(o.delta)>0.5?'#ff6b6b':Math.abs(o.delta)>0.35?'#ffa502':'#4ecdc4';
+    var c2=Math.abs(o.delta_entry)>0.5?'#ff6b6b':Math.abs(o.delta_entry)>0.35?'#ffa502':'#4ecdc4';
+    var pnlClass=o.pnl>=0?'color:#4ecdc4':'color:#ff6b6b';
+    html+='<tr>';
+    html+='<td style="text-align:left;padding:2px 3px">'+o.symbol+'</td>';
+    html+='<td style="text-align:right;padding:2px 3px">'+o.strike+'</td>';
+    html+='<td style="text-align:center;padding:2px 3px">'+o.dte+'</td>';
+    html+='<td style="text-align:center;padding:2px 3px">'+o.qty+'</td>';
+    html+='<td style="text-align:right;padding:2px 3px">'+F(o.current_price)+'</td>';
+    html+='<td style="text-align:right;padding:2px 3px;font-size:10px;color:#aaa">'+o.delta_entry+'</td>';
+    html+='<td style="text-align:right;padding:2px 3px;font-size:10px;color:#aaa">'+o.gamma_entry+'</td>';
+    html+='<td style="text-align:right;padding:2px 3px;font-size:10px;color:#aaa">'+o.theta_entry+'</td>';
+    html+='<td style="text-align:right;padding:2px 3px;font-weight:bold;color:'+c1+'">'+o.delta+'</td>';
+    html+='<td style="text-align:right;padding:2px 3px;color:'+c1+'">'+o.delta_change+'</td>';
+    html+='<td style="text-align:right;padding:2px 3px;color:'+c1+'">'+o.gamma+'</td>';
+    html+='<td style="text-align:right;padding:2px 3px;color:'+c1+'">'+o.gamma_change+'</td>';
+    html+='<td style="text-align:right;padding:2px 3px;font-size:10px;color:#aaa">'+o.theta_entry+'</td>';
+    html+='<td style="text-align:right;padding:2px 3px;color:'+c1+'">'+o.theta+'</td>';
+    html+='<td style="text-align:right;padding:2px 3px;font-size:10px;color:#aaa">'+o.iv_entry+'</td>';
+    html+='<td style="text-align:right;padding:2px 3px;color:'+c1+'">'+o.iv+'</td>';
+    html+='<td style="text-align:right;padding:2px 3px;font-weight:bold;'+pnlClass+'">'+o.pnl+'</td>';
+    html+='</tr>';
+  });
+  table.innerHTML=html;
+}
+
 window.__so = function(layer,symbol){
   selectOption(layer,symbol);
 };
@@ -1292,6 +1332,14 @@ function _bsPutGamma(S, K, T, iv){
 function drawNearSelectedGammaChart(){
   var canvas=document.getElementById('nearSelectedGammaChart');
   if(!canvas) return;
+  // Resize canvas to container width
+  var wrapper=canvas.parentElement.parentElement;
+  if(wrapper){
+    var cw=Math.floor(wrapper.clientWidth);
+    if(cw>0 && cw!==canvas.width){
+      canvas.width=cw;
+    }
+  }
   var opts=selectedOption.near||[];
   if(opts.length===0){
     var ctx=canvas.getContext('2d');
@@ -2928,6 +2976,7 @@ function loadAll(){
       renderDistantDeltaMatrix();
       renderDistantPnlMatrix();
       renderDistantSummaryMatrix();
+      renderPurchasedNearOptions();
 
       // Build global purchased symbols lookup
       globalPurchasedSymbols={};
