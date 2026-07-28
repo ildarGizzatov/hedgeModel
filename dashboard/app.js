@@ -1322,7 +1322,7 @@ function drawNearSelectedGammaChart(){
   // Insurance range for near layer: 3-10% below spot
   var insLow=Math.round(spot*(1-10/100));
   var insHigh=Math.round(spot*(1-3/100));
-  var padRange=3;
+  var padRange=4;
   var chartLow=insLow-padRange;
   var chartHigh=insHigh+padRange;
   var step=1;
@@ -1393,7 +1393,7 @@ function drawNearSelectedGammaChart(){
     ctx.strokeStyle='rgba(255,255,255,0.4)';ctx.lineWidth=1;ctx.setLineDash([3,3]);
     ctx.beginPath();ctx.moveTo(sx,pad.t);ctx.lineTo(sx,pad.t+cH);ctx.stroke();
     ctx.setLineDash([]);
-    ctx.fillStyle='rgba(255,255,255,0.6)';ctx.font='10px monospace';
+    ctx.fillStyle='rgba(255,255,255,0.6)';ctx.font='13px monospace';
     ctx.fillText('S='+spot,sx+3,pad.t+12);
   }
 
@@ -1419,7 +1419,7 @@ function drawNearSelectedGammaChart(){
       ctx.fillStyle=colors[i%colors.length];ctx.fill();
       ctx.beginPath();ctx.arc(mx,my,8,0,Math.PI*2);
       ctx.strokeStyle=colors[i%colors.length];ctx.lineWidth=2;ctx.stroke();
-      ctx.fillStyle=colors[i%colors.length];ctx.font='bold 9px monospace';ctx.textAlign='center';
+      ctx.fillStyle=colors[i%colors.length];ctx.font='bold 12px monospace';ctx.textAlign='center';
       ctx.fillText('Γ='+maxG.toFixed(5),mx,my-12);
       ctx.fillText('$'+prices[maxJ],mx,my+16);
     }
@@ -1473,7 +1473,7 @@ function drawNearSelectedGammaChart(){
   ctx.beginPath();ctx.moveTo(pad.l,pad.t+cH);ctx.lineTo(pad.l+cW,pad.t+cH);ctx.stroke();
 
   // Price labels
-  ctx.fillStyle='#e6edf3';ctx.font='bold 11px monospace';ctx.textAlign='center';
+  ctx.fillStyle='#e6edf3';ctx.font='bold 13px monospace';ctx.textAlign='center';
   for(var j=0;j<prices.length;j+=Math.max(1,Math.floor(prices.length/8))){
     var x=toX(prices[j]);
     if(x<pad.l-5||x>pad.l+cW+5) continue;
@@ -1490,7 +1490,7 @@ function drawNearSelectedGammaChart(){
   }
 
   // Y axis labels
-  ctx.textAlign='right';ctx.fillStyle='#e6edf3';ctx.font='11px monospace';
+  ctx.textAlign='right';ctx.fillStyle='#e6edf3';ctx.font='13px monospace';
   for(var i=0;i<=5;i++){
     var val=maxGamma*(1-i/5);
     var y=pad.t+cH*(i/5);
@@ -2517,7 +2517,7 @@ function drawGammaChart(allRows, filtered, strike, hedgeLow, hedgeHigh, chartId,
     ctx.strokeStyle='rgba(255,255,255,0.3)';ctx.lineWidth=1;ctx.setLineDash([3,3]);
     ctx.beginPath();ctx.moveTo(sx,pad.t);ctx.lineTo(sx,pad.t+cH);ctx.stroke();
     ctx.setLineDash([]);
-    ctx.fillStyle='rgba(255,255,255,0.5)';ctx.font='10px monospace';
+    ctx.fillStyle='rgba(255,255,255,0.5)';ctx.font='13px monospace';
     ctx.fillText('K='+strike,sx+3,pad.t+12);
   }
 
@@ -2579,7 +2579,7 @@ function drawGammaChart(allRows, filtered, strike, hedgeLow, hedgeHigh, chartId,
 
   // Legend - below prices area
   var ly=pad.t+cH+50;
-  ctx.textAlign='left';ctx.font='10px monospace';
+  ctx.textAlign='left';ctx.font='13px monospace';
   ctx.fillStyle='#f0883e';ctx.fillRect(pad.l,ly,10,10);
   ctx.fillStyle='#8b949e';ctx.fillText('Γ',pad.l+14,ly+9);
   if(hedgeLow){
