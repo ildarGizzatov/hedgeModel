@@ -1182,7 +1182,15 @@ function syncNearSelected(){
     remainingBudget=activeLayer.budget-activeLayer.spent;
     if(remainingBudget<0) remainingBudget=0;
   }
-  var opts=selectedOption.near||[];
+  // Load purchased near options into selected if table is empty
+  var currentOpts=selectedOption.near||[];
+  if(currentOpts.length===0 && purchasedOptions.near && purchasedOptions.near.length>0){
+    selectedOption.near=purchasedOptions.near.map(function(o){
+      return Object.assign({},o,{checked:true,qty:o.qty||1,price:o.entry_price||0});
+    });
+    currentOpts=selectedOption.near;
+  }
+  var opts=currentOpts||[];
   var html='';
   var sumTotal=0;
   // Fetch metrics for each option
@@ -1216,11 +1224,12 @@ function syncNearSelected(){
       var delta=opt.delta||0;
       var price=opt.price||0;
       var qty=opt.qty||1;
+      var isPurchased=(!!purchasedOptions.near&&purchasedOptions.near.some(function(p){return p.symbol===opt.symbol;}));
       var total=price*qty;
       if(checked) sumTotal+=total;
       var pctFromRemaining='';
-      if(remainingBudget>0&&checked){
-        pctFromRemaining=F(total/remainingBudget*100,1)+'%';
+      if(activeLayer&&activeLayer.budget>0&&checked){
+        pctFromRemaining=F(total/activeLayer.budget*100,1)+'%';
       }
       var m=metricsArr[idx];
       var covMax=m&&(Math.abs(m.coverage-maxVal.cov)<1e-9);
@@ -1236,8 +1245,8 @@ function syncNearSelected(){
       html+='<td style="padding:2px 6px;text-align:right">$'+strike+'</td>';
       html+='<td style="padding:2px 6px;text-align:center">'+(opt.dte||'-')+'</td>';
       html+='<td style="padding:2px 6px;text-align:right">$'+F(price,4)+'</td>';
-      html+='<td style="padding:2px 6px;text-align:center"><input type="number" min="0" step="1" value="'+qty+'" style="width:50px;text-align:center;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px 4px;border-radius:4px" onchange="window._onSelectQtyChange(\'near\','+idx+',this.value)"></td>';
-      html+='<td style="padding:2px 6px;text-align:right">$'+F(total,2)+'</td>';
+      var qtyStyle=isPurchased?" style=\"width:50px;text-align:center;background:#444;border:1px solid #666;color:#999;padding:2px 4px;border-radius:4px\" disabled":"style=\"width:50px;text-align:center;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px 4px;border-radius:4px\"";
+      html+='<td style="padding:2px 6px;text-align:center"><input type="number" min="0" step="1" value="'+qty+'" '+qtyStyle+' onchange="if(!'+(isPurchased?'true':'false')+')window._onSelectQtyChange(\'near\','+idx+',this.value)"></td>';
       html+='<td style="padding:2px 6px;text-align:right">'+pctFromRemaining+'</td>';
       html+='<td style="padding:2px 6px;text-align:right">'+F(delta,4)+'</td>';
       html+='<td style="padding:2px 6px;text-align:right;'+(covMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?F(m.coverage*100,0)+'%':'-')+'</td>';
@@ -1256,7 +1265,7 @@ function syncNearSelected(){
       html+='<td style="padding:2px 6px" colspan="5">Итого:</td>';
       html+='<td style="padding:2px 6px;text-align:right">$'+F(sumTotal,2)+'</td>';
       var pctTotal='';
-      if(remainingBudget>0&&sumTotal>0) pctTotal=F(sumTotal/remainingBudget*100,1)+'%';
+      if(activeLayer&&activeLayer.budget>0&&sumTotal>0) pctTotal=F(sumTotal/activeLayer.budget*100,1)+'%';
       html+='<td style="padding:2px 6px;text-align:right">'+pctTotal+'</td>';
       html+='<td></td><td></td><td></td><td></td><td></td>';
       html+='<td></td>';
