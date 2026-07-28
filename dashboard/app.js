@@ -1211,6 +1211,7 @@ function syncNearSelected(){
       if(m.coverage>maxVal.cov)maxVal.cov=m.coverage;
       if(m.sumGamma>maxVal.sG)maxVal.sG=m.sumGamma;
       if(m.gammaProtection>maxVal.gP)maxVal.gP=m.gammaProtection;
+      
       if(m.accuracy>maxVal.acc)maxVal.acc=m.accuracy;
       if(m.weightedPnL>maxVal.wPnL)maxVal.wPnL=m.weightedPnL;
     }
@@ -1247,11 +1248,12 @@ function syncNearSelected(){
       html+='<td style="padding:2px 6px;text-align:right">$'+F(price,4)+'</td>';
       var qtyStyle=isPurchased?" style=\"width:50px;text-align:center;background:#444;border:1px solid #666;color:#999;padding:2px 4px;border-radius:4px\" disabled":"style=\"width:50px;text-align:center;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px 4px;border-radius:4px\"";
       html+='<td style="padding:2px 6px;text-align:center"><input type="number" min="0" step="1" value="'+qty+'" '+qtyStyle+' onchange="if(!'+(isPurchased?'true':'false')+')window._onSelectQtyChange(\'near\','+idx+',this.value)"></td>';
+      html+='<td style="padding:2px 6px;text-align:right">$'+F(total,2)+'</td>';
       html+='<td style="padding:2px 6px;text-align:right">'+pctFromRemaining+'</td>';
       html+='<td style="padding:2px 6px;text-align:right">'+F(delta,4)+'</td>';
       html+='<td style="padding:2px 6px;text-align:right;'+(covMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?F(m.coverage*100,0)+'%':'-')+'</td>';
       html+='<td style="padding:2px 6px;text-align:right;'+(sGMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?F(m.sumGamma,6):'-')+'</td>';
-      html+='<td style="padding:2px 6px;text-align:right;'+(gPMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?F(m.gammaProtection,2):'-')+'</td>';
+      html+='<td style="padding:2px 6px;text-align:right;'+(gPMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?F(m.gammaProtection,4):'-')+'</td>';
       html+='<td style="padding:2px 6px;text-align:right;'+(accMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?F(m.accuracy*100,0)+'%':'-')+'</td>';
       html+='<td style="padding:2px 6px;text-align:right;'+(wPMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?'$'+F(m.weightedPnL,2):'-')+'</td>';
       html+='<td style="padding:2px 6px;text-align:center"><button style="background:none;border:none;cursor:pointer;color:#d32f2f;font-size:14px" onclick="window._onSelectRemove(\'near\','+idx+')">✕</button></td>';
