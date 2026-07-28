@@ -20,6 +20,7 @@ document.querySelectorAll(".tab").forEach(function(t){
       renderAvailableOptions('near', 'layerContent-near-tab', window.layerData_near);
     }
     if(t.dataset.tab==='near-layer'){
+      syncNearSelected();
       setTimeout(function(){drawNearSelectedGammaChart();},50);
     }
 
@@ -34,17 +35,6 @@ document.querySelectorAll(".subtab").forEach(function(s){
     s.classList.add("active");
     var subEl=document.getElementById(s.dataset.subtab);
     if(subEl){ subEl.style.display="block"; subEl.classList.add("active"); }
-    if(s.dataset.subtab==='new-options'){
-      syncNearSelected();
-      var gw=document.getElementById('gammaChartWrapper');
-      if(gw) gw.style.display='block';
-    } else {
-      var gw=document.getElementById('gammaChartWrapper');
-      if(gw) gw.style.display='none';
-    }
-    if(s.dataset.subtab==='purchased-options'){
-      renderPurchasedNearOptions();
-    }
   });
 });
 
@@ -814,43 +804,6 @@ selectedOption.near=selectedOption.near||[];
 var layerDefaults={distant:{delta_min:0.05,delta_max:0.20,dte_min:25,dte_max:99999},mid:{delta_min:0.20,delta_max:0.40,dte_min:10,dte_max:25},near:{delta_min:0.25,delta_max:0.45,dte_min:5,dte_max:25}};
 var purchasedOptions={distant:[],mid:[],near:[]};
 var globalPurchasedSymbols={};
-
-function renderPurchasedNearOptions(){
-  var table=document.getElementById('purchasedOptionsTable');
-  if(!table) return;
-  var allOpts=(window._lastOptionsData||{}).options||[];
-  var opts=allOpts.filter(function(o){return (o.layer||'').toLowerCase()==='active';});
-  if(opts.length===0){
-    table.innerHTML='<tr><td colspan="17" style="text-align:center;padding:12px;color:var(--text-dim)">Нет купленных опционов ближнего слоя</td></tr>';
-    return;
-  }
-  var html='';
-  opts.forEach(function(o){
-    var c1=Math.abs(o.delta)>0.5?'#ff6b6b':Math.abs(o.delta)>0.35?'#ffa502':'#4ecdc4';
-    var c2=Math.abs(o.delta_entry)>0.5?'#ff6b6b':Math.abs(o.delta_entry)>0.35?'#ffa502':'#4ecdc4';
-    var pnlClass=o.pnl>=0?'color:#4ecdc4':'color:#ff6b6b';
-    html+='<tr>';
-    html+='<td style="text-align:left;padding:2px 3px">'+o.symbol+'</td>';
-    html+='<td style="text-align:right;padding:2px 3px">'+o.strike+'</td>';
-    html+='<td style="text-align:center;padding:2px 3px">'+o.dte+'</td>';
-    html+='<td style="text-align:center;padding:2px 3px">'+o.qty+'</td>';
-    html+='<td style="text-align:right;padding:2px 3px">'+F(o.current_price)+'</td>';
-    html+='<td style="text-align:right;padding:2px 3px;font-size:10px;color:#aaa">'+o.delta_entry+'</td>';
-    html+='<td style="text-align:right;padding:2px 3px;font-size:10px;color:#aaa">'+o.gamma_entry+'</td>';
-    html+='<td style="text-align:right;padding:2px 3px;font-size:10px;color:#aaa">'+o.theta_entry+'</td>';
-    html+='<td style="text-align:right;padding:2px 3px;font-weight:bold;color:'+c1+'">'+o.delta+'</td>';
-    html+='<td style="text-align:right;padding:2px 3px;color:'+c1+'">'+o.delta_change+'</td>';
-    html+='<td style="text-align:right;padding:2px 3px;color:'+c1+'">'+o.gamma+'</td>';
-    html+='<td style="text-align:right;padding:2px 3px;color:'+c1+'">'+o.gamma_change+'</td>';
-    html+='<td style="text-align:right;padding:2px 3px;font-size:10px;color:#aaa">'+o.theta_entry+'</td>';
-    html+='<td style="text-align:right;padding:2px 3px;color:'+c1+'">'+o.theta+'</td>';
-    html+='<td style="text-align:right;padding:2px 3px;font-size:10px;color:#aaa">'+o.iv_entry+'</td>';
-    html+='<td style="text-align:right;padding:2px 3px;color:'+c1+'">'+o.iv+'</td>';
-    html+='<td style="text-align:right;padding:2px 3px;font-weight:bold;'+pnlClass+'">'+o.pnl+'</td>';
-    html+='</tr>';
-  });
-  table.innerHTML=html;
-}
 
 window.__so = function(layer,symbol){
   selectOption(layer,symbol);
@@ -2976,7 +2929,6 @@ function loadAll(){
       renderDistantDeltaMatrix();
       renderDistantPnlMatrix();
       renderDistantSummaryMatrix();
-      renderPurchasedNearOptions();
 
       // Build global purchased symbols lookup
       globalPurchasedSymbols={};
