@@ -73,6 +73,8 @@ def _get_live_greeks() -> tuple[dict, bool]:
                 "gamma": float(g) if g else 0,
                 "theta": float(t) if t else 0,
                 "iv": float(iv) if iv else 0,
+                "lastPrice": float(o.get("lastPrice") or 0),
+                "dte": o.get("expiryTimestamp") and int((o.get("expiryTimestamp") - o.get("timestamp") or 0) / 86400000) or 0,
             }
             # spot — последний underlyingPrice из чейна
             if o.get("underlyingPrice"):
@@ -803,7 +805,14 @@ def api_options() -> dict[str, Any]:
         layer = (opt["layer"] or "").strip()
 
         greek = greeks_idx.get(symbol, {})
-        current_price = float(greek.get("current_price") or entry_price)
+        current_price = float(greek.get("current_price") or 0)
+        # Если markPrice=0 (не торгуется), пробуем lastPrice
+        if current_price <= 0:
+            last_price = float(greek.get("lastPrice") or 0)
+            if last_price > 0:
+                current_price = last_price
+            else:
+                current_price = entry_price  # fallback
         pnl = (current_price - entry_price) * qty
         delta = float(greek.get("delta") or 0)
         gamma = float(greek.get("gamma") or 0)
@@ -1019,7 +1028,13 @@ def api_recommendations() -> dict[str, Any]:
         entry_price = float(opt["entry_price"] or 0)
         qty = int(opt["qty"])
         greek = latest_greeks.get(symbol, {})
-        current_price = float(greek.get("current_price") or entry_price)
+        current_price = float(greek.get("current_price") or 0)
+        if current_price <= 0:
+            last_price = float(greek.get("lastPrice") or 0)
+            if last_price > 0:
+                current_price = last_price
+            else:
+                current_price = entry_price
         pnl_pct = ((current_price - entry_price) / entry_price * 100) if entry_price > 0 else 0
         dte = int(greek.get("dte") or calc_dte(opt["expiry"]))
         delta = abs(float(greek.get("delta") or 0))
@@ -1401,7 +1416,6 @@ def api_bs_greeks(symbol: str = None, strike: float = None, dte: float = None, i
     
     # Получаем текущую рыночную цену из Bybit
     live_greeks, _ = _get_live_greeks()
-    print(f"DEBUG bs-greeks: symbol={symbol}, live_greeks keys count={len(live_greeks)}, first keys: {list(live_greeks.keys())[:3]}")
     current_bybit = 0
     sym = symbol or ""
     # Прямое совпадение
@@ -1414,6 +1428,16 @@ def api_bs_greeks(symbol: str = None, strike: float = None, dte: float = None, i
             k_clean = k.replace("SOL_", "").replace("_USDC", "")
             if k_clean == sym_base or sym_base in k or k in sym:
                 current_bybit = float(v.get("current_price") or 0)
+                break
+    # Если current_price=0 (не торгуется), пробуем lastPrice
+    if current_bybit <= 0:
+        sym_base = sym.replace("SOL_", "").replace("_USDC", "") if sym else ""
+        for k, v in live_greeks.items():
+            k_clean = k.replace("SOL_", "").replace("_USDC", "")
+            if k_clean == sym_base or sym_base in k or k in sym:
+                lp = float(v.get("lastPrice") or 0)
+                if lp > 0:
+                    current_bybit = lp
                 break
     
     return {
