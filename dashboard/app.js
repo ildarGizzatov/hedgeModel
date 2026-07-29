@@ -1348,24 +1348,75 @@ function autoSelectBestNear() {
       if (Math.abs(m.gammaProtection - maxVal.gP) < 1e-9) { score++; maxMetrics.push('Γ/$=' + F(m.gammaProtection, 4)); }
       if (Math.abs(m.accuracy - maxVal.acc) < 1e-9) { score++; maxMetrics.push('Prec=' + F(m.accuracy*100, 0) + '%'); }
       if (Math.abs(m.weightedPnL - maxVal.wP) < 1e-9) { score++; maxMetrics.push('wPnL=$' + F(m.weightedPnL, 2)); }
-      scored.push({idx: i, score: score, symbol: combined[i].symbol, strike: combined[i].strike, dte: combined[i].dte, maxMetrics: maxMetrics});
+      scored.push({idx: i, score: score, symbol: combined[i].symbol, strike: combined[i].strike, dte: combined[i].dte, iv: combined[i].iv, price: combined[i].price, spot_price: spot, maxMetrics: maxMetrics});
     }
     
     scored.sort(function(a, b) { return b.score - a.score; });
     
-    var msg = 'ТОП-3 лучших опционов (DTE<=18):\n\n';
-    for (var i = 0; i < Math.min(3, scored.length); i++) {
-      var s = scored[i];
-      msg += (i+1) + '. ' + s.symbol + ' K$' + s.strike + ' DTE=' + s.dte + '\n';
-      if (s.maxMetrics.length > 0) {
-        msg += '   ' + s.maxMetrics.join('  ') + '\n';
-      } else {
-        msg += '   (нет макс. метрик)\n';
-      }
-    }
-    alert(msg);
+    // Store top 3 for table
+    window._bestOptions = scored.slice(0, 3);
+    
+    renderBestOptionsTable();
+    
     btn.textContent = '⚡ Автовыбор лучшего опциона';
   });
+}
+
+function renderBestOptionsTable() {
+  var tbody = document.getElementById('bestOptionsTable');
+  if (!tbody || !window._bestOptions || window._bestOptions.length === 0) {
+    if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-dim);padding:10px">Нажмите "Автовыбор лучшего опциона" для анализа</td></tr>';
+    return;
+  }
+  
+  var rows = '';
+  var selected = selectedOption.near || [];
+  var selectedSymbols = {};
+  selected.forEach(function(opt) { selectedSymbols[opt.symbol] = true; });
+  
+  window._bestOptions.forEach(function(opt, i) {
+    var alreadySelected = selectedSymbols[opt.symbol];
+    var rowStyle = alreadySelected ? 'style="opacity:0.5"' : '';
+    rows += '<tr ' + rowStyle + '>';
+    rows += '<td style="text-align:center;padding:3px 6px;font-weight:700">' + (i+1) + '</td>';
+    rows += '<td style="text-align:left;padding:3px 6px;cursor:pointer" onclick="addBestOptionToSelected(' + i + ')">' + opt.symbol + '</td>';
+    rows += '<td style="padding:3px 6px;text-align:right">' + opt.strike + '</td>';
+    rows += '<td style="padding:3px 6px;text-align:center">' + opt.dte + '</td>';
+    rows += '<td style="padding:3px 6px;text-align:center"><b style="color:' + (opt.score >= 3 ? 'var(--green)' : opt.score >= 2 ? 'orange' : 'var(--text-dim)') + '">' + opt.score + '/5</b></td>';
+    rows += '<td style="padding:3px 6px;text-align:right;font-size:10px;color:var(--blue)">' + (opt.maxMetrics.length > 0 ? opt.maxMetrics.join(' | ') : '—') + '</td>';
+    rows += '<td style="text-align:center;padding:3px 6px">' + (alreadySelected ? '✅' : '<button class="btn-action" style="font-size:10px;padding:2px 8px" onclick="addBestOptionToSelected(' + i + ')">✔</button>') + '</td>';
+    rows += '</tr>';
+  });
+  
+  tbody.innerHTML = rows;
+}
+
+function addBestOptionToSelected(idx) {
+  if (!window._bestOptions || !window._bestOptions[idx]) return;
+  var opt = window._bestOptions[idx];
+  
+  var selected = selectedOption.near || [];
+  if (selected.some(function(x) { return x.symbol === opt.symbol; })) {
+    alert('Этот опцион уже выбран');
+    return;
+  }
+  
+  selected.push({
+    symbol: opt.symbol, strike: opt.strike, dte: opt.dte, iv: opt.iv,
+    price: opt.price, qty: 1, checked: true, spot_price: opt.spot_price, spot_at_entry: opt.spot_price
+  });
+  
+  var selList = JSON.parse(localStorage.getItem('selectedOptions') || '{}');
+  if (!selList.near) selList.near = [];
+  selList.near.push({
+    symbol: opt.symbol, strike: opt.strike, dte: opt.dte, iv: opt.iv,
+    price: opt.price, qty: 1, spot_at_entry: opt.spot_price
+  });
+  localStorage.setItem('selectedOptions', JSON.stringify(selList));
+  
+  syncNearSelected();
+  drawNearSelectedGammaChart();
+  renderBestOptionsTable();
 }
 
 function _bsPutGamma(S, K, T, iv){

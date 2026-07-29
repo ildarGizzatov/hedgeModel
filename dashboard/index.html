@@ -134,9 +134,16 @@ tr:hover td{background:rgba(88,166,255,.05)}
 </div>
 
 <div class="tab-content" id="tab-near-layer">
-<div class="card" style="width:100%">
+<div style="display:flex;gap:12px">
+<div class="card" style="width:50%">
 <h2 id="layerTitle-near">Доступные опционы</h2>
 <div id="layerContent-near"></div>
+</div>
+<div class="card" style="width:50%" id="bestOptionsWrapper">
+<h2>Лучшие опционы</h2>
+<div style="max-height:400px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0">
+<th style="text-align:center;padding:3px 6px;width:30px">#</th><th style="text-align:left;padding:3px 6px">Опцион</th><th style="padding:3px 6px;text-align:right">Страйк</th><th style="padding:3px 6px;text-align:center">DTE</th><th style="padding:3px 6px;text-align:center">Рейтинг</th><th style="padding:3px 6px;text-align:right">Макс. метрики</th><th style="padding:3px 6px;text-align:center">✔</th>
+</tr></thead><tbody id="bestOptionsTable"></tbody></table></div></div>
 </div>
 <div style="margin:8px 0"><button class="btn-action" onclick="autoSelectBestNear()" style="font-size:13px;padding:6px 16px">⚡ Автовыбор лучшего опциона</button></div>
 <div class="card" style="width:100%"><h2>Выбранные опционы</h2><div id="nearBudgetInfo" style="padding:8px;font-size:14px;font-weight:600;margin-bottom:4px"></div><div style="max-height:250px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0">
