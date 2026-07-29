@@ -776,6 +776,7 @@ def api_purchased_options() -> dict[str, Any]:
     return {
         "distant": by_layer["distant"], "mid": by_layer["mid"], "near": by_layer["near"],
         "data_source": _get_greeks_status(),
+        "qty": qty,
     }
 
 
@@ -1306,6 +1307,7 @@ def api_black_scholes() -> dict[str, Any]:
         "strike": strike,
         "ladder": ladder,
         "data_source": _get_greeks_status(),
+        "qty": qty,
     }
 
 
@@ -1365,7 +1367,7 @@ def _get_hedge_range_by_gamma(rows):
     return {"low": low, "high": high, "gamma_max": gamma_max, "gamma_80": gamma_80, "spot_at_max": max_g["price"]}
 
 @app.get("/api/bs-greeks")
-def api_bs_greeks(symbol: str = None, strike: float = None, dte: float = None, iv: float = None, spot: float = None, premium: float = None, layer: str = None) -> dict:
+def api_bs_greeks(symbol: str = None, strike: float = None, dte: float = None, iv: float = None, spot: float = None, premium: float = None, layer: str = None, qty: float = 1) -> dict:
     """BS греки для Put-опциона (от текущей спот вниз до |delta| >= 0.85)."""
     if spot is None or strike is None or dte is None or iv is None:
         return {"error": "missing params"}
@@ -1397,6 +1399,23 @@ def api_bs_greeks(symbol: str = None, strike: float = None, dte: float = None, i
         if abs(g.delta) >= 0.85:
             break
     
+    # Получаем текущую рыночную цену из Bybit
+    live_greeks, _ = _get_live_greeks()
+    print(f"DEBUG bs-greeks: symbol={symbol}, live_greeks keys count={len(live_greeks)}, first keys: {list(live_greeks.keys())[:3]}")
+    current_bybit = 0
+    sym = symbol or ""
+    # Прямое совпадение
+    if sym and sym in live_greeks:
+        current_bybit = float(live_greeks[sym].get("current_price") or 0)
+    # Поиск по подстроке (без префиксов)
+    if not current_bybit:
+        sym_base = sym.replace("SOL_", "").replace("_USDC", "") if sym else ""
+        for k, v in live_greeks.items():
+            k_clean = k.replace("SOL_", "").replace("_USDC", "")
+            if k_clean == sym_base or sym_base in k or k in sym:
+                current_bybit = float(v.get("current_price") or 0)
+                break
+    
     return {
         "symbol": symbol or "SOL-PUT-UNKNOWN",
         "strike": strike,
@@ -1404,10 +1423,12 @@ def api_bs_greeks(symbol: str = None, strike: float = None, dte: float = None, i
         "dte": dte,
         "iv": iv,
         "entry_premium": premium or 0,
+        "current_price": current_bybit,
         "rows": rows,
         "hedge_range": _get_hedge_range_by_gamma(rows),
         "insurance_range": _get_hedge_range_pct(layer, spot),
         "data_source": _get_greeks_status(),
+        "qty": qty,
     }
 
 

@@ -1166,7 +1166,7 @@ function calcMetrics(bsData){
     weightedPnL+=dPnL*w;
     prevPnL=pnl;
   }
-  return{coverage:coverage,accuracy:accuracy,sumGamma:sumGamma,weightedPnL:weightedPnL,gammaProtection:gammaProtection,costPerDay:costPerDay};
+  var qty=bsData.qty||1; var optPnL=0; var cur=bsData.current_price||0; if(cur>0){optPnL=(cur-premium)*qty;} return{coverage:coverage,accuracy:accuracy,sumGamma:sumGamma,weightedPnL:weightedPnL,gammaProtection:gammaProtection,costPerDay:costPerDay,optionPnL:optPnL};
 }
 
 function syncNearSelected(){
@@ -1198,7 +1198,7 @@ function syncNearSelected(){
   var promises=opts.map(function(opt,idx){
     var spot=currentSpot||opt.spot_price||opt.spot_at_entry||'';
     if(!spot||!opt.strike||!opt.dte||!opt.iv) return Promise.resolve(null);
-    return api('/api/bs-greeks?symbol='+encodeURIComponent(opt.symbol)+'&strike='+opt.strike+'&dte='+opt.dte+'&iv='+opt.iv+'&spot='+spot+'&premium='+opt.price+'&layer=near')
+    return api('/api/bs-greeks?symbol='+encodeURIComponent(opt.symbol)+'&strike='+opt.strike+'&dte='+opt.dte+'&iv='+opt.iv+'&spot='+spot+'&premium='+opt.price+'&layer=near&qty='+(opt.qty||1))
       .then(function(d){return calcMetrics(d);})
       .catch(function(e){return null;});
   });
@@ -1233,6 +1233,7 @@ function syncNearSelected(){
         pctFromRemaining=F(total/activeLayer.budget*100,1)+'%';
       }
       var m=metricsArr[idx];
+      var optionPnL=m?m.optionPnL:0;
       var covMax=m&&(Math.abs(m.coverage-maxVal.cov)<1e-9);
       var sGMax=m&&(Math.abs(m.sumGamma-maxVal.sG)<1e-9);
       var gPMax=m&&(Math.abs(m.gammaProtection-maxVal.gP)<1e-9);
@@ -1245,6 +1246,7 @@ function syncNearSelected(){
       html+='<td style="padding:2px 6px;font-weight:bold">'+opt.symbol+'</td>';
       html+='<td style="padding:2px 6px;text-align:right">$'+strike+'</td>';
       html+='<td style="padding:2px 6px;text-align:center">'+(opt.dte||'-')+'</td>';
+      var pnlClr=optionPnL>=0?'var(--green)':'var(--red)'; html+='<td style="padding:2px 6px;text-align:right;color:'+pnlClr+'">$'+F(optionPnL,2)+'</td>';
       html+='<td style="padding:2px 6px;text-align:right">$'+F(price,4)+'</td>';
       var qtyStyle=isPurchased?" style=\"width:50px;text-align:center;background:#444;border:1px solid #666;color:#999;padding:2px 4px;border-radius:4px\" disabled":"style=\"width:50px;text-align:center;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px 4px;border-radius:4px\"";
       html+='<td style="padding:2px 6px;text-align:center"><input type="number" min="0" step="1" value="'+qty+'" '+qtyStyle+' onchange="if(!'+(isPurchased?'true':'false')+')window._onSelectQtyChange(\'near\','+idx+',this.value)"></td>';
@@ -1419,10 +1421,7 @@ function drawNearSelectedGammaChart(){
       ctx.fillStyle=colors[i%colors.length];ctx.fill();
       ctx.beginPath();ctx.arc(mx,my,8,0,Math.PI*2);
       ctx.strokeStyle=colors[i%colors.length];ctx.lineWidth=2;ctx.stroke();
-      ctx.fillStyle=colors[i%colors.length];ctx.font='bold 12px monospace';ctx.textAlign='center';
-      ctx.fillText('Γ='+maxG.toFixed(5),mx,my-12);
-      ctx.fillText('$'+prices[maxJ],mx,my+16);
-    }
+      }
   }
 
   // Total gamma curve (filled)
@@ -2790,7 +2789,7 @@ function renderGlobalLayer(data){
   if(opts.length===0){el.innerHTML='<div style="padding:12px;color:var(--text-dim)">Нет опционов</div>';return;}
   var html='';
   html+='<div style="max-height:400px;overflow-y:auto;border:1px solid var(--border);border-radius:4px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0">';
-  html+='<th style="text-align:left;padding:3px 6px">Символ</th><th style="padding:3px 6px;text-align:right">Strike</th><th style="padding:3px 6px;text-align:center">DTE</th><th style="padding:3px 6px;text-align:right">Δ</th><th style="padding:3px 6px;text-align:right">IV</th><th style="padding:3px 6px;text-align:right">Θ</th><th style="padding:3px 6px;text-align:right">ν</th><th style="padding:3px 6px;text-align:right">Price</th></tr></thead><tbody>';
+  html+='<th style="text-align:left;padding:3px 6px">Символ</th><th style="padding:3px 6px;text-align:right">Strike</th><th style="padding:3px 6px;text-align:center">DTE</th><th style="padding:3px 6px;text-align:right">PnL</th><th style="padding:3px 6px;text-align:right">Δ</th><th style="padding:3px 6px;text-align:right">IV</th><th style="padding:3px 6px;text-align:right">Θ</th><th style="padding:3px 6px;text-align:right">ν</th><th style="padding:3px 6px;text-align:right">Price</th></tr></thead><tbody>';
   opts.forEach(function(o){
     var rowCls=o.is_layer_match?'background:rgba(63,185,80,0.12);':'';
     var sym=o.symbol.replace(/'/g,"\\'");
