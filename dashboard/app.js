@@ -1457,12 +1457,15 @@ function drawNearSelectedGammaChart(){
   var insHigh=Math.round(spot*(1-3/100));
   var padRange=4;
   var chartLow=insLow-padRange;
-  var chartHigh=insHigh+padRange;
+  var chartHigh=Math.max(insHigh+padRange, spot+padRange);
   var step=1;
   var prices=[];
   for(var p=chartHigh;p>=chartLow;p-=step){prices.push(p);}
 
   var colors=['#58a6ff','#f778ba','#7ee787','#d2a8ff','#ff7b72','#79c0ff','#ffa657','#bd97f5'];
+  var showTotal = document.getElementById('showTotalGamma');
+  var showTotalGamma = showTotal ? showTotal.checked : true;
+
   var optionGammas=[];
   var totalGamma=[];
 
@@ -1484,7 +1487,19 @@ function drawNearSelectedGammaChart(){
     optionGammas.push(gammas);
   }
 
-  var maxGamma=Math.max.apply(null,totalGamma)*1.15||1;
+  var maxGamma;
+  if(showTotalGamma) {
+    maxGamma = Math.max.apply(null, totalGamma) * 1.15 || 1;
+  } else {
+    // Scale to max individual gamma, not total
+    var maxInd = 0;
+    for(var i=0;i<optionGammas.length;i++){
+      for(var j=0;j<optionGammas[i].length;j++){
+        if(optionGammas[i][j] > maxInd) maxInd = optionGammas[i][j];
+      }
+    }
+    maxGamma = maxInd * 1.15 || 1;
+  }
 
   var W=canvas.width,H=canvas.height;
   var pad={t:25,r:20,b:60,l:60};
@@ -1520,15 +1535,12 @@ function drawNearSelectedGammaChart(){
   ctx.beginPath();ctx.moveTo(ix2,pad.t);ctx.lineTo(ix2,pad.t+cH);ctx.stroke();
   ctx.setLineDash([]);
 
-  // Spot line
-  if(spot>=insLow&&spot<=insHigh){
-    var sx=toX(spot);
-    ctx.strokeStyle='rgba(255,255,255,0.4)';ctx.lineWidth=1;ctx.setLineDash([3,3]);
-    ctx.beginPath();ctx.moveTo(sx,pad.t);ctx.lineTo(sx,pad.t+cH);ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle='rgba(255,255,255,0.6)';ctx.font='13px monospace';
-    ctx.fillText('S='+spot,sx+3,pad.t+12);
-  }
+  // Spot line - bright white solid
+  var sx=toX(spot);
+  ctx.strokeStyle='#ffffff';ctx.lineWidth=2;ctx.setLineDash([]);
+  ctx.beginPath();ctx.moveTo(sx,pad.t);ctx.lineTo(sx,pad.t+cH);ctx.stroke();
+  ctx.fillStyle='#ffffff';ctx.font='bold 14px monospace';
+  ctx.fillText('S='+spot,sx+4,pad.t+14);
 
   // Individual option gammas + max markers
   for(var i=0;i<optionGammas.length;i++){
@@ -1555,47 +1567,49 @@ function drawNearSelectedGammaChart(){
       }
   }
 
-  // Total gamma curve (filled)
-  ctx.beginPath();
-  ctx.strokeStyle='#f0883e';ctx.lineWidth=2.5;
-  for(var j=0;j<totalGamma.length;j++){
-    var x=toX(prices[j]),y=toY(totalGamma[j]);
-    if(j===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
-  }
-  ctx.stroke();
-
-  // Fill under total gamma
-  ctx.beginPath();
-  for(var j=0;j<totalGamma.length;j++){
-    var x=toX(prices[j]),y=toY(totalGamma[j]);
-    if(j===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
-  }
-  ctx.lineTo(toX(prices[prices.length-1]),pad.t+cH);
-  ctx.lineTo(toX(prices[0]),pad.t+cH);
-  ctx.closePath();
-  var grad=ctx.createLinearGradient(0,pad.t,0,pad.t+cH);
-  grad.addColorStop(0,'rgba(240,136,62,0.3)');
-  grad.addColorStop(1,'rgba(240,136,62,0.02)');
-  ctx.fillStyle=grad;
-  ctx.fill();
-
-  // Data points on total
-  for(var j=0;j<totalGamma.length;j++){
-    if(j%3===0){
+  if(showTotalGamma) {
+    // Total gamma curve (filled)
+    ctx.beginPath();
+    ctx.strokeStyle='#f0883e';ctx.lineWidth=2.5;
+    for(var j=0;j<totalGamma.length;j++){
       var x=toX(prices[j]),y=toY(totalGamma[j]);
-      ctx.beginPath();ctx.arc(x,y,2.5,0,Math.PI*2);
-      ctx.fillStyle='#f0883e';ctx.fill();
+      if(j===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
     }
-  }
+    ctx.stroke();
 
-  // Max gamma marker (total)
-  var maxIdx=totalGamma.indexOf(Math.max.apply(null,totalGamma));
-  if(maxIdx>=0){
-    var mx=toX(prices[maxIdx]),my=toY(totalGamma[maxIdx]);
-    ctx.beginPath();ctx.arc(mx,my,6,0,Math.PI*2);
-    ctx.fillStyle='#58a6ff';ctx.fill();
-    ctx.beginPath();ctx.arc(mx,my,9,0,Math.PI*2);
-    ctx.strokeStyle='#58a6ff';ctx.lineWidth=2;ctx.stroke();
+    // Fill under total gamma
+    ctx.beginPath();
+    for(var j=0;j<totalGamma.length;j++){
+      var x=toX(prices[j]),y=toY(totalGamma[j]);
+      if(j===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+    }
+    ctx.lineTo(toX(prices[prices.length-1]),pad.t+cH);
+    ctx.lineTo(toX(prices[0]),pad.t+cH);
+    ctx.closePath();
+    var grad=ctx.createLinearGradient(0,pad.t,0,pad.t+cH);
+    grad.addColorStop(0,'rgba(240,136,62,0.3)');
+    grad.addColorStop(1,'rgba(240,136,62,0.02)');
+    ctx.fillStyle=grad;
+    ctx.fill();
+
+    // Data points on total
+    for(var j=0;j<totalGamma.length;j++){
+      if(j%3===0){
+        var x=toX(prices[j]),y=toY(totalGamma[j]);
+        ctx.beginPath();ctx.arc(x,y,2.5,0,Math.PI*2);
+        ctx.fillStyle='#f0883e';ctx.fill();
+      }
+    }
+
+    // Max gamma marker (total)
+    var maxIdx=totalGamma.indexOf(Math.max.apply(null,totalGamma));
+    if(maxIdx>=0){
+      var mx=toX(prices[maxIdx]),my=toY(totalGamma[maxIdx]);
+      ctx.beginPath();ctx.arc(mx,my,6,0,Math.PI*2);
+      ctx.fillStyle='#58a6ff';ctx.fill();
+      ctx.beginPath();ctx.arc(mx,my,9,0,Math.PI*2);
+      ctx.strokeStyle='#58a6ff';ctx.lineWidth=2;ctx.stroke();
+    }
   }
 
   // X axis
@@ -1635,14 +1649,16 @@ function drawNearSelectedGammaChart(){
 
   // Title
   ctx.fillStyle='#e6edf3';ctx.font='bold 13px sans-serif';ctx.textAlign='left';
-  ctx.fillText('Суммарная Γ (orange) + Γ каждого опциона (dashed)',pad.l,pad.t-8);
+  ctx.fillText(showTotalGamma ? 'Суммарная Γ (orange) + Γ каждого опциона (dashed)' : 'Γ каждого опциона (dashed)',pad.l,pad.t-8);
 
   // Legend
   var legendHtml='';
   for(var i=0;i<opts.length;i++){
     legendHtml+='<span style="color:'+colors[i%colors.length]+'">──</span> '+opts[i].symbol+' (K$'+opts[i].strike+') ';
   }
-  legendHtml+='<br><span style="color:#f0883e;font-weight:bold">━━━━</span> Суммарная Γ (filled)<br>';
+  if(showTotalGamma) {
+    legendHtml+='<br><span style="color:#f0883e;font-weight:bold">━━━━</span> Суммарная Γ (filled)<br>';
+  }
   legendHtml+='<span style="color:rgba(255,255,255,0.6)">- - -</span> Spot='+spot;
   document.getElementById('nearGammaLegend').innerHTML=legendHtml;
 }
