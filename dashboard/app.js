@@ -1288,6 +1288,86 @@ function syncNearSelected(){
 }
 
 // === Near Selected: Gamma Chart ===
+
+function autoSelectBestNear() {
+  var data = window.layerData_near;
+  if (!data || !data.options || data.options.length === 0) {
+    alert('Нет доступных опционов для анализа');
+    return;
+  }
+  var spot = data.spot_price || 0;
+  if (!spot) { alert('Нет spot цены'); return; }
+  
+  var combined = [];
+  data.options.forEach(function(opt) {
+    if (opt.dte <= 18) {
+      combined.push({
+        symbol: opt.symbol, strike: opt.strike, dte: opt.dte, iv: opt.iv,
+        price: opt.price, qty: 1, spot_price: spot
+      });
+    }
+  });
+  
+  if (combined.length === 0) {
+    alert('Нет опционов с DTE <= 18');
+    return;
+  }
+  
+  var btn = document.querySelector('button[onclick="autoSelectBestNear()"]');
+  if (btn) btn.textContent = '⏳ Анализ...';
+  
+  var spotForApi = window.layerData_near && window.layerData_near.spot_price ? window.layerData_near.spot_price : 0;
+  var promises = combined.map(function(opt, idx) {
+    var s = spotForApi || opt.spot_price || 0;
+    if (!s || !opt.strike || !opt.dte || !opt.iv) return Promise.resolve(null);
+    return api('/api/bs-greeks?symbol='+encodeURIComponent(opt.symbol)+'&strike='+opt.strike+'&dte='+opt.dte+'&iv='+opt.iv+'&spot='+s+'&premium='+opt.price+'&layer=near&qty='+(opt.qty||1))
+      .then(function(d){ return calcMetrics(d); })
+      .catch(function(e){ return null; });
+  });
+  
+  Promise.all(promises).then(function(metricsArr) {
+    var maxVal = {cov: -1e9, sG: -1e9, gP: -1e9, acc: -1e9, wP: -1e9};
+    for (var i = 0; i < metricsArr.length; i++) {
+      var m = metricsArr[i];
+      if (!m) continue;
+      if (m.coverage > maxVal.cov) maxVal.cov = m.coverage;
+      if (m.sumGamma > maxVal.sG) maxVal.sG = m.sumGamma;
+      if (m.gammaProtection > maxVal.gP) maxVal.gP = m.gammaProtection;
+      if (m.accuracy > maxVal.acc) maxVal.acc = m.accuracy;
+      if (m.weightedPnL > maxVal.wP) maxVal.wP = m.weightedPnL;
+    }
+    
+    var scored = [];
+    for (var i = 0; i < metricsArr.length; i++) {
+      var m = metricsArr[i];
+      if (!m) continue;
+      var score = 0;
+      var maxMetrics = [];
+      if (Math.abs(m.coverage - maxVal.cov) < 1e-9) { score++; maxMetrics.push('Cov=' + F(m.coverage*100, 0) + '%'); }
+      if (Math.abs(m.sumGamma - maxVal.sG) < 1e-9) { score++; maxMetrics.push('ΣΓ=' + F(m.sumGamma, 6)); }
+      if (Math.abs(m.gammaProtection - maxVal.gP) < 1e-9) { score++; maxMetrics.push('Γ/$=' + F(m.gammaProtection, 4)); }
+      if (Math.abs(m.accuracy - maxVal.acc) < 1e-9) { score++; maxMetrics.push('Prec=' + F(m.accuracy*100, 0) + '%'); }
+      if (Math.abs(m.weightedPnL - maxVal.wP) < 1e-9) { score++; maxMetrics.push('wPnL=$' + F(m.weightedPnL, 2)); }
+      scored.push({idx: i, score: score, symbol: combined[i].symbol, strike: combined[i].strike, dte: combined[i].dte, maxMetrics: maxMetrics});
+    }
+    
+    scored.sort(function(a, b) { return b.score - a.score; });
+    
+    var msg = 'ТОП-3 лучших опционов (DTE<=18):\n\n';
+    for (var i = 0; i < Math.min(3, scored.length); i++) {
+      var s = scored[i];
+      msg += (i+1) + '. ' + s.symbol + ' K$' + s.strike + ' DTE=' + s.dte + '\n';
+      if (s.maxMetrics.length > 0) {
+        msg += '   ' + s.maxMetrics.join('  ') + '\n';
+      } else {
+        msg += '   (нет макс. метрик)\n';
+      }
+    }
+    alert(msg);
+    btn.textContent = '⚡ Автовыбор лучшего опциона';
+  });
+}
+
 function _bsPutGamma(S, K, T, iv){
   if(T<=0||iv<=0||S<=0||K<=0) return 0;
   var d1=(Math.log(S/K)+(iv*iv/2)*T)/(iv*Math.sqrt(T));
