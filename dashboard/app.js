@@ -1166,7 +1166,7 @@ function calcMetrics(bsData){
     weightedPnL+=dPnL*w;
     prevPnL=pnl;
   }
-  var qty=bsData.qty||1; var optPnL=0; var cur=bsData.current_price||0; if(cur>0){optPnL=(cur-premium)*qty;} return{coverage:coverage,accuracy:accuracy,sumGamma:sumGamma,weightedPnL:weightedPnL,gammaProtection:gammaProtection,costPerDay:costPerDay,optionPnL:optPnL};
+  var qty=bsData.qty||1; var optPnL=0; var cur=bsData.current_price||0; if(cur>0){optPnL=(cur-premium)*qty;} return{coverage:coverage,accuracy:accuracy,sumGamma:sumGamma,weightedPnL:weightedPnL,gammaProtection:gammaProtection,costPerDay:costPerDay,optionPnL:optPnL,hedgeRange:hedgeRange};
 }
 
 function syncNearSelected(){
@@ -1203,6 +1203,12 @@ function syncNearSelected(){
       .catch(function(e){return null;});
   });
   Promise.all(promises).then(function(metricsArr){
+    // Update selectedOption.near with hedgeRange from metrics
+    for(var i=0;i<metricsArr.length;i++){
+      if(metricsArr[i] && metricsArr[i].hedgeRange && opts[i]){
+        opts[i].hedgeRange = metricsArr[i].hedgeRange;
+      }
+    }
     // Pass 1: find max for each metric column
     var maxVal={cov:-1e9,sG:-1e9,gP:-1e9,acc:-1e9,wPnL:-1e9};
     for(var i=0;i<metricsArr.length;i++){
@@ -1348,7 +1354,7 @@ function autoSelectBestNear() {
       if (Math.abs(m.gammaProtection - maxVal.gP) < 1e-9) { score++; maxMetrics.push('Γ/$=' + F(m.gammaProtection, 4)); }
       if (Math.abs(m.accuracy - maxVal.acc) < 1e-9) { score++; maxMetrics.push('Prec=' + F(m.accuracy*100, 0) + '%'); }
       if (Math.abs(m.weightedPnL - maxVal.wP) < 1e-9) { score++; maxMetrics.push('wPnL=$' + F(m.weightedPnL, 2)); }
-      scored.push({idx: i, score: score, symbol: combined[i].symbol, strike: combined[i].strike, dte: combined[i].dte, iv: combined[i].iv, price: combined[i].price, spot_price: spot, maxMetrics: maxMetrics});
+      scored.push({idx: i, score: score, symbol: combined[i].symbol, strike: combined[i].strike, dte: combined[i].dte, iv: combined[i].iv, price: combined[i].price, spot_price: spot, maxMetrics: maxMetrics, hedgeRange: m.hedgeRange});
     }
     
     scored.sort(function(a, b) { return b.score - a.score; });
@@ -1403,14 +1409,16 @@ function addBestOptionToSelected(idx) {
   
   selected.push({
     symbol: opt.symbol, strike: opt.strike, dte: opt.dte, iv: opt.iv,
-    price: opt.price, qty: 1, checked: true, spot_price: opt.spot_price, spot_at_entry: opt.spot_price
+    price: opt.price, qty: 1, checked: true, spot_price: opt.spot_price, spot_at_entry: opt.spot_price,
+    hedgeRange: opt.hedgeRange || null
   });
   
   var selList = JSON.parse(localStorage.getItem('selectedOptions') || '{}');
   if (!selList.near) selList.near = [];
   selList.near.push({
     symbol: opt.symbol, strike: opt.strike, dte: opt.dte, iv: opt.iv,
-    price: opt.price, qty: 1, spot_at_entry: opt.spot_price
+    price: opt.price, qty: 1, spot_at_entry: opt.spot_price,
+    hedgeRange: opt.hedgeRange || null
   });
   localStorage.setItem('selectedOptions', JSON.stringify(selList));
   
@@ -1461,6 +1469,18 @@ function drawNearSelectedGammaChart(){
   var step=1;
   var prices=[];
   for(var p=chartHigh;p>=chartLow;p-=step){prices.push(p);}
+
+  // Ensure all hedge range boundaries are included in prices
+  for(var i=0;i<opts.length;i++){
+    var hr = opts[i].hedgeRange;
+    if(hr && hr.low && hr.high){
+      if(hr.low < chartLow) chartLow = hr.low - 1;
+      if(hr.high > chartHigh) chartHigh = hr.high + 1;
+      // Add boundary points
+      prices.push(hr.low, hr.high);
+    }
+  }
+  prices.sort(function(a,b){return b-a;});
 
   var colors=['#58a6ff','#f778ba','#7ee787','#d2a8ff','#ff7b72','#79c0ff','#ffa657','#bd97f5'];
   var showTotal = document.getElementById('showTotalGamma');
@@ -1534,6 +1554,39 @@ function drawNearSelectedGammaChart(){
   ctx.beginPath();ctx.moveTo(ix1,pad.t);ctx.lineTo(ix1,pad.t+cH);ctx.stroke();
   ctx.beginPath();ctx.moveTo(ix2,pad.t);ctx.lineTo(ix2,pad.t+cH);ctx.stroke();
   ctx.setLineDash([]);
+
+  // Working window on each option's gamma curve (thick line)
+  for(var i=0;i<optionGammas.length;i++){
+    var hr = opts[i].hedgeRange;
+    if(!hr || !hr.low || !hr.high) continue;
+    var color = colors[i%colors.length];
+    var hx1=toX(hr.low), hx2=toX(hr.high);
+    if(hx2<=pad.l || hx1>=pad.l+cW) continue;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(pad.l, pad.t, pad.l+cW - pad.l, cH);
+    ctx.clip();
+
+    // Collect curve points within window (compare prices, not pixels)
+    var segPoints = [];
+    for(var j=0; j<prices.length; j++){
+      var px = toX(prices[j]);
+      if(prices[j] < hr.low || prices[j] > hr.high) continue;
+      segPoints.push({px: px, py: toY(optionGammas[i][j]), price: prices[j]});
+    }
+
+    if(segPoints.length >= 2){
+      // Thick curve line
+      ctx.beginPath();
+      ctx.moveTo(segPoints[0].px, segPoints[0].py);
+      for(var j=1; j<segPoints.length; j++) ctx.lineTo(segPoints[j].px, segPoints[j].py);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
 
   // Spot line - bright white solid
   var sx=toX(spot);
