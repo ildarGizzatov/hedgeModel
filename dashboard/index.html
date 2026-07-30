@@ -78,7 +78,7 @@ tr:hover td{background:rgba(88,166,255,.05)}
 <div class="header"><h1>HedgeModel Dashboard</h1><div style="display:flex;align-items:center;gap:12px"><span id="headerSpot" style="color:var(--blue);font-weight:600"></span><button class="btn-action" onclick="loadAll()">🔄 Обновить</button><span id="ds-badge" class="ds-live" style="font-size:12px">🟢 live</span><div id="headerUpdated" style="color:var(--text-dim);font-size:12px">Загрузка...</div></div></div>
 <div id="dataStatusBanner" style="display:none"></div>
 <div class="tabs" style="padding:0 24px;display:flex;align-items:center;justify-content:space-between">
-<div style="display:flex;gap:0"><div class="tab active" data-tab="positions">Позиции</div><div class="tab" data-tab="options">Опционы</div><div class="tab" data-tab="near-layer">Ближний слой</div><div class="tab" data-tab="distant-layer">Дальний слой</div><div class="tab" data-tab="mid">Средний</div><div class="tab" data-tab="near">Ближний</div></div>
+<div style="display:flex;gap:0"><div class="tab active" data-tab="positions">Позиции</div><div class="tab" data-tab="options">Опционы</div><div class="tab" data-tab="near-layer">Ближний слой</div><div class="tab" data-tab="distant-layer">Дальний слой</div></div>
 </div>
 <div style="padding:20px 24px">
 <div class="tab-content active" id="tab-positions">
@@ -195,24 +195,6 @@ tr:hover td{background:rgba(88,166,255,.05)}
 
 </div>
 </div>
-</div>
-<div class="tab-content" id="tab-mid">
-<div class="card"><h3>Средний слой</h3>
-<div id="selectedContent-mid"></div>
-</div>
-<div class="card"><h2 id="layerTitle-mid">Доступные опционы</h2>
-<div id="layerContent-mid"></div>
-</div>
-</div>
-<div class="tab-content" id="tab-near">
-<div class="card"><h2 id="layerTitle-near-tab">Доступные опционы</h2>
-<div id="layerContent-near-tab"></div>
-</div>
-<div class="card"><h2>Выбранные опционы</h2>
-<div id="dynamicOptionTabs" style="display:flex;gap:4px;margin-bottom:8px;border-bottom:2px solid var(--border);padding-bottom:0;overflow-x:auto;align-items:flex-end"></div>
-<div id="dynamicOptionContent" style="min-width:1300px"></div>
-</div>
-<div class="card" style="margin-top:24px"><h2>📊 Суммарный</h2><div id="aggregatorContent"></div></div>
 </div>
 
 

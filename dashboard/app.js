@@ -14,11 +14,6 @@ document.querySelectorAll(".tab").forEach(function(t){
       tabEl.style.setProperty("display","block","important");
       console.log('🔘 tabEl display set to block, computed:', window.getComputedStyle(tabEl).display);
     }
-    // Render near layer on tab click - unified function
-    if(t.dataset.tab==='near' && window.layerData_near){
-      console.log('🔘 near tab clicked, rendering layerData_near into tab-near');
-      renderAvailableOptions('near', 'layerContent-near-tab', window.layerData_near);
-    }
     if(t.dataset.tab==='near-layer'){
       syncNearSelected();
       setTimeout(function(){drawNearSelectedGammaChart();},50);
@@ -794,15 +789,14 @@ function renderLayers(l){
 var posData = null;
 
 // === LAYER TABS ===
-var layerFilterParams={distant:"all=1",mid:"all=1",near:"all=1"};
-var selectedOption={distant:[],mid:[],near:[]};
+var layerFilterParams={distant:"all=1",near:"all=1"};
+var selectedOption={distant:[],near:[]};
 selectedOption.distant=selectedOption.distant||[];
-selectedOption.mid=selectedOption.mid||[];
 selectedOption.near=selectedOption.near||[];
 
 
-var layerDefaults={distant:{delta_min:0.05,delta_max:0.20,dte_min:25,dte_max:99999},mid:{delta_min:0.20,delta_max:0.40,dte_min:10,dte_max:25},near:{delta_min:0.25,delta_max:0.45,dte_min:5,dte_max:25}};
-var purchasedOptions={distant:[],mid:[],near:[]};
+var layerDefaults={distant:{delta_min:0.05,delta_max:0.20,dte_min:25,dte_max:99999},near:{delta_min:0.25,delta_max:0.45,dte_min:5,dte_max:25}};
+var purchasedOptions={distant:[],near:[]};
 var globalPurchasedSymbols={};
 
 window.__so = function(layer,symbol){
@@ -815,7 +809,6 @@ window.__as = function(layer,symbol){
   // Double-click: add to selectedOption array
   var data;
   if(layer==='distant') data=layerData_distant;
-  else if(layer==='mid') data=layerData_mid;
   else data=layerData_near;
   console.log('__as: data='+data+' data.options='+data?.options?.length);
   var found=null;
@@ -870,12 +863,11 @@ function renderAvailableOptions(layer, containerId, data){
       el.innerHTML='<div style="padding:12px;color:var(--text-dim)">Нет опционов</div>';
       // Save data for __as lookup
       if(layer==='near') window.layerData_near=data;
-      else if(layer==='mid') window.layerData_mid=data;
       else if(layer==='distant') window.layerData_distant=data;
       return;
     }
     var spot=data.spot_price||0;
-    var hedges={near:{min:3,max:10},mid:{min:8,max:15},distant:{min:15,max:30}};
+    var hedges={near:{min:3,max:10},distant:{min:15,max:30}};
     var h=hedges[layer]||{min:5,max:20};
     var lowStrike=spot*(1-h.max/100);
     var highStrike=spot*(1-h.min/100);
@@ -946,7 +938,6 @@ function renderAvailableOptions(layer, containerId, data){
     el.innerHTML=html;
     // Save data for __as lookup
     if(layer==='near') window.layerData_near=data;
-    else if(layer==='mid') window.layerData_mid=data;
     else if(layer==='distant') window.layerData_distant=data;
   } catch(e){ console.error('>>> renderAvailableOptions ERROR:', e); }
 }
@@ -957,9 +948,6 @@ function selectOption(layer,symbol,o){
       selectedOption[layer].push({symbol:symbol, strike:o.strike, dte:o.dte, iv:o.iv, price:o.price, delta:o.delta, gamma:o.gamma, theta:o.theta, vega:o.vega, spot_at_entry:o.spot_price});
     } else if(layerData_distant&&layerData_distant.options&&layer==='distant'){
       var f=layerData_distant.options.find(function(x){return x.symbol===symbol});
-      selectedOption[layer].push(f?{symbol:symbol, strike:f.strike, dte:f.dte, iv:f.iv, price:f.price, delta:f.delta, gamma:f.gamma, theta:f.theta, vega:f.vega, spot_at_entry:f.spot_price}:{symbol:symbol});
-    } else if(layerData_mid&&layerData_mid.options&&layer==='mid'){
-      var f=layerData_mid.options.find(function(x){return x.symbol===symbol});
       selectedOption[layer].push(f?{symbol:symbol, strike:f.strike, dte:f.dte, iv:f.iv, price:f.price, delta:f.delta, gamma:f.gamma, theta:f.theta, vega:f.vega, spot_at_entry:f.spot_price}:{symbol:symbol});
     } else if(layerData_near&&layerData_near.options&&layer==='near'){
       var f=layerData_near.options.find(function(x){return x.symbol===symbol});
@@ -2509,7 +2497,7 @@ function renderAggregatorGreeks(layer){
     if(aggLayer){
       sel.forEach(function(s){avgSpot+=s.spot_price||s.spot_at_entry||0;});
       avgSpot=Math.round(avgSpot/sel.length);
-      var hedges={near:{min:3,max:10},mid:{min:8,max:15},distant:{min:15,max:30}};
+      var hedges={near:{min:3,max:10},distant:{min:15,max:30}};
       var h=hedges[aggLayer]||{min:5,max:20};
       var avgInsLow=Math.round(avgSpot*(1-h.max/100));
       var avgInsHigh=Math.round(avgSpot*(1-h.min/100));
@@ -2827,7 +2815,7 @@ function renderOptionGreeks(data, layer){
   var hedgeLen = Math.abs(hedgeHigh - hedgeLow);
 
   // Insurance range: диапазон работы слоя (3-10% для near и т.д.)
-  var hedges={near:{min:3,max:10},mid:{min:8,max:15},distant:{min:15,max:30}};
+  var hedges={near:{min:3,max:10},distant:{min:15,max:30}};
   var h=hedges[layer]||{min:5,max:20};
   var insLow=Math.round(data.spot*(1-h.max/100));
   var insHigh=Math.round(data.spot*(1-h.min/100));
@@ -3055,7 +3043,6 @@ function showDataStatus(){
   // Берём data_source из ближайшего слоя
   var sources = [
     layerData_distant,
-    layerData_mid,
     layerData_near
   ];
   // Also check main options endpoint
@@ -3105,14 +3092,12 @@ function showDataStatus(){
 
 function loadAll(){
   var distantQ=layerFilterParams.distant?"?"+layerFilterParams.distant:"";
-  var midQ=layerFilterParams.mid?"?"+layerFilterParams.mid:"";
   var nearQ=layerFilterParams.near?"?"+layerFilterParams.near:"";
   Promise.all([
     api("/api/positions"),
     api("/api/options"),
     api("/api/layers"),
     api("/api/layer/distant"+distantQ),
-    api("/api/layer/mid"+midQ),
     api("/api/layer/near"+nearQ)
   ]).then(function(results){
     // Store options data for status check
@@ -3125,16 +3110,13 @@ function loadAll(){
     window._lastLayersData=results[2];
     renderLayerBudget('distant', results[2]);
     layerData_distant=results[3];
-    layerData_mid=results[4];
-    layerData_near=results[5];
-    console.log('loadAll: rendering layers — distant='+JSON.stringify(results[3]).substring(0,80)+' mid='+JSON.stringify(results[4]).substring(0,80)+' near='+JSON.stringify(results[5]).substring(0,80));
+    layerData_near=results[4];
+    console.log('loadAll: rendering layers — distant='+JSON.stringify(results[3]).substring(0,80)+' near='+JSON.stringify(results[4]).substring(0,80));
     showDataStatus();
     api("/api/purchased-options").then(function(p){
-      purchasedOptions={distant:p.distant||[],mid:p.mid||[],near:p.near||[]};
+      purchasedOptions={distant:p.distant||[],near:p.near||[]};
       renderAvailableOptions('distant', 'layerContent-distant', results[3]);
-      renderAvailableOptions('mid', 'layerContent-mid', results[4]);
-      renderAvailableOptions('near', 'layerContent-near', results[5]);
-      renderAvailableOptions('near', 'layerContent-near-tab', results[5]);
+      renderAvailableOptions('near', 'layerContent-near', results[4]);
       renderLayerBudget('near', results[2]);
       renderDistantDeltaMatrix();
       renderDistantPnlMatrix();
@@ -3143,7 +3125,6 @@ function loadAll(){
       // Build global purchased symbols lookup
       globalPurchasedSymbols={};
       (purchasedOptions.distant||[]).forEach(function(x){globalPurchasedSymbols[x.symbol]=x.qty;});
-      (purchasedOptions.mid||[]).forEach(function(x){globalPurchasedSymbols[x.symbol]=x.qty;});
       (purchasedOptions.near||[]).forEach(function(x){globalPurchasedSymbols[x.symbol]=x.qty;});
       // Load global available options
       api("/api/available-options").then(function(d){renderGlobalLayer(d);});
