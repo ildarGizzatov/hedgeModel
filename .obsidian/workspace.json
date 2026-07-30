@@ -41,7 +41,9 @@
               "type": "file-explorer",
               "state": {
                 "sortOrder": "alphabetical",
-                "autoReveal": false
+                "autoReveal": false,
+                "showSearch": false,
+                "searchQuery": ""
               },
               "icon": "lucide-folder-closed",
               "title": "Файловый менеджер"
@@ -174,20 +176,20 @@
   },
   "left-ribbon": {
     "hiddenItems": {
+      "obsidian-kanban:Create new board": false,
       "switcher:Меню быстрого перехода": false,
       "graph:Граф": false,
       "canvas:Создать новый холст": false,
       "daily-notes:Сегодняшняя заметка": false,
       "templates:Вставить шаблон": false,
       "command-palette:Открыть палитру команд": false,
-      "bases:Создать новую базу": false,
-      "obsidian-kanban:Create new board": false
+      "bases:Создать новую базу": false
     }
   },
   "active": "bd9c837cb873cf31",
   "lastOpenFiles": [
-    "hedge_model.db-wal",
     "hedge_model.db-shm",
+    "hedge_model.db-wal",
     "T001-conditions-closing.md",
     "Kanban.md",
     "T005-adaptation-strategy-selection.md",

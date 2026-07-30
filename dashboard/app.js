@@ -826,7 +826,7 @@ window.__as = function(layer,symbol){
   console.log('__as: found='+found);
   var newItem;
   if(found){
-    newItem = {symbol:symbol, strike:found.strike, dte:found.dte, iv:found.iv, price:found.price, delta:found.delta, gamma:found.gamma, theta:found.theta, vega:found.vega, spot_at_entry:found.spot_price, spot_price:found.spot_price};
+    newItem = {symbol:symbol, strike:found.strike, dte:found.dte, iv:found.iv, price:found.price, qty:1, delta:found.delta, gamma:found.gamma, theta:found.theta, vega:found.vega, spot_at_entry:found.spot_price, spot_price:found.spot_price, checked:true};
   } else {
     newItem = {symbol:symbol};
   }
@@ -1217,9 +1217,44 @@ function syncNearSelected(){
       if(m.accuracy>maxVal.acc)maxVal.acc=m.accuracy;
       if(m.weightedPnL>maxVal.wPnL)maxVal.wPnL=m.weightedPnL;
     }
+    // Промежуточная сумма для Ресурс %
+    var totalsArr=[];
+    for(var idx=0;idx<opts.length;idx++){
+      var opt=opts[idx];
+      var total=(opt.price||0)*(opt.qty||1);
+      totalsArr.push(total);
+      if(opt.checked!==false) sumTotal+=total;
+    }
+    // Промежуточный расчёт TV для Resource % — сумма по диапазону страховки
+    var tvCurrentArr=[],tvEntryArr=[];
+    var spot=window.layerData_near&&window.layerData_near.spot_price?window.layerData_near.spot_price:0;
+    var insLow=Math.round(spot*(1-10/100));
+    var insHigh=Math.round(spot*(1-3/100));
+    for(var idx=0;idx<opts.length;idx++){
+      var opt=opts[idx];
+      var strike=opt.strike||0;
+      var iv=opt.iv||0.3;
+      var dte=Math.max(opt.dte||30,1);
+      var T=dte/365;
+      var entryDte=opt.entry_dte||dte;
+      var entryT=Math.max(entryDte,1)/365;
+      var entryIv=opt.iv_entry||iv;
+      var qty=opt.qty||1;
+      var tvC=0,tvE=0;
+      for(var p=Math.round(insHigh);p>=Math.round(insLow);p--){
+        var intr=Math.max(strike-p,0);
+        var bsC=0,bsE=0;
+        if(p>0&&strike>0&&iv>0&&T>0) bsC=_bsPutPrice(p,strike,T,iv);
+        if(p>0&&strike>0&&entryIv>0&&entryT>0) bsE=_bsPutPrice(p,strike,entryT,entryIv);
+        tvC+=(bsC-intr)*qty;
+        tvE+=(bsE-intr)*qty;
+      }
+      tvCurrentArr.push(tvC);
+      tvEntryArr.push(tvE);
+    }
+
     // Pass 2: build rows
     html='';
-    sumTotal=0;
     for(var idx=0;idx<opts.length;idx++){
       var opt=opts[idx];
       var checked=opt.checked!==false;
@@ -1228,14 +1263,15 @@ function syncNearSelected(){
       var price=opt.price||0;
       var qty=opt.qty||1;
       var isPurchased=(!!purchasedOptions.near&&purchasedOptions.near.some(function(p){return p.symbol===opt.symbol;}));
-      var total=price*qty;
-      if(checked) sumTotal+=total;
+      var total=totalsArr[idx];
       var pctFromRemaining='';
       if(activeLayer&&activeLayer.budget>0&&checked){
         pctFromRemaining=F(total/activeLayer.budget*100,1)+'%';
       }
       var m=metricsArr[idx];
       var optionPnL=m?m.optionPnL:0;
+      var tvC=tvCurrentArr[idx],tvE=tvEntryArr[idx];
+      var resPct=tvE>0?F(tvC/tvE*100,1)+'% (вх:$'+F(tvE/(opt.qty||1),2)+')':'-';
       var covMax=m&&(Math.abs(m.coverage-maxVal.cov)<1e-9);
       var sGMax=m&&(Math.abs(m.sumGamma-maxVal.sG)<1e-9);
       var gPMax=m&&(Math.abs(m.gammaProtection-maxVal.gP)<1e-9);
@@ -1246,6 +1282,7 @@ function syncNearSelected(){
       html+='<tr style="height:22px">';
       html+='<td style="padding:2px 6px;text-align:center"><input type="checkbox" '+(checked?'checked':'')+' onchange="window._onSelectToggle(\'near\','+idx+',this.checked)"></td>';
       html+='<td style="padding:2px 6px;font-weight:bold">'+opt.symbol+'</td>';
+      html+='<td style="padding:2px 6px;text-align:right">'+resPct+'</td>';
       html+='<td style="padding:2px 6px;text-align:right">$'+strike+'</td>';
       html+='<td style="padding:2px 6px;text-align:center">'+(opt.dte||'-')+'</td>';
       var pnlClr=optionPnL>=0?'var(--green)':'var(--red)'; html+='<td style="padding:2px 6px;text-align:right;color:'+pnlClr+'">$'+F(optionPnL,2)+'</td>';
@@ -1268,12 +1305,14 @@ function syncNearSelected(){
     } else {
       html+='<tr style="height:22px;font-weight:bold;background:var(--bg);border-top:2px solid var(--border)">';
       html+='<td style="padding:2px 6px;text-align:center"></td>';
-      html+='<td style="padding:2px 6px" colspan="6">Итого:</td>';
+      html+='<td style="padding:2px 6px" colspan="7">Итого:</td>';
       html+='<td style="padding:2px 6px;text-align:right">$'+F(sumTotal,2)+'</td>';
       var pctTotal='';
       if(activeLayer&&activeLayer.budget>0&&sumTotal>0) pctTotal=F(sumTotal/activeLayer.budget*100,1)+'%';
       html+='<td style="padding:2px 6px;text-align:right">'+pctTotal+'</td>';
       html+='<td></td><td></td><td></td><td></td><td></td><td></td>';
+      html+='<td></td>';
+      html+='<td></td>';
       html+='<td></td>';
       html+='</tr>';
     }
@@ -1286,7 +1325,95 @@ function syncNearSelected(){
     }
   });
   // Draw gamma chart after table
-  setTimeout(function(){drawNearSelectedGammaChart();}, 100);
+  setTimeout(function(){drawNearSelectedGammaChart();renderNearPnlMatrix();}, 100);
+}
+
+// === Near Layer: PnL Matrix ===
+
+function renderNearPnlMatrix(){
+  var tbody=document.querySelector('#nearPnlMatrix tbody');
+  var thead=document.querySelector('#nearPnlMatrix thead tr');
+  if(!tbody||!thead) return;
+  var allOpts=selectedOption.near||[];
+  var opts=allOpts.filter(function(o){return o.checked!==false;});
+  if(opts.length===0){tbody.innerHTML='<tr><td style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';thead.innerHTML='<tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0"><th style="text-align:right;padding:2px 6px">Цена</th><th style="text-align:right;padding:2px 6px">ΣPnL</th></tr>';return;}
+  try{
+  var data=window.layerData_near;
+  if(!data||!data.spot_price) return;
+  var spot=data.spot_price;
+  var insLow=Math.round(spot*0.9);
+  var insHigh=Math.round(spot);
+  var p3=Math.round(spot*0.97);
+  var p10=Math.round(spot*0.9);
+  thead.innerHTML='';
+  var thPrice=document.createElement('th');
+  thPrice.style.cssText='text-align:right;padding:2px 6px';
+  thPrice.textContent='Цена';
+  thead.appendChild(thPrice);
+  opts.forEach(function(o){
+    var th=document.createElement('th');
+    th.style.cssText='text-align:right;padding:2px 6px';
+    th.textContent=o.symbol.replace('-P','');
+    thead.appendChild(th);
+  });
+  var thSigma=document.createElement('th');
+  thSigma.style.cssText='text-align:right;padding:2px 6px';
+  thSigma.textContent='ΣPnL';
+  thead.appendChild(thSigma);
+  var html='';
+  for(var p=insHigh;p>=insLow;p--){
+    var is3=(p===p3);
+    var is10=(p===p10);
+    var bg='';
+    if(is10) bg='background:#ff000030;';
+    if(is3 && !is10) bg='background:#ffaa0020;';
+    html+='<tr style="height:20px;'+bg+'">';
+    html+='<td style="padding:2px 6px;text-align:right">$'+p+'</td>';
+    var totalPnl=0;
+    opts.forEach(function(o){
+      var qty=o.qty||1;
+      var strike=o.strike||0;
+      var premium=o.price||0;
+      var iv=o.iv||0.3;
+      var dte=Math.max(o.dte||30,1);
+      var T=dte/365;
+      var bsPrice=_bsPutPrice(p, strike, T, iv);
+      var pnl=(bsPrice-premium)*qty;
+      totalPnl+=pnl;
+      var cls=pnl>=0?'color:var(--green)':'color:#d32f2f';
+      html+='<td style="padding:2px 6px;text-align:right" class="'+cls+'">$'+F(pnl,2)+'</td>';
+    });
+    var tcls=totalPnl>=0?'color:var(--green)':'color:#d32f2f';
+    html+='<td style="padding:2px 6px;text-align:right;font-weight:bold" class="'+tcls+'">$'+F(totalPnl,2)+'</td>';
+    html+='</tr>';
+  }
+  // PnL difference row (last - first)
+  var totalDiff=0;
+  var diffCells=[];
+  opts.forEach(function(o){
+    var qty=o.qty||1;
+    var strike=o.strike||0;
+    var premium=o.price||0;
+    var iv=o.iv||0.3;
+    var dte=Math.max(o.dte||30,1);
+    var T=dte/365;
+    var pnl3=(_bsPutPrice(Math.round(spot*0.97), strike, T, iv)-premium)*qty;
+    var pnl10=(_bsPutPrice(Math.round(spot*0.9), strike, T, iv)-premium)*qty;
+    var diff=pnl10-pnl3;
+    totalDiff+=diff;
+    diffCells.push({diff:diff});
+  });
+  html+='<tr style="height:20px;font-weight:bold;background:var(--bg);border-top:2px solid var(--border)">';
+  html+='<td style="padding:2px 6px;text-align:right" colspan="1">Разница PnL:</td>';
+  for(var k=0;k<diffCells.length;k++){
+    var cls=diffCells[k].diff>=0?'color:var(--green)':'color:#d32f2f';
+    html+='<td style="padding:2px 6px;text-align:right" class="'+cls+'">$'+F(diffCells[k].diff,2)+'</td>';
+  }
+  var tcls=totalDiff>=0?'color:var(--green)':'color:#d32f2f';
+  html+='<td style="padding:2px 6px;text-align:right;font-weight:bold" class="'+tcls+'">$'+F(totalDiff,2)+'</td>';
+  html+='</tr>';
+  tbody.innerHTML=html;
+  }catch(e){console.warn('renderNearPnlMatrix fail:',e);}
 }
 
 // === Mid Layer: Sync Selected ===
@@ -1337,6 +1464,34 @@ function syncMidSelected(){
       if(m.accuracy>maxVal.acc)maxVal.acc=m.accuracy;
       if(m.weightedPnL>maxVal.wPnL)maxVal.wPnL=m.weightedPnL;
     }
+    // Промежуточный расчёт TV для Resource % — сумма по диапазону страховки mid
+    var tvC_midArr=[],tvE_midArr=[];
+    var spotMid=window.layerData_mid&&window.layerData_mid.spot_price?window.layerData_mid.spot_price:0;
+    var insLowMid=Math.round(spotMid*(1-20/100));
+    var insHighMid=Math.round(spotMid*(1-10/100));
+    for(var idx=0;idx<opts.length;idx++){
+      var opt=opts[idx];
+      var strike=opt.strike||0;
+      var iv=opt.iv||0.3;
+      var dte=Math.max(opt.dte||30,1);
+      var T=dte/365;
+      var entryDte=opt.entry_dte||dte;
+      var entryT=Math.max(entryDte,1)/365;
+      var entryIv=opt.iv_entry||iv;
+      var qty=opt.qty||1;
+      var tvC=0,tvE=0;
+      for(var p=Math.round(insHighMid);p>=Math.round(insLowMid);p--){
+        var intr=Math.max(strike-p,0);
+        var bsC=0,bsE=0;
+        if(p>0&&strike>0&&iv>0&&T>0) bsC=_bsPutPrice(p,strike,T,iv);
+        if(p>0&&strike>0&&entryIv>0&&entryT>0) bsE=_bsPutPrice(p,strike,entryT,entryIv);
+        tvC+=(bsC-intr)*qty;
+        tvE+=(bsE-intr)*qty;
+      }
+      tvC_midArr.push(tvC);
+      tvE_midArr.push(tvE);
+    }
+
     html='';
     sumTotal=0;
     for(var idx=0;idx<opts.length;idx++){
@@ -1347,8 +1502,9 @@ function syncMidSelected(){
       var price=opt.price||0;
       var qty=opt.qty||1;
       var isPurchased=(!!purchasedOptions.mid&&purchasedOptions.mid.some(function(p){return p.symbol===opt.symbol;}));
-      var total=price*qty;
+      var total=(opt.price||0)*(opt.qty||1);
       if(checked) sumTotal+=total;
+      var resPct=tvE_midArr[idx]>0?F(tvC_midArr[idx]/tvE_midArr[idx]*100,1)+'% (вх:$'+F(tvE_midArr[idx]/(opt.qty||1),2)+')':'-';
       var pctFromRemaining='';
       if(activeLayer&&activeLayer.budget>0&&checked){
         pctFromRemaining=F(total/activeLayer.budget*100,1)+'%';
@@ -1379,20 +1535,22 @@ function syncMidSelected(){
       html+='<td style="padding:2px 6px;text-align:right;'+(gPMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?F(m.gammaProtection,4):'-')+'</td>';
       html+='<td style="padding:2px 6px;text-align:right;'+(accMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?F(m.accuracy*100,0)+'%':'-')+'</td>';
       html+='<td style="padding:2px 6px;text-align:right;'+(wPMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?'$'+F(m.weightedPnL,2):'-')+'</td>';
+      html+='<td style="padding:2px 6px;text-align:right">'+resPct+'</td>';
       html+='<td style="padding:2px 6px;text-align:center"><button style="background:none;border:none;cursor:pointer;color:#d32f2f;font-size:14px" onclick="window._onSelectRemove(\'mid\','+idx+')">✕</button></td>';
       html+='</tr>';
     }
     if(html===''){
-      html='<tr><td colspan="15" style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';
+      html='<tr><td colspan="16" style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';
     } else {
       html+='<tr style="height:22px;font-weight:bold;background:var(--bg);border-top:2px solid var(--border)">';
       html+='<td style="padding:2px 6px;text-align:center"></td>';
-      html+='<td style="padding:2px 6px" colspan="6">Итого:</td>';
+      html+='<td style="padding:2px 6px" colspan="7">Итого:</td>';
       html+='<td style="padding:2px 6px;text-align:right">$'+F(sumTotal,2)+'</td>';
       var pctTotal='';
       if(activeLayer&&activeLayer.budget>0&&sumTotal>0) pctTotal=F(sumTotal/activeLayer.budget*100,1)+'%';
       html+='<td style="padding:2px 6px;text-align:right">'+pctTotal+'</td>';
       html+='<td></td><td></td><td></td><td></td><td></td><td></td>';
+      html+='<td></td>';
       html+='<td></td>';
       html+='</tr>';
     }
@@ -1964,6 +2122,135 @@ function drawNearSelectedGammaChart(){
   document.getElementById('nearGammaLegend').innerHTML=legendHtml;
 }
 
+// === Near Layer: PnL Breakdown Table ===
+
+function drawNearPnlBreakdown(){
+  var table=document.getElementById('nearPnlBreakdown');
+  if(!table)return;
+  var opts=selectedOption.near||[];
+  if(opts.length===0){table.innerHTML='<tr><td colspan="60" style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';return;}
+  var spot=window.layerData_near&&window.layerData_near.spot_price?window.layerData_near.spot_price:0;
+  if(!spot)return;
+
+  // Insurance range: 3-10% below spot
+  var insLow=Math.round(spot*(1-10/100));
+  var insHigh=Math.round(spot*(1-3/100));
+  var prices=[];
+  for(var p=Math.round(insHigh);p>=Math.round(insLow);p--){prices.push(p);}
+
+  // For each option, compute PnL at each price with current and entry params
+  var optionData=[];
+  for(var oi=0;oi<opts.length;oi++){
+    var opt=opts[oi];
+    var strike=opt.strike||0;
+    var premium=opt.entry_price||opt.price||0;
+    var iv=opt.iv||0.3;
+    var dte=Math.max(opt.dte||30,1);
+    var T=dte/365;
+    var entryDte=opt.entry_dte||dte;
+    var entryT=Math.max(entryDte,1)/365;
+    var entryIv=opt.iv_entry||iv;
+    var qty=opt.qty||1;
+
+    var pnlCurrent=[],pnlEntry=[],tvCurrent=[],tvEntry=[],intrinsicArr=[];
+    for(var i=0;i<prices.length;i++){
+      var p=prices[i];
+      var intr=Math.max(strike-p,0);
+      intrinsicArr.push(intr*qty);
+      // Current
+      var pnlC=0,tvC=0;
+      if(p<=0||strike<=0||iv<=0||T<=0){pnlC=-premium*qty;}else{
+        var bsC=_bsPutPrice(p,strike,T,iv);
+        pnlC=(bsC-premium)*qty;
+        tvC=(bsC-intr)*qty;
+      }
+      pnlCurrent.push(pnlC); tvCurrent.push(tvC);
+
+      // Entry
+      var pnlE=0,tvE=0;
+      if(p<=0||strike<=0||entryIv<=0||entryT<=0){pnlE=-premium*qty;}else{
+        var bsE=_bsPutPrice(p,strike,entryT,entryIv);
+        pnlE=(bsE-premium)*qty;
+        tvE=(bsE-intr)*qty;
+      }
+      pnlEntry.push(pnlE); tvEntry.push(tvE);
+    }
+
+    var totalCurrent=0,totalEntry=0,tvTotalC=0,tvTotalE=0;
+    for(var i=0;i<pnlCurrent.length;i++){
+      totalCurrent+=pnlCurrent[i]; totalEntry+=pnlEntry[i];
+      tvTotalC+=tvCurrent[i]; tvTotalE+=tvEntry[i];
+    }
+
+    optionData.push({
+      symbol:opt.symbol,strike:strike,premium:premium,qty:qty,
+      iv_current:iv,iv_entry:entryIv,dte_current:dte,dte_entry:entryDte,
+      pnl_current:pnlCurrent,pnl_entry:pnlEntry,
+      tv_current:tvCurrent,tv_entry:tvEntry,
+      intrinsic_current:intrinsicArr,
+      total_current:totalCurrent,total_entry:totalEntry,
+      tv_total_current:tvTotalC,tv_total_entry:tvTotalE
+    });
+  }
+
+  // Build table
+  var html='<thead><tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0">';
+  html+='<th style="padding:3px 6px;text-align:right">Цена</th>';
+  for(var i=0;i<optionData.length;i++){
+    html+='<th style="padding:3px 6px;text-align:center" colspan="6">'+optionData[i].symbol+'</th>';
+  }
+  html+='</tr>';
+  html+='<thead><tr style="background:var(--bg);border-bottom:1px solid var(--border)">';
+  html+='<th style="padding:2px 6px;text-align:right;font-size:10px">$</th>';
+  for(var i=0;i<optionData.length;i++){
+    html+='<th style="padding:2px 6px;text-align:right;font-size:10px">Intrinsic</th>';
+    html+='<th style="padding:2px 6px;text-align:right;font-size:10px">TV(∅)</th>';
+    html+='<th style="padding:2px 6px;text-align:right;font-size:10px">PnL(∅)</th>';
+    html+='<th style="padding:2px 6px;text-align:right;font-size:10px">TV(∅вх)</th>';
+    html+='<th style="padding:2px 6px;text-align:right;font-size:10px">PnL(∅вх)</th>';
+    html+='<th style="padding:2px 6px;text-align:right;font-size:10px">Разн.</th>';
+  }
+  html+='</tr></thead>';
+
+  // Body
+  html+='<tbody>';
+  for(var i=0;i<prices.length;i++){
+    html+='<tr><td style="padding:2px 6px;text-align:right;font-weight:bold">$'+prices[i]+'</td>';
+    for(var oi=0;oi<optionData.length;oi++){
+      var od=optionData[oi];
+      html+='<td style="padding:2px 6px;text-align:right;color:green">'+F(od.intrinsic_current[i],2)+'</td>';
+      html+='<td style="padding:2px 6px;text-align:right;color:'+clr(od.tv_current[i])+'">'+F(od.tv_current[i],2)+'</td>';
+      html+='<td style="padding:2px 6px;text-align:right;color:'+clr(od.pnl_current[i])+'">'+F(od.pnl_current[i],2)+'</td>';
+      html+='<td style="padding:2px 6px;text-align:right;color:'+clr(od.tv_entry[i])+'">'+F(od.tv_entry[i],2)+'</td>';
+      html+='<td style="padding:2px 6px;text-align:right;color:'+clr(od.pnl_entry[i])+'">'+F(od.pnl_entry[i],2)+'</td>';
+      var diff=od.pnl_current[i]-od.pnl_entry[i];
+      html+='<td style="padding:2px 6px;text-align:right;color:'+clr(diff)+'">'+F(diff,2)+'</td>';
+    }
+    html+='</tr>';
+  }
+  html+='</tbody>';
+  // Intrinsic totals
+  var intrTotal=[];
+  for(var oi=0;oi<optionData.length;oi++){
+    var t=0; for(var i=0;i<optionData[oi].intrinsic_current.length;i++) t+=optionData[oi].intrinsic_current[i];
+    intrTotal.push(t);
+  }
+  html+='<tfoot><tr style="border-top:2px solid var(--border);font-weight:bold">';
+  html+='<td style="padding:3px 6px;text-align:right">ИТОГО</td>';
+  for(var oi=0;oi<optionData.length;oi++){
+    var od=optionData[oi];
+    html+='<td style="padding:3px 6px;text-align:right;color:green">'+F(intrTotal[oi],2)+'</td>';
+    html+='<td style="padding:3px 6px;text-align:right;color:'+clr(od.tv_total_current)+'">'+F(od.tv_total_current,2)+'</td>';
+    html+='<td style="padding:3px 6px;text-align:right;color:'+clr(od.total_current)+'">'+F(od.total_current,2)+'</td>';
+    html+='<td style="padding:3px 6px;text-align:right;color:'+clr(od.tv_total_entry)+'">'+F(od.tv_total_entry,2)+'</td>';
+    html+='<td style="padding:3px 6px;text-align:right;color:'+clr(od.total_entry)+'">'+F(od.total_entry,2)+'</td>';
+    var diff=od.total_current-od.total_entry;
+    html+='<td style="padding:3px 6px;text-align:right;color:'+clr(diff)+'">'+F(diff,2)+'</td>';
+  }
+  html+='</tr></tfoot>';
+  table.innerHTML=html;
+}
+
 // === Mid Layer: Draw Selected Gamma Chart ===
 
 function drawMidSelectedGammaChart(){
@@ -2073,6 +2360,12 @@ function drawMidSelectedGammaChart(){
   ctx.beginPath();ctx.moveTo(ix1,pad.t);ctx.lineTo(ix1,pad.t+cH2);ctx.stroke();
   ctx.beginPath();ctx.moveTo(ix2,pad.t);ctx.lineTo(ix2,pad.t+cH2);ctx.stroke();
   ctx.setLineDash([]);
+  // Spot line - bright white solid
+  var sx=toX(spot);
+  ctx.strokeStyle='#ffffff';ctx.lineWidth=2;ctx.setLineDash([]);
+  ctx.beginPath();ctx.moveTo(sx,pad.t);ctx.lineTo(sx,pad.t+cH2);ctx.stroke();
+  ctx.fillStyle='#ffffff';ctx.font='bold 14px monospace';
+  ctx.fillText('S='+spot,sx+4,pad.t+14);
   // Working window on each option's gamma curve
   for(var i=0;i<optionGammas.length;i++){
     var hr = opts[i].hedgeRange;
@@ -3628,6 +3921,7 @@ function loadAll(){
       renderLayerBudget('near', results[2]);
       renderDistantDeltaMatrix();
       renderDistantPnlMatrix();
+      renderNearPnlMatrix();
       renderDistantSummaryMatrix();
 
       // Build global purchased symbols lookup
@@ -3649,6 +3943,7 @@ function loadAll(){
   renderDistantGammaChart();
   renderDistantDeltaMatrix();
   renderDistantPnlMatrix();
+  renderNearPnlMatrix();
   renderDistantSummaryMatrix();
 }
 

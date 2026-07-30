@@ -759,6 +759,19 @@ def api_purchased_options() -> dict[str, Any]:
             elif (LAYER_DEFAULTS["near"]["delta_min"] <= abs_delta <= LAYER_DEFAULTS["near"]["delta_max"]):
                 mapped_layer = "near"
 
+        # Входные данные
+        iv_entry = float(opt.get("iv_entry") or 0)
+        entry_date_str = opt.get("entry_date")
+        expiry_str = opt.get("expiry")
+        entry_dte = 0
+        if entry_date_str and expiry_str:
+            try:
+                ed = datetime.strptime(entry_date_str, "%Y-%m-%d").date()
+                ex = datetime.strptime(expiry_str, "%Y-%m-%d").date()
+                entry_dte = max((ex - ed).days, 0)
+            except:
+                pass
+
         if mapped_layer:
             by_layer[mapped_layer].append({
                 "symbol": symbol,
@@ -768,7 +781,10 @@ def api_purchased_options() -> dict[str, Any]:
                 "theta": round(theta, 4),
                 "vega": round(vega, 4),
                 "iv": round(iv, 4),
+                "iv_entry": round(iv_entry, 4),
                 "dte": dte,
+                "entry_dte": entry_dte,
+                "expiry": expiry_str,
                 "qty": qty,
                 "entry_price": entry_price,
                 "current_price": round(current_price, 4),
