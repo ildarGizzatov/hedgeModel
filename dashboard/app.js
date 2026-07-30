@@ -1591,7 +1591,7 @@ function drawNearSelectedGammaChart(){
     }
     ctx.beginPath();
     ctx.strokeStyle=colors[i%colors.length];
-    ctx.lineWidth=1.5;ctx.setLineDash([4,3]);
+    ctx.lineWidth=0.5;ctx.setLineDash([4,3]);
     for(var j=0;j<optionGammas[i].length;j++){
       var x=toX(prices[j]),y=toY(optionGammas[i][j]);
       if(j===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
