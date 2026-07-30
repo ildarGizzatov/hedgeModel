@@ -10,8 +10,6 @@ kanban-plugin: board
 
 ## 📥 Входящие
 
-- [ ] [[T007-option-card]]
-
 
 
 ## 📐 На оценке

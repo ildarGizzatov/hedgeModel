@@ -18,6 +18,10 @@ document.querySelectorAll(".tab").forEach(function(t){
       syncNearSelected();
       setTimeout(function(){drawNearSelectedGammaChart();},50);
     }
+    if(t.dataset.tab==='mid-layer'){
+      syncMidSelected();
+      setTimeout(function(){drawMidSelectedGammaChart();},50);
+    }
 
   });
 });
@@ -789,14 +793,15 @@ function renderLayers(l){
 var posData = null;
 
 // === LAYER TABS ===
-var layerFilterParams={distant:"all=1",near:"all=1"};
-var selectedOption={distant:[],near:[]};
+var layerFilterParams={distant:"all=1",mid:"all=1",near:"all=1"};
+var selectedOption={distant:[],mid:[],near:[]};
 selectedOption.distant=selectedOption.distant||[];
+selectedOption.mid=selectedOption.mid||[];
 selectedOption.near=selectedOption.near||[];
 
 
-var layerDefaults={distant:{delta_min:0.05,delta_max:0.20,dte_min:25,dte_max:99999},near:{delta_min:0.25,delta_max:0.45,dte_min:5,dte_max:25}};
-var purchasedOptions={distant:[],near:[]};
+var layerDefaults={distant:{delta_min:0.05,delta_max:0.20,dte_min:25,dte_max:99999},mid:{delta_min:0.20,delta_max:0.40,dte_min:10,dte_max:25},near:{delta_min:0.25,delta_max:0.45,dte_min:5,dte_max:25}};
+var purchasedOptions={distant:[],mid:[],near:[]};
 var globalPurchasedSymbols={};
 
 window.__so = function(layer,symbol){
@@ -809,6 +814,7 @@ window.__as = function(layer,symbol){
   // Double-click: add to selectedOption array
   var data;
   if(layer==='distant') data=layerData_distant;
+  else if(layer==='mid') data=layerData_mid;
   else data=layerData_near;
   console.log('__as: data='+data+' data.options='+data?.options?.length);
   var found=null;
@@ -843,8 +849,9 @@ window.__as = function(layer,symbol){
     localStorage.setItem('selectedOptions',JSON.stringify(selList));
   }
 
-  // Sync near-layer selected table for near layer
+  // Sync selected table
   if(layer==='near') syncNearSelected();
+  if(layer==='mid') syncMidSelected();
   // Create dynamic sub-tab for this option
   if(found && layer==='near') {
     createOptionTab(layer, found);
@@ -867,7 +874,7 @@ function renderAvailableOptions(layer, containerId, data){
       return;
     }
     var spot=data.spot_price||0;
-    var hedges={near:{min:3,max:10},distant:{min:15,max:30}};
+    var hedges={near:{min:3,max:10},mid:{min:10,max:20},distant:{min:15,max:30}};
     var h=hedges[layer]||{min:5,max:20};
     var lowStrike=spot*(1-h.max/100);
     var highStrike=spot*(1-h.min/100);
@@ -1064,6 +1071,7 @@ function syncDistantSelected(){
 function syncSelected(layer){
   if(layer==='distant') syncDistantSelected();
   else if(layer==='near') syncNearSelected();
+  else if(layer==='mid') syncMidSelected();
 }
 
 // === Unified handlers for toggle/qty/remove (all layers) ===
@@ -1104,7 +1112,7 @@ window._onSelectRemove=function(layer,idx){
 };
 
 // === Near layer: render selected table ===
-function calcMetrics(bsData){
+function calcMetrics(bsData,layer){
   if(!bsData||!bsData.rows||!bsData.hedge_range) return null;
   var spot=Math.round(bsData.spot);
   var premium=bsData.entry_premium||0;
@@ -1114,8 +1122,8 @@ function calcMetrics(bsData){
   var hedgeLow=hedgeRange.low;
   var hedgeHigh=hedgeRange.high;
   var hedgeLen=Math.abs(hedgeHigh-hedgeLow);
-  var hedges={near:{min:3,max:10}};
-  var h=hedges.near||{min:5,max:20};
+  var hedges={near:{min:3,max:10},mid:{min:10,max:20}};
+  var h=hedges[layer]||{min:3,max:10};
   var insLow=Math.round(bsData.spot*(1-h.max/100));
   var insHigh=Math.round(bsData.spot*(1-h.min/100));
   var insLen=Math.abs(insHigh-insLow);
@@ -1187,7 +1195,7 @@ function syncNearSelected(){
     var spot=currentSpot||opt.spot_price||opt.spot_at_entry||'';
     if(!spot||!opt.strike||!opt.dte||!opt.iv) return Promise.resolve(null);
     return api('/api/bs-greeks?symbol='+encodeURIComponent(opt.symbol)+'&strike='+opt.strike+'&dte='+opt.dte+'&iv='+opt.iv+'&spot='+spot+'&premium='+opt.price+'&layer=near&qty='+(opt.qty||1))
-      .then(function(d){return calcMetrics(d);})
+      .then(function(d){return calcMetrics(d,'near');})
       .catch(function(e){return null;});
   });
   Promise.all(promises).then(function(metricsArr){
@@ -1260,12 +1268,12 @@ function syncNearSelected(){
     } else {
       html+='<tr style="height:22px;font-weight:bold;background:var(--bg);border-top:2px solid var(--border)">';
       html+='<td style="padding:2px 6px;text-align:center"></td>';
-      html+='<td style="padding:2px 6px" colspan="5">Итого:</td>';
+      html+='<td style="padding:2px 6px" colspan="6">Итого:</td>';
       html+='<td style="padding:2px 6px;text-align:right">$'+F(sumTotal,2)+'</td>';
       var pctTotal='';
       if(activeLayer&&activeLayer.budget>0&&sumTotal>0) pctTotal=F(sumTotal/activeLayer.budget*100,1)+'%';
       html+='<td style="padding:2px 6px;text-align:right">'+pctTotal+'</td>';
-      html+='<td></td><td></td><td></td><td></td><td></td>';
+      html+='<td></td><td></td><td></td><td></td><td></td><td></td>';
       html+='<td></td>';
       html+='</tr>';
     }
@@ -1279,6 +1287,123 @@ function syncNearSelected(){
   });
   // Draw gamma chart after table
   setTimeout(function(){drawNearSelectedGammaChart();}, 100);
+}
+
+// === Mid Layer: Sync Selected ===
+
+function syncMidSelected(){
+  var tbody=document.getElementById('midSelectedTable');
+  if(!tbody) return;
+  var activeLayer=null;
+  if(window._lastLayersData&&window._lastLayersData.layers){
+    activeLayer=window._lastLayersData.layers.find(function(x){return x.name==='Adaptation';});
+  }
+  var remainingBudget=0;
+  if(activeLayer&&activeLayer.budget>0){
+    remainingBudget=activeLayer.budget-activeLayer.spent;
+    if(remainingBudget<0) remainingBudget=0;
+  }
+  var currentOpts=selectedOption.mid||[];
+  if(currentOpts.length===0 && purchasedOptions.mid && purchasedOptions.mid.length>0){
+    selectedOption.mid=purchasedOptions.mid.map(function(o){
+      return Object.assign({},o,{checked:true,qty:o.qty||1,price:o.entry_price||0});
+    });
+    currentOpts=selectedOption.mid;
+  }
+  var opts=currentOpts||[];
+  var html='';
+  var sumTotal=0;
+  var currentSpot=window.layerData_mid&&window.layerData_mid.spot_price?window.layerData_mid.spot_price:'';
+  var promises=opts.map(function(opt,idx){
+    var spot=currentSpot||opt.spot_price||opt.spot_at_entry||'';
+    if(!spot||!opt.strike||!opt.dte||!opt.iv) return Promise.resolve(null);
+    return api('/api/bs-greeks?symbol='+encodeURIComponent(opt.symbol)+'&strike='+opt.strike+'&dte='+opt.dte+'&iv='+opt.iv+'&spot='+spot+'&premium='+opt.price+'&layer=mid&qty='+(opt.qty||1))
+      .then(function(d){return calcMetrics(d,'mid');})
+      .catch(function(e){return null;});
+  });
+  Promise.all(promises).then(function(metricsArr){
+    for(var i=0;i<metricsArr.length;i++){
+      if(metricsArr[i] && metricsArr[i].hedgeRange && opts[i]){
+        opts[i].hedgeRange = metricsArr[i].hedgeRange;
+      }
+    }
+    var maxVal={cov:-1e9,sG:-1e9,gP:-1e9,acc:-1e9,wPnL:-1e9};
+    for(var i=0;i<metricsArr.length;i++){
+      var m=metricsArr[i];
+      if(!m) continue;
+      if(m.coverage>maxVal.cov)maxVal.cov=m.coverage;
+      if(m.sumGamma>maxVal.sG)maxVal.sG=m.sumGamma;
+      if(m.gammaProtection>maxVal.gP)maxVal.gP=m.gammaProtection;
+      if(m.accuracy>maxVal.acc)maxVal.acc=m.accuracy;
+      if(m.weightedPnL>maxVal.wPnL)maxVal.wPnL=m.weightedPnL;
+    }
+    html='';
+    sumTotal=0;
+    for(var idx=0;idx<opts.length;idx++){
+      var opt=opts[idx];
+      var checked=opt.checked!==false;
+      var strike=opt.strike||'-';
+      var delta=opt.delta||0;
+      var price=opt.price||0;
+      var qty=opt.qty||1;
+      var isPurchased=(!!purchasedOptions.mid&&purchasedOptions.mid.some(function(p){return p.symbol===opt.symbol;}));
+      var total=price*qty;
+      if(checked) sumTotal+=total;
+      var pctFromRemaining='';
+      if(activeLayer&&activeLayer.budget>0&&checked){
+        pctFromRemaining=F(total/activeLayer.budget*100,1)+'%';
+      }
+      var m=metricsArr[idx];
+      var optionPnL=m?m.optionPnL:0;
+      var covMax=m&&(Math.abs(m.coverage-maxVal.cov)<1e-9);
+      var sGMax=m&&(Math.abs(m.sumGamma-maxVal.sG)<1e-9);
+      var gPMax=m&&(Math.abs(m.gammaProtection-maxVal.gP)<1e-9);
+      var accMax=m&&(Math.abs(m.accuracy-maxVal.acc)<1e-9);
+      var wPMax=m&&(Math.abs(m.weightedPnL-maxVal.wPnL)<1e-9);
+      var bkgd='';
+      if(covMax)bkgd+='background:rgba(220,38,38,0.15);';
+      html+='<tr style="height:22px">';
+      html+='<td style="padding:2px 6px;text-align:center"><input type="checkbox" '+(checked?'checked':'')+' onchange="window._onSelectToggle(\'mid\','+idx+',this.checked)"></td>';
+      html+='<td style="padding:2px 6px;font-weight:bold">'+opt.symbol+'</td>';
+      html+='<td style="padding:2px 6px;text-align:right">$'+strike+'</td>';
+      html+='<td style="padding:2px 6px;text-align:center">'+(opt.dte||'-')+'</td>';
+      var pnlClr=optionPnL>=0?'var(--green)':'var(--red)'; html+='<td style="padding:2px 6px;text-align:right;color:'+pnlClr+'">$'+F(optionPnL,2)+'</td>';
+      html+='<td style="padding:2px 6px;text-align:right">$'+F(price,4)+'</td>';
+      var qtyStyle=isPurchased?" style=\"width:50px;text-align:center;background:#444;border:1px solid #666;color:#999;padding:2px 4px;border-radius:4px\" disabled":"style=\"width:50px;text-align:center;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px 4px;border-radius:4px\"";
+      html+='<td style="padding:2px 6px;text-align:center"><input type="number" min="0" step="1" value="'+qty+'" '+qtyStyle+' onchange="if(!'+(isPurchased?'true':'false')+')window._onSelectQtyChange(\'mid\','+idx+',this.value)"></td>';
+      html+='<td style="padding:2px 6px;text-align:right">$'+F(total,2)+'</td>';
+      html+='<td style="padding:2px 6px;text-align:right">'+pctFromRemaining+'</td>';
+      html+='<td style="padding:2px 6px;text-align:right">'+F(delta,4)+'</td>';
+      html+='<td style="padding:2px 6px;text-align:right;'+(covMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?F(m.coverage*100,0)+'%':'-')+'</td>';
+      html+='<td style="padding:2px 6px;text-align:right;'+(sGMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?F(m.sumGamma,6):'-')+'</td>';
+      html+='<td style="padding:2px 6px;text-align:right;'+(gPMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?F(m.gammaProtection,4):'-')+'</td>';
+      html+='<td style="padding:2px 6px;text-align:right;'+(accMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?F(m.accuracy*100,0)+'%':'-')+'</td>';
+      html+='<td style="padding:2px 6px;text-align:right;'+(wPMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?'$'+F(m.weightedPnL,2):'-')+'</td>';
+      html+='<td style="padding:2px 6px;text-align:center"><button style="background:none;border:none;cursor:pointer;color:#d32f2f;font-size:14px" onclick="window._onSelectRemove(\'mid\','+idx+')">✕</button></td>';
+      html+='</tr>';
+    }
+    if(html===''){
+      html='<tr><td colspan="15" style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';
+    } else {
+      html+='<tr style="height:22px;font-weight:bold;background:var(--bg);border-top:2px solid var(--border)">';
+      html+='<td style="padding:2px 6px;text-align:center"></td>';
+      html+='<td style="padding:2px 6px" colspan="6">Итого:</td>';
+      html+='<td style="padding:2px 6px;text-align:right">$'+F(sumTotal,2)+'</td>';
+      var pctTotal='';
+      if(activeLayer&&activeLayer.budget>0&&sumTotal>0) pctTotal=F(sumTotal/activeLayer.budget*100,1)+'%';
+      html+='<td style="padding:2px 6px;text-align:right">'+pctTotal+'</td>';
+      html+='<td></td><td></td><td></td><td></td><td></td><td></td>';
+      html+='<td></td>';
+      html+='</tr>';
+    }
+    tbody.innerHTML=html;
+    var budgetEl=document.getElementById('midBudgetInfo');
+    if(budgetEl && activeLayer){
+      var usedPct=activeLayer.budget>0?Math.round(activeLayer.spent/activeLayer.budget*100):0;
+      budgetEl.textContent='💰 Бюджет: $'+F(activeLayer.budget,2)+' | Потрачено: $'+F(activeLayer.spent,2)+' ('+usedPct+'%) | Осталось: $'+F(remainingBudget,2);
+    }
+  });
+  setTimeout(function(){drawMidSelectedGammaChart();}, 100);
 }
 
 // === Near Selected: Gamma Chart ===
@@ -1315,7 +1440,7 @@ function autoSelectBestNear() {
     var s = spotForApi || opt.spot_price || 0;
     if (!s || !opt.strike || !opt.dte || !opt.iv) return Promise.resolve(null);
     return api('/api/bs-greeks?symbol='+encodeURIComponent(opt.symbol)+'&strike='+opt.strike+'&dte='+opt.dte+'&iv='+opt.iv+'&spot='+s+'&premium='+opt.price+'&layer=near&qty='+(opt.qty||1))
-      .then(function(d){ return calcMetrics(d); })
+      .then(function(d){ return calcMetrics(d,'near'); })
       .catch(function(e){ return null; });
   });
   
@@ -1351,6 +1476,80 @@ function autoSelectBestNear() {
     window._bestOptions = scored.slice(0, 3);
     
     renderBestOptionsTable();
+    
+    btn.textContent = '⚡ Автовыбор лучшего опциона';
+  });
+}
+
+// === Mid Layer: Auto Select Best ===
+
+function autoSelectBestMid() {
+  var data = window.layerData_mid;
+  if (!data || !data.options || data.options.length === 0) {
+    alert('Нет доступных опционов для анализа');
+    return;
+  }
+  var spot = data.spot_price || 0;
+  if (!spot) { alert('Нет spot цены'); return; }
+  
+  var combined = [];
+  data.options.forEach(function(opt) {
+    if (opt.dte <= 25) {
+      combined.push({
+        symbol: opt.symbol, strike: opt.strike, dte: opt.dte, iv: opt.iv,
+        price: opt.price, qty: 1, spot_price: spot
+      });
+    }
+  });
+  
+  if (combined.length === 0) {
+    alert('Нет опционов с DTE <= 25');
+    return;
+  }
+  
+  var btn = document.querySelector('button[onclick="autoSelectBestMid()"]');
+  if (btn) btn.textContent = '⏳ Анализ...';
+  
+  var spotForApi = window.layerData_mid && window.layerData_mid.spot_price ? window.layerData_mid.spot_price : 0;
+  var promises = combined.map(function(opt, idx) {
+    var s = spotForApi || opt.spot_price || 0;
+    if (!s || !opt.strike || !opt.dte || !opt.iv) return Promise.resolve(null);
+    return api('/api/bs-greeks?symbol='+encodeURIComponent(opt.symbol)+'&strike='+opt.strike+'&dte='+opt.dte+'&iv='+opt.iv+'&spot='+s+'&premium='+opt.price+'&layer=mid&qty='+(opt.qty||1))
+      .then(function(d){ return calcMetrics(d,'mid'); })
+      .catch(function(e){ return null; });
+  });
+  
+  Promise.all(promises).then(function(metricsArr) {
+    var maxVal = {cov: -1e9, sG: -1e9, gP: -1e9, acc: -1e9, wP: -1e9};
+    for (var i = 0; i < metricsArr.length; i++) {
+      var m = metricsArr[i];
+      if (!m) continue;
+      if (m.coverage > maxVal.cov) maxVal.cov = m.coverage;
+      if (m.sumGamma > maxVal.sG) maxVal.sG = m.sumGamma;
+      if (m.gammaProtection > maxVal.gP) maxVal.gP = m.gammaProtection;
+      if (m.accuracy > maxVal.acc) maxVal.acc = m.accuracy;
+      if (m.weightedPnL > maxVal.wP) maxVal.wP = m.weightedPnL;
+    }
+    
+    var scored = [];
+    for (var i = 0; i < metricsArr.length; i++) {
+      var m = metricsArr[i];
+      if (!m) continue;
+      var score = 0;
+      var maxMetrics = [];
+      if (Math.abs(m.coverage - maxVal.cov) < 1e-9) { score++; maxMetrics.push('Cov=' + F(m.coverage*100, 0) + '%'); }
+      if (Math.abs(m.sumGamma - maxVal.sG) < 1e-9) { score++; maxMetrics.push('ΣΓ=' + F(m.sumGamma, 6)); }
+      if (Math.abs(m.gammaProtection - maxVal.gP) < 1e-9) { score++; maxMetrics.push('Γ/$=' + F(m.gammaProtection, 4)); }
+      if (Math.abs(m.accuracy - maxVal.acc) < 1e-9) { score++; maxMetrics.push('Prec=' + F(m.accuracy*100, 0) + '%'); }
+      if (Math.abs(m.weightedPnL - maxVal.wP) < 1e-9) { score++; maxMetrics.push('wPnL=$' + F(m.weightedPnL, 2)); }
+      scored.push({idx: i, score: score, symbol: combined[i].symbol, strike: combined[i].strike, dte: combined[i].dte, iv: combined[i].iv, price: combined[i].price, spot_price: spot, maxMetrics: maxMetrics, hedgeRange: m.hedgeRange});
+    }
+    
+    scored.sort(function(a, b) { return b.score - a.score; });
+    
+    window._bestOptionsMid = scored.slice(0, 3);
+    
+    renderBestOptionsTableMid();
     
     btn.textContent = '⚡ Автовыбор лучшего опциона';
   });
@@ -1413,6 +1612,67 @@ function addBestOptionToSelected(idx) {
   syncNearSelected();
   drawNearSelectedGammaChart();
   renderBestOptionsTable();
+}
+
+// === Mid Layer: Best Options Table ===
+
+function renderBestOptionsTableMid() {
+  var tbody = document.getElementById('bestOptionsTable-mid');
+  if (!tbody || !window._bestOptionsMid || window._bestOptionsMid.length === 0) {
+    if (tbody) tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-dim);padding:10px">Нажмите "Автовыбор лучшего опциона" для анализа</td></tr>';
+    return;
+  }
+  
+  var rows = '';
+  var selected = selectedOption.mid || [];
+  var selectedSymbols = {};
+  selected.forEach(function(opt) { selectedSymbols[opt.symbol] = true; });
+  
+  window._bestOptionsMid.forEach(function(opt, i) {
+    var alreadySelected = selectedSymbols[opt.symbol];
+    var rowStyle = alreadySelected ? 'style="opacity:0.5"' : '';
+    rows += '<tr ' + rowStyle + '>';
+    rows += '<td style="text-align:center;padding:3px 6px;font-weight:700">' + (i+1) + '</td>';
+    rows += '<td style="text-align:left;padding:3px 6px;cursor:pointer" onclick="addBestOptionToSelectedMid(' + i + ')">' + opt.symbol + '</td>';
+    rows += '<td style="padding:3px 6px;text-align:right">' + opt.strike + '</td>';
+    rows += '<td style="padding:3px 6px;text-align:center">' + opt.dte + '</td>';
+    rows += '<td style="padding:3px 6px;text-align:center"><b style="color:' + (opt.score >= 3 ? 'var(--green)' : opt.score >= 2 ? 'orange' : 'var(--text-dim)') + '">' + opt.score + '/5</b></td>';
+    rows += '<td style="padding:3px 6px;text-align:right;font-size:10px;color:var(--blue)">' + (opt.maxMetrics.length > 0 ? opt.maxMetrics.join(' | ') : '—') + '</td>';
+    rows += '<td style="text-align:center;padding:3px 6px">' + (alreadySelected ? '✅' : '<button class="btn-action" style="font-size:10px;padding:2px 8px" onclick="addBestOptionToSelectedMid(' + i + ')">✔</button>') + '</td>';
+    rows += '</tr>';
+  });
+  
+  tbody.innerHTML = rows;
+}
+
+function addBestOptionToSelectedMid(idx) {
+  if (!window._bestOptionsMid || !window._bestOptionsMid[idx]) return;
+  var opt = window._bestOptionsMid[idx];
+  
+  var selected = selectedOption.mid || [];
+  if (selected.some(function(x) { return x.symbol === opt.symbol; })) {
+    alert('Этот опцион уже выбран');
+    return;
+  }
+  
+  selected.push({
+    symbol: opt.symbol, strike: opt.strike, dte: opt.dte, iv: opt.iv,
+    price: opt.price, qty: 1, checked: true, spot_price: opt.spot_price, spot_at_entry: opt.spot_price,
+    hedgeRange: opt.hedgeRange || null
+  });
+  
+  var selList = JSON.parse(localStorage.getItem('selectedOptions') || '{}');
+  if (!selList.mid) selList.mid = [];
+  selList.mid.push({
+    symbol: opt.symbol, strike: opt.strike, dte: opt.dte, iv: opt.iv,
+    price: opt.price, qty: 1, spot_at_entry: opt.spot_price,
+    hedgeRange: opt.hedgeRange || null
+  });
+  localStorage.setItem('selectedOptions', JSON.stringify(selList));
+  
+  syncMidSelected();
+  drawMidSelectedGammaChart();
+  renderBestOptionsTableMid();
 }
 
 function _bsPutGamma(S, K, T, iv){
@@ -1702,6 +1962,249 @@ function drawNearSelectedGammaChart(){
   }
   legendHtml+='<span style="color:rgba(255,255,255,0.6)">- - -</span> Spot='+spot;
   document.getElementById('nearGammaLegend').innerHTML=legendHtml;
+}
+
+// === Mid Layer: Draw Selected Gamma Chart ===
+
+function drawMidSelectedGammaChart(){
+  var canvas=document.getElementById('midSelectedGammaChart');
+  if(!canvas) return;
+  var wrapper=canvas.parentElement.parentElement;
+  if(wrapper){
+    var cw=Math.floor(wrapper.clientWidth);
+    if(cw>0 && cw!==canvas.width){
+      canvas.width=cw;
+    }
+  }
+  var opts=selectedOption.mid||[];
+  if(opts.length===0){
+    var ctx=canvas.getContext('2d');
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle='var(--text-dim)';
+    ctx.font='14px sans-serif';
+    ctx.textAlign='center';
+    ctx.fillText('Нет выбранных опционов',canvas.width/2,canvas.height/2);
+    document.getElementById('midGammaLegend').innerHTML='';
+    return;
+  }
+
+  var spot=window.layerData_mid&&window.layerData_mid.spot_price?window.layerData_mid.spot_price:0;
+  if(!spot) return;
+
+  // Insurance range for mid layer: 10-20% below spot
+  var insLow=Math.round(spot*(1-20/100));
+  var insHigh=Math.round(spot*(1-10/100));
+  var padRange=4;
+  var chartLow=insLow-padRange;
+  var chartHigh=Math.max(insHigh+padRange, spot+padRange);
+  var step=1;
+  var prices=[];
+  for(var p=chartHigh;p>=chartLow;p-=step){prices.push(p);}
+
+  for(var i=0;i<opts.length;i++){
+    var hr = opts[i].hedgeRange;
+    if(hr && hr.low && hr.high){
+      if(hr.low < chartLow) chartLow = hr.low - 1;
+      if(hr.high > chartHigh) chartHigh = hr.high + 1;
+      prices.push(hr.low, hr.high);
+    }
+  }
+  prices.sort(function(a,b){return b-a;});
+
+  var colors=['#58a6ff','#f778ba','#7ee787','#d2a8ff','#ff7b72','#79c0ff','#ffa657','#bd97f5'];
+  var showTotal = document.getElementById('showTotalGamma-mid');
+  var showTotalGamma = showTotal ? showTotal.checked : true;
+
+  var optionGammas=[];
+  var totalGamma=[];
+  for(var i=0;i<opts.length;i++){
+    var opt=opts[i];
+    var strike=opt.strike||0;
+    var iv=opt.iv||0.3;
+    var dte=Math.max(opt.dte||30,1);
+    var T=dte/365;
+    var qty=opt.qty||1;
+    var gammaArr=[];
+    for(var j=0;j<prices.length;j++){
+      var g=_bsPutGamma(prices[j],strike,T,iv)*qty;
+      gammaArr.push(g);
+    }
+    optionGammas.push(gammaArr);
+    for(var j=0;j<prices.length;j++){
+      totalGamma[j]=(totalGamma[j]||0)+gammaArr[j];
+    }
+  }
+  var maxGamma=0;
+  for(var i=0;i<optionGammas.length;i++){
+    for(var j=0;j<optionGammas[i].length;j++){
+      if(optionGammas[i][j]>maxGamma) maxGamma=optionGammas[i][j];
+    }
+  }
+  if(showTotalGamma){
+    for(var j=0;j<totalGamma.length;j++){
+      if(totalGamma[j]>maxGamma) maxGamma=totalGamma[j];
+    }
+  }
+  if(maxGamma<=0) maxGamma=0.001;
+  var cW=canvas.width, cH=canvas.height;
+  var pad={t:30,r:20,b:40,l:60};
+  var cW2=cW-pad.l-pad.r, cH2=cH-pad.t-pad.b;
+  var toX=function(v){return pad.l+Math.round((v-chartLow)/(chartHigh-chartLow)*cW2);};
+  var toY=function(v){return pad.t+Math.round((1-v/maxGamma)*cH2);};
+  var ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,cW,cH);
+  ctx.fillStyle='#0d1117';ctx.fillRect(0,0,cW,cH);
+  // Grid
+  ctx.strokeStyle='#21262d';ctx.lineWidth=1;
+  for(var i=0;i<=5;i++){
+    var y=pad.t+cH2*(i/5);
+    ctx.beginPath();ctx.moveTo(pad.l,y);ctx.lineTo(pad.l+cW2,y);ctx.stroke();
+  }
+  for(var j=0;j<prices.length;j+=Math.max(1,Math.floor(prices.length/8))){
+    var x=toX(prices[j]);
+    if(x<pad.l||x>pad.l+cW2) continue;
+    ctx.beginPath();ctx.moveTo(x,pad.t);ctx.lineTo(x,pad.t+cH2);ctx.stroke();
+  }
+  // Insurance range (green)
+  var ix1=toX(insLow),ix2=toX(insHigh);
+  ctx.fillStyle='rgba(63,185,80,0.12)';
+  ctx.fillRect(ix1,pad.t,ix2-ix1,cH2);
+  ctx.strokeStyle='rgba(63,185,80,0.5)';ctx.lineWidth=1;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(ix1,pad.t);ctx.lineTo(ix1,pad.t+cH2);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(ix2,pad.t);ctx.lineTo(ix2,pad.t+cH2);ctx.stroke();
+  ctx.setLineDash([]);
+  // Working window on each option's gamma curve
+  for(var i=0;i<optionGammas.length;i++){
+    var hr = opts[i].hedgeRange;
+    if(!hr || !hr.low || !hr.high) continue;
+    var color = colors[i%colors.length];
+    var hx1=toX(hr.low), hx2=toX(hr.high);
+    if(hx2<=pad.l || hx1>=pad.l+cW2) continue;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(pad.l, pad.t, pad.l+cW2 - pad.l, cH2);
+    ctx.clip();
+    var segPoints = [];
+    for(var j=0; j<prices.length; j++){
+      var px = toX(prices[j]);
+      if(prices[j] < hr.low || prices[j] > hr.high) continue;
+      var py = toY(optionGammas[i][j]);
+      segPoints.push({x:px,y:py});
+    }
+    if(segPoints.length >= 2){
+      ctx.beginPath();
+      ctx.strokeStyle=color;
+      ctx.lineWidth=3;
+      ctx.setLineDash([]);
+      ctx.moveTo(segPoints[0].x, segPoints[0].y);
+      for(var k=1;k<segPoints.length;k++) ctx.lineTo(segPoints[k].x, segPoints[k].y);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+  // Individual gamma curves
+  for(var i=0;i<optionGammas.length;i++){
+    var maxJ=-1,maxG=-1;
+    for(var j=0;j<optionGammas[i].length;j++){
+      if(optionGammas[i][j]>maxG){maxG=optionGammas[i][j];maxJ=j;}
+    }
+    ctx.beginPath();
+    ctx.strokeStyle=colors[i%colors.length];
+    ctx.lineWidth=0.5;ctx.setLineDash([4,3]);
+    for(var j=0;j<optionGammas[i].length;j++){
+      var x=toX(prices[j]),y=toY(optionGammas[i][j]);
+      if(j===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+    if(maxJ>=0){
+      var mx=toX(prices[maxJ]),my=toY(optionGammas[i][maxJ]);
+      ctx.beginPath();ctx.arc(mx,my,5,0,Math.PI*2);
+      ctx.fillStyle=colors[i%colors.length];ctx.fill();
+      ctx.beginPath();ctx.arc(mx,my,8,0,Math.PI*2);
+      ctx.strokeStyle=colors[i%colors.length];ctx.lineWidth=2;ctx.stroke();
+    }
+  }
+  if(showTotalGamma) {
+    ctx.beginPath();
+    ctx.strokeStyle='#f0883e';ctx.lineWidth=2.5;
+    for(var j=0;j<totalGamma.length;j++){
+      var x=toX(prices[j]),y=toY(totalGamma[j]);
+      if(j===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    ctx.beginPath();
+    for(var j=0;j<totalGamma.length;j++){
+      var x=toX(prices[j]),y=toY(totalGamma[j]);
+      if(j===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+    }
+    ctx.lineTo(toX(prices[prices.length-1]),pad.t+cH2);
+    ctx.lineTo(toX(prices[0]),pad.t+cH2);
+    ctx.closePath();
+    var grad=ctx.createLinearGradient(0,pad.t,0,pad.t+cH2);
+    grad.addColorStop(0,'rgba(240,136,62,0.3)');
+    grad.addColorStop(1,'rgba(240,136,62,0.02)');
+    ctx.fillStyle=grad;
+    ctx.fill();
+    for(var j=0;j<totalGamma.length;j++){
+      if(j%3===0){
+        var x=toX(prices[j]),y=toY(totalGamma[j]);
+        ctx.beginPath();ctx.arc(x,y,2.5,0,Math.PI*2);
+        ctx.fillStyle='#f0883e';ctx.fill();
+      }
+    }
+    var maxIdx=totalGamma.indexOf(Math.max.apply(null,totalGamma));
+    if(maxIdx>=0){
+      var mx=toX(prices[maxIdx]),my=toY(totalGamma[maxIdx]);
+      ctx.beginPath();ctx.arc(mx,my,6,0,Math.PI*2);
+      ctx.fillStyle='#58a6ff';ctx.fill();
+      ctx.beginPath();ctx.arc(mx,my,9,0,Math.PI*2);
+      ctx.strokeStyle='#58a6ff';ctx.lineWidth=2;ctx.stroke();
+    }
+  }
+  // X axis
+  ctx.strokeStyle='#30363d';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(pad.l,pad.t+cH2);ctx.lineTo(pad.l+cW2,pad.t+cH2);ctx.stroke();
+  // Price labels
+  ctx.fillStyle='#e6edf3';ctx.font='bold 13px monospace';ctx.textAlign='center';
+  for(var j=0;j<prices.length;j+=Math.max(1,Math.floor(prices.length/8))){
+    var x=toX(prices[j]);
+    if(x<pad.l-5||x>pad.l+cW2+5) continue;
+    ctx.strokeStyle='#484f58';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(x,pad.t+cH2);ctx.lineTo(x,pad.t+cH2+6);ctx.stroke();
+    var text='$'+prices[j];
+    var tw=ctx.measureText(text).width;
+    ctx.fillStyle='rgba(13,17,23,0.95)';
+    ctx.fillRect(x-tw/2-3,pad.t+cH2+6,tw+6,16);
+    ctx.strokeStyle='#30363d';ctx.lineWidth=1;
+    ctx.strokeRect(x-tw/2-3,pad.t+cH2+6,tw+6,16);
+    ctx.fillStyle='#e6edf3';
+    ctx.fillText(text,x,pad.t+cH2+19);
+  }
+  // Y axis labels
+  ctx.textAlign='right';ctx.fillStyle='#e6edf3';ctx.font='13px monospace';
+  for(var i=0;i<=5;i++){
+    var val=maxGamma*(1-i/5);
+    var y=pad.t+cH2*(i/5);
+    ctx.fillText(val.toFixed(5),pad.l-5,y+4);
+  }
+  ctx.save();
+  ctx.translate(14,pad.t+cH2/2);
+  ctx.rotate(-Math.PI/2);
+  ctx.textAlign='center';ctx.fillStyle='#8b949e';ctx.font='bold 12px sans-serif';
+  ctx.fillText('Γ',0,0);
+  ctx.restore();
+  ctx.fillStyle='#e6edf3';ctx.font='bold 13px sans-serif';ctx.textAlign='left';
+  ctx.fillText(showTotalGamma ? 'Суммарная Γ (orange) + Γ каждого опциона (dashed)' : 'Γ каждого опциона (dashed)',pad.l,pad.t-8);
+  var legendHtml='';
+  for(var i=0;i<opts.length;i++){
+    legendHtml+='<span style="color:'+colors[i%colors.length]+'">──</span> '+opts[i].symbol+' (K$'+opts[i].strike+') ';
+  }
+  if(showTotalGamma) {
+    legendHtml+='<br><span style="color:#f0883e;font-weight:bold">━━━━</span> Суммарная Γ (filled)<br>';
+  }
+  legendHtml+='<span style="color:rgba(255,255,255,0.6)">- - -</span> Spot='+spot;
+  document.getElementById('midGammaLegend').innerHTML=legendHtml;
 }
 
 
@@ -3043,6 +3546,7 @@ function showDataStatus(){
   // Берём data_source из ближайшего слоя
   var sources = [
     layerData_distant,
+    layerData_mid,
     layerData_near
   ];
   // Also check main options endpoint
@@ -3092,12 +3596,14 @@ function showDataStatus(){
 
 function loadAll(){
   var distantQ=layerFilterParams.distant?"?"+layerFilterParams.distant:"";
+  var midQ=layerFilterParams.mid?"?"+layerFilterParams.mid:"";
   var nearQ=layerFilterParams.near?"?"+layerFilterParams.near:"";
   Promise.all([
     api("/api/positions"),
     api("/api/options"),
     api("/api/layers"),
     api("/api/layer/distant"+distantQ),
+    api("/api/layer/mid"+midQ),
     api("/api/layer/near"+nearQ)
   ]).then(function(results){
     // Store options data for status check
@@ -3110,13 +3616,15 @@ function loadAll(){
     window._lastLayersData=results[2];
     renderLayerBudget('distant', results[2]);
     layerData_distant=results[3];
-    layerData_near=results[4];
-    console.log('loadAll: rendering layers — distant='+JSON.stringify(results[3]).substring(0,80)+' near='+JSON.stringify(results[4]).substring(0,80));
+    layerData_mid=results[4];
+    layerData_near=results[5];
+    console.log('loadAll: rendering layers — distant='+JSON.stringify(results[3]).substring(0,80)+' mid='+JSON.stringify(results[4]).substring(0,80)+' near='+JSON.stringify(results[5]).substring(0,80));
     showDataStatus();
     api("/api/purchased-options").then(function(p){
-      purchasedOptions={distant:p.distant||[],near:p.near||[]};
+      purchasedOptions={distant:p.distant||[],mid:p.mid||[],near:p.near||[]};
       renderAvailableOptions('distant', 'layerContent-distant', results[3]);
-      renderAvailableOptions('near', 'layerContent-near', results[4]);
+      renderAvailableOptions('mid', 'layerContent-mid', results[4]);
+      renderAvailableOptions('near', 'layerContent-near', results[5]);
       renderLayerBudget('near', results[2]);
       renderDistantDeltaMatrix();
       renderDistantPnlMatrix();
@@ -3125,6 +3633,7 @@ function loadAll(){
       // Build global purchased symbols lookup
       globalPurchasedSymbols={};
       (purchasedOptions.distant||[]).forEach(function(x){globalPurchasedSymbols[x.symbol]=x.qty;});
+      (purchasedOptions.mid||[]).forEach(function(x){globalPurchasedSymbols[x.symbol]=x.qty;});
       (purchasedOptions.near||[]).forEach(function(x){globalPurchasedSymbols[x.symbol]=x.qty;});
       // Load global available options
       api("/api/available-options").then(function(d){renderGlobalLayer(d);});

@@ -1342,7 +1342,7 @@ def api_spot() -> dict:
 
 
 def _get_hedge_range_pct(layer, spot):
-    hedges = {"near": (3, 10), "mid": (8, 15), "distant": (15, 30)}
+    hedges = {"near": (3, 10), "mid": (10, 20), "distant": (15, 30)}
     h = hedges.get(layer, (5, 20))
     min_pct, max_pct = h
     low = round(spot * (1 - max_pct / 100), 2)
