@@ -1350,16 +1350,16 @@ function renderNearPnlMatrix(){
   thPrice.style.cssText='text-align:right;padding:2px 6px';
   thPrice.textContent='Цена';
   thead.appendChild(thPrice);
+  var thSigma=document.createElement('th');
+  thSigma.style.cssText='text-align:right;padding:2px 6px';
+  thSigma.textContent='ΣPnL';
+  thead.appendChild(thSigma);
   opts.forEach(function(o){
     var th=document.createElement('th');
     th.style.cssText='text-align:right;padding:2px 6px';
     th.textContent=o.symbol.replace('-P','');
     thead.appendChild(th);
   });
-  var thSigma=document.createElement('th');
-  thSigma.style.cssText='text-align:right;padding:2px 6px';
-  thSigma.textContent='ΣPnL';
-  thead.appendChild(thSigma);
   var html='';
   for(var p=insHigh;p>=insLow;p--){
     var is3=(p===p3);
@@ -1369,7 +1369,9 @@ function renderNearPnlMatrix(){
     if(is3 && !is10) bg='background:#ffaa0020;';
     html+='<tr style="height:20px;'+bg+'">';
     html+='<td style="padding:2px 6px;text-align:right">$'+p+'</td>';
+    // Сначала считаем ΣPnL
     var totalPnl=0;
+    var optionCells=[];
     opts.forEach(function(o){
       var qty=o.qty||1;
       var strike=o.strike||0;
@@ -1380,11 +1382,16 @@ function renderNearPnlMatrix(){
       var bsPrice=_bsPutPrice(p, strike, T, iv);
       var pnl=(bsPrice-premium)*qty;
       totalPnl+=pnl;
-      var cls=pnl>=0?'color:var(--green)':'color:#d32f2f';
-      html+='<td style="padding:2px 6px;text-align:right" class="'+cls+'">$'+F(pnl,2)+'</td>';
+      optionCells.push({pnl:pnl});
     });
+    // ΣPnL сразу после цены
     var tcls=totalPnl>=0?'color:var(--green)':'color:#d32f2f';
     html+='<td style="padding:2px 6px;text-align:right;font-weight:bold" class="'+tcls+'">$'+F(totalPnl,2)+'</td>';
+    // Потом индивидуальные PnL
+    for(var k=0;k<optionCells.length;k++){
+      var cls=optionCells[k].pnl>=0?'color:var(--green)':'color:#d32f2f';
+      html+='<td style="padding:2px 6px;text-align:right" class="'+cls+'">$'+F(optionCells[k].pnl,2)+'</td>';
+    }
     html+='</tr>';
   }
   // PnL difference row (last - first)
@@ -1405,12 +1412,12 @@ function renderNearPnlMatrix(){
   });
   html+='<tr style="height:20px;font-weight:bold;background:var(--bg);border-top:2px solid var(--border)">';
   html+='<td style="padding:2px 6px;text-align:right" colspan="1">Разница PnL:</td>';
+  var tcls=totalDiff>=0?'color:var(--green)':'color:#d32f2f';
+  html+='<td style="padding:2px 6px;text-align:right;font-weight:bold" class="'+tcls+'">$'+F(totalDiff,2)+'</td>';
   for(var k=0;k<diffCells.length;k++){
     var cls=diffCells[k].diff>=0?'color:var(--green)':'color:#d32f2f';
     html+='<td style="padding:2px 6px;text-align:right" class="'+cls+'">$'+F(diffCells[k].diff,2)+'</td>';
   }
-  var tcls=totalDiff>=0?'color:var(--green)':'color:#d32f2f';
-  html+='<td style="padding:2px 6px;text-align:right;font-weight:bold" class="'+tcls+'">$'+F(totalDiff,2)+'</td>';
   html+='</tr>';
   tbody.innerHTML=html;
   }catch(e){console.warn('renderNearPnlMatrix fail:',e);}
