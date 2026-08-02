@@ -304,25 +304,6 @@ function refreshAll(){
   loadAll();
 }
 
-function refreshPrices(){
-  var id="1";
-  setBtnAction(id, "🔄 Цены", true);
-  fetch(API+"/api/refresh-prices", {method:"POST"}).then(function(r){return r.json();}).then(function(res){
-    if(res.status==="ok"){
-      loadAll();
-      setBtnAction(id, "✅ Цены обновлены", false);
-    } else {
-      setBtnAction(id, "❌ Ошибка", false);
-      alert("Ошибка обновления цен: "+res.output);
-    }
-    setTimeout(function(){setBtnAction(id, "🔄 Цены", false);},3000);
-  }).catch(function(e){
-    setBtnAction(id, "❌ Ошибка", false);
-    alert("Ошибка: "+e.message);
-    setTimeout(function(){setBtnAction(id, "🔄 Цены", false);},3000);
-  });
-}
-
 function updateOptions(){
   var id="2";
   setBtnAction(id, "⚡ Обновить опционы", true);
@@ -356,8 +337,10 @@ function runAnchor(){
 }
 
 // === Fetch helpers ===
-function api(path){
-  return fetch(API+path).then(function(r){return r.json();}).catch(function(e){return null;});
+function api(path, opts){
+  if(!opts) opts={method:"GET"};
+  opts.headers=opts.headers||{"Content-Type":"application/json"};
+  return fetch(API+path,opts).then(function(r){return r.json();}).catch(function(e){console.error('api error:',e);return null;});
 }
 
 // === DATA SOURCE BADGE ===
@@ -402,18 +385,11 @@ function updateDataSourceBadge(ds){
 function renderPositions(pos){
   posData = pos;
   var posT=document.getElementById("posTable");
-  var posS=document.getElementById("posSummary");
   var upd=document.getElementById("headerUpdated");
   if(!pos){
     posT.innerHTML='<tr><td colspan="7" style="color:var(--red)">Ошибка загрузки</td></tr>';
     return;
   }
-  var t=pos.totals;
-  var pc=clr(t.total_pnl);
-  posS.innerHTML=
-    '<div class="summary-card"><div class="label">Total Cost</div><div class="value">$'+F(t.total_cost)+'</div></div>'+
-    '<div class="summary-card"><div class="label">Current Value</div><div class="value">$'+F(t.total_value)+'</div></div>'+
-    '<div class="summary-card"><div class="label">PnL</div><div class="value '+pc+'">'+U(t.total_pnl)+'</div><div class="sub '+pc+'">'+P(t.total_pnl_pct)+'</div></div>';
   upd.textContent="Обновлено: "+pos.updated;
   var headerSpot=document.getElementById("headerSpot");
   if(headerSpot && pos.positions && pos.positions.length>0){
@@ -421,11 +397,19 @@ function renderPositions(pos){
     if(sol) headerSpot.textContent="SOL: $"+F(sol.current_price,2);
   }
   var rows="";
-  pos.positions.forEach(function(p){
+  var totalInvest=0,totalCap=0,totalPnl=0;
+  var sorted=pos.positions.slice().sort(function(a,b){return b.pnl_pct-a.pnl_pct;});
+  sorted.forEach(function(p){
     var pc2=clr(p.pnl);
-    var z=p.avg_price>p.current_price?'<span style="color:var(--red)">Просадка</span>':'<span style="color:var(--green)">Прибыль</span>';
-    rows+='<tr style="font-size:15px"><td><b>'+p.symbol+'</b></td><td>'+F(p.qty,2)+'</td><td>$'+F(p.avg_price)+'</td><td>$'+F(p.current_price)+'</td><td class="'+pc2+'">'+U(p.pnl)+'</td><td class="'+pc2+'">'+P(p.pnl_pct)+'</td><td>'+z+'</td></tr>';
+    var invest = p.avg_price * p.qty;
+    var cap = p.current_price * p.qty;
+    rows+='<tr style="font-size:15px"><td><b>'+p.symbol+'</b></td><td>'+F(p.qty,2)+'</td><td>$'+F(p.avg_price)+'</td><td>$'+F(p.current_price)+'</td><td>$'+F(invest)+'</td><td>$'+F(cap)+'</td><td class="'+pc2+'">'+U(p.pnl)+'</td><td class="'+pc2+'">'+P(p.pnl_pct)+'</td></tr>';
+    totalInvest+=invest;
+    totalCap+=cap;
+    totalPnl+=p.pnl;
   });
+  var pnlClr=clr(totalPnl);
+  rows+='<tr style="font-size:16px;font-weight:bold;border-top:2px solid var(--border)"><td colspan="4">Итого</td><td>$'+F(totalInvest)+'</td><td>$'+F(totalCap)+'</td><td class="'+pnlClr+'">'+U(totalPnl)+'</td><td></td><td></td></tr>';
   posT.innerHTML=rows;
 
   // === Buy history ===
@@ -437,9 +421,9 @@ function renderPositions(pos){
     buys.forEach(function(b){
       totalBuyPnl+=b.pnl;
       var pc3=clr(b.pnl);
-      html+='<tr class="buy-row"><td>'+b.date+'</td><td>'+b.qty+'</td><td>$'+F(b.price)+'</td><td>$'+F(b.total)+'</td><td class="'+pc3+'">'+U(b.pnl)+'</td><td class="'+pc3+'">'+P(b.pnl_pct)+'</td><td style="color:var(--text-dim)">'+(b.notes||'')+'</td></tr>';
+      html+='<tr class="buy-row"><td>'+b.date+'</td><td><b>'+b.symbol+'</b></td><td>'+b.qty+'</td><td>$'+F(b.price)+'</td><td>$'+F(b.total)+'</td><td class="'+pc3+'">'+U(b.pnl)+'</td><td class="'+pc3+'">'+P(b.pnl_pct)+'</td><td style="color:var(--text-dim)">'+(b.notes||'')+'</td></tr>';
     });
-    buyEl.innerHTML=html||'<tr><td colspan="7" style="color:var(--text-dim)">Нет данных</td></tr>';
+    buyEl.innerHTML=html||'<tr><td colspan="8" style="color:var(--text-dim)">Нет данных</td></tr>';
     document.getElementById("buyCount").textContent=buys.length;
     var pnlEl=document.getElementById("buyTotalPnl");
     if(pnlEl){pnlEl.className=clr(totalBuyPnl);pnlEl.textContent=U(totalBuyPnl)}
@@ -474,7 +458,46 @@ function renderPositions(pos){
     }
     dropEl.innerHTML=rows;
   }
-}
+};
+
+// === BUY ASSET ===
+window.__showBuyAssetModal = function(){
+  document.getElementById("assetToken").value="";
+  document.getElementById("assetQty").value="";
+  document.getElementById("assetPrice").value="";
+  document.getElementById("assetNotes").value="";
+  document.getElementById("assetDate").value=new Date().toISOString().split("T")[0];
+  document.getElementById("buyAssetModal").style.display="flex";
+  document.getElementById("assetToken").focus();
+};
+
+window.__buyAsset = function(){
+  console.log('>> __buyAsset CLICKED');
+  var token=document.getElementById("assetToken").value.trim();
+  var date=document.getElementById("assetDate").value;
+  var qty=parseFloat(document.getElementById("assetQty").value);
+  var price=parseFloat(document.getElementById("assetPrice").value);
+  var notes=document.getElementById("assetNotes").value.trim();
+  
+  console.log('>> vals: t='+token+' d='+date+' q='+qty+' p='+price);
+  
+  if(!token){alert("Укажите токен");return;}
+  if(!date){alert("Укажите дату");return;}
+  if(isNaN(qty)||qty<=0){alert("Укажите корректное количество");return;}
+  if(isNaN(price)||price<=0){alert("Укажите корректную цену");return;}
+  
+  console.log('>> sending to /api/buy-asset...');
+  api("/api/buy-asset",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({token:token,date:date,qty:qty,price:price,notes:notes||""})
+  }).then(function(res){
+    if(res.error){alert("Ошибка: "+res.error);return;}
+    document.getElementById("buyAssetModal").style.display="none";
+    alert("Куплено: "+token+" | "+qty+" x $"+F(price,4));
+    loadAll();
+  }).catch(function(e){console.error("Ошибка покупки:",e);});
+};
 
 // === TAB 1: PORTFOLIO ===
 function loadPortfolio(){

@@ -202,29 +202,6 @@ def api_update_options() -> dict:
         return {"status": "error", "output": str(e)}
 
 
-@app.post("/api/refresh-prices")
-def api_refresh_prices() -> dict:
-    """Обновляет текущие цены через pipeline."""
-    try:
-        cmd = [
-            sys.executable, str(PROJECT_DIR / "src" / "pipeline.py"), "prices",
-        ]
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=60,
-        )
-        output = result.stdout.strip()
-        if result.returncode != 0:
-            output += "\n" + result.stderr.strip()
-        return {
-            "status": "ok",
-            "output": output,
-        }
-    except subprocess.TimeoutExpired:
-        return {"status": "error", "output": "Timeout after 60s"}
-    except Exception as e:
-        return {"status": "error", "output": str(e)}
-
-
 @app.post("/api/update-option-entry")
 async def api_update_option_entry(request: Request) -> dict:
     """Обновляет entry_price (и/qty) опциона."""
@@ -517,13 +494,18 @@ def api_positions() -> dict[str, Any]:
     # === История покупок ===
     buy_records = []
     for b in buy_rows:
+        sym = b.get("symbol", "SOL")
+        sym_price = _get_spot_price(sym)
+        if sym_price <= 0:
+            sym_price = float(b["price"])
         buy_records.append({
             "date": b.get("buy_date", ""),
             "qty": float(b["qty"]),
             "price": float(b["price"]),
             "total": float(b["total"]),
-            "pnl": round((current_price - float(b["price"])) * float(b["qty"]), 2),
-            "pnl_pct": round((current_price - float(b["price"])) / float(b["price"]) * 100, 2) if float(b["price"]) > 0 else 0,
+            "symbol": sym,
+            "pnl": round((sym_price - float(b["price"])) * float(b["qty"]), 2),
+            "pnl_pct": round((sym_price - float(b["price"])) / float(b["price"]) * 100, 2) if float(b["price"]) > 0 else 0,
             "notes": b.get("notes", ""),
         })
 
@@ -592,6 +574,49 @@ def api_positions() -> dict[str, Any]:
 # ==========================================
 # ЭНДПОИНТ: ПРОДАЖА АКТИВА
 # ==========================================
+
+@app.post("/api/buy-asset")
+def api_buy_asset(body: dict[str, Any]) -> dict[str, Any]:
+    """Купить новый актив (добавляет в buy_history и Portf)."""
+    token = body.get("token", "").strip()
+    date = body.get("date", "")
+    qty = float(body.get("qty", 0))
+    price = float(body.get("price", 0))
+    notes = body.get("notes", "")
+    
+    if not token:
+        return {"error": "Укажите токен", "status": "error"}
+    if not date:
+        return {"error": "Укажите дату", "status": "error"}
+    if qty <= 0:
+        return {"error": "Укажите количество", "status": "error"}
+    if price <= 0:
+        return {"error": "Укажите цену", "status": "error"}
+    
+    total = qty * price
+    
+    try:
+        from src.db import insert_buy_history
+        
+        # Добавить в buy_history
+        buy_id = insert_buy_history(
+            symbol=token, qty=qty, price=price, total=total, buy_date=date, notes=notes
+        )
+        
+        if not buy_id:
+            return {"error": "Ошибка записи в buy_history", "status": "error"}
+        
+        return {
+            "status": "ok",
+            "token": token,
+            "qty": qty,
+            "price": price,
+            "total": total,
+            "message": f"Куплено {qty} {token} по ${round(price,4)}"
+        }
+    except Exception as e:
+        return {"error": str(e), "status": "error"}
+
 
 @app.post("/api/sell")
 def api_sell(body: dict[str, Any]) -> dict[str, Any]:
@@ -815,7 +840,7 @@ def api_options() -> dict[str, Any]:
         symbol = opt["symbol"].strip()
         entry_price = float(opt["entry_price"] or 0)
         qty = int(opt["qty"])
-        total_cost_val = float(opt["total_cost"] or (entry_price * qty))
+        total_cost_val = float(entry_price * qty)
         strike = float(opt["strike"])
         expiry = opt["expiry"]
         layer = (opt["layer"] or "").strip()
@@ -939,7 +964,7 @@ def api_layers() -> dict:
     opts_by_layer = {}
     for opt in open_opts:
         layer_key = (opt["layer"] or "").strip().lower()
-        total_cost_val = float(opt["total_cost"] or (float(opt["entry_price"] or 0) * int(opt["qty"])))
+        total_cost_val = float(float(opt["entry_price"] or 0) * int(opt["qty"]))
         spent[layer_key] = spent.get(layer_key, 0) + total_cost_val
         opts_by_layer.setdefault(layer_key, []).append({
             "symbol": opt["symbol"],

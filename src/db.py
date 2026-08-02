@@ -104,6 +104,38 @@ def execute_write(query: str, params: tuple = ()) -> int:
 
 
 # ============================================================
+# BUY_HISTORY — добавление записи
+# ============================================================
+def insert_buy_history(symbol: str, qty: float, price: float, total: float, buy_date: str, notes: str = "") -> int:
+    """Добавить запись в buy_history."""
+    return execute_write(
+        "INSERT INTO buy_history (buy_date, qty, price, total, symbol, notes, closed) "
+        "VALUES (?, ?, ?, ?, ?, ?, 0)",
+        (buy_date, qty, price, total, symbol, notes)
+    )
+
+
+# ============================================================
+# PORTFOLIO — обновление/добавление позиции
+# ============================================================
+def update_portfolio_position(token: str, qty: float, avg_price: float, notes: str = "") -> bool:
+    """Обновить или добавить позицию в Portf."""
+    existing = execute_query("SELECT id FROM Portf WHERE token=?", (token,))
+    if existing:
+        execute_write(
+            "UPDATE Portf SET qty=?, avg_price=?, notes=? WHERE token=?",
+            (qty, avg_price, notes, token)
+        )
+        return True
+    else:
+        execute_write(
+            "INSERT INTO Portf (token, qty, avg_price, notes) VALUES (?, ?, ?, ?)",
+            (token, qty, avg_price, notes)
+        )
+        return True
+
+
+# ============================================================
 # POSITIONS — агрегация из buy_history
 # ============================================================
 
