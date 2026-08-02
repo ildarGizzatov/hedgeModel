@@ -11,7 +11,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg
 .tabs{display:flex;gap:0;border-bottom:1px solid var(--border);background:var(--surface);padding:0 24px;position:sticky;top:57px;z-index:99}
 .tab{padding:10px 20px;cursor:pointer;border-bottom:2px solid transparent;color:var(--text-dim);font-size:13px;font-weight:500}
 .tab:hover{color:var(--text)}.tab.active{color:var(--blue);border-bottom-color:var(--blue)}
-.tab-content{display:none}.tab-content.active{display:block}
+.tab-content{display:none}.tab-content.active{display:block !important}
 .subtab{padding:6px 14px;cursor:pointer;border-bottom:2px solid transparent;color:var(--text-dim);font-size:12px;font-weight:500}
 .subtab:hover{color:var(--text)}.subtab.active{color:var(--blue);border-bottom-color:var(--blue)}
 .subtab-content{display:none}.subtab-content.active{display:block}
@@ -88,13 +88,6 @@ tr:hover td{background:rgba(88,166,255,.05)}
 <div class="ladder-wrap" style="height:240px;overflow-y:auto"><table><thead><tr><th>Дата</th><th>Token</th><th>Qty</th><th>Цена</th><th>Total</th><th>PnL</th><th>PnL%</th><th>Примечание</th></tr></thead>
 <tbody id="buyHistoryTable"></tbody></table></div>
 </div></div>
-</div>
-<div style="width:50%;float:left;margin-bottom:16px">
-<div class="card"><h2>📊 Портфель</h2>
-<div class="table-wrap" style="max-height:500px;overflow-y:auto">
-<table><thead><tr><th>Токен</th><th>Кол-во</th><th>Avg Price</th><th>Current</th><th>Вложение</th><th>Капитализация</th><th>Разница</th><th>Доходность</th></tr></thead>
-<tbody id="portTable"></tbody></table></div></div>
-</div>
 </div>
 <div style="clear:both"></div>
 <div class="card"><h2>Позиции по активам</h2>

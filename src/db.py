@@ -63,19 +63,6 @@ def migrate_db(conn: sqlite3.Connection) -> None:
             # Установить все существующие строки как open=0
             conn.execute("UPDATE buy_history SET closed=0 WHERE closed IS NULL")
     
-    # Portf: создать если нет
-    if "Portf" not in table_names:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS Portf (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                token           TEXT NOT NULL,
-                qty             REAL NOT NULL,
-                avg_price       REAL NOT NULL,
-                notes           TEXT
-            )
-        """)
-        print("  → Создана таблица Portf")
-    
     return conn
 
 
@@ -207,43 +194,6 @@ def get_all_portfolio_symbols() -> list[str]:
         "SELECT DISTINCT symbol FROM buy_history WHERE closed=0 AND qty > 0 ORDER BY symbol"
     )
     return [r["symbol"] for r in rows]
-
-
-# ============================================================
-# PORTFOLIO (не-SOL активы из таблицы Portf)
-# ============================================================
-
-def get_portfolio_all() -> list[dict]:
-    """Получить все позиции из таблицы Portf."""
-    return execute_query(
-        "SELECT * FROM Portf ORDER BY token"
-    )
-
-
-def update_portfolio(token: str, qty: float, avg_price: float, notes: str = "") -> None:
-    """Добавить/обновить позицию в Portf."""
-    existing = execute_query("SELECT * FROM Portf WHERE token=?", (token,))
-    conn = get_connection()
-    if existing:
-        conn.execute(
-            "UPDATE Portf SET qty=?, avg_price=?, notes=? WHERE token=?",
-            (qty, avg_price, notes, token)
-        )
-    else:
-        conn.execute(
-            "INSERT INTO Portf (token, qty, avg_price, notes) VALUES (?, ?, ?, ?)",
-            (token, qty, avg_price, notes)
-        )
-    conn.commit()
-    conn.close()
-
-
-def delete_portfolio(token: str) -> None:
-    """Удалить позицию из Portf."""
-    conn = get_connection()
-    conn.execute("DELETE FROM Portf WHERE token=?", (token,))
-    conn.commit()
-    conn.close()
 
 
 # ============================================================

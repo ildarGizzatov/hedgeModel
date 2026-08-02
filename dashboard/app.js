@@ -424,9 +424,6 @@ function renderPositions(pos){
       html+='<tr class="buy-row"><td>'+b.date+'</td><td><b>'+b.symbol+'</b></td><td>'+b.qty+'</td><td>$'+F(b.price)+'</td><td>$'+F(b.total)+'</td><td class="'+pc3+'">'+U(b.pnl)+'</td><td class="'+pc3+'">'+P(b.pnl_pct)+'</td><td style="color:var(--text-dim)">'+(b.notes||'')+'</td></tr>';
     });
     buyEl.innerHTML=html||'<tr><td colspan="8" style="color:var(--text-dim)">Нет данных</td></tr>';
-    document.getElementById("buyCount").textContent=buys.length;
-    var pnlEl=document.getElementById("buyTotalPnl");
-    if(pnlEl){pnlEl.className=clr(totalBuyPnl);pnlEl.textContent=U(totalBuyPnl)}
   }
 
   // === Drop 20% from current price (step $1) ===
@@ -498,84 +495,6 @@ window.__buyAsset = function(){
     loadAll();
   }).catch(function(e){console.error("Ошибка покупки:",e);});
 };
-
-// === TAB 1: PORTFOLIO ===
-function loadPortfolio(){
-  console.log('📡 loadPortfolio called');
-  fetch(API+"/api/portf")
-    .then(function(r){return r.json();})
-    .then(function(d){
-      console.log('📡 loadPortfolio got data:', d);
-      renderPortfolio(d);
-    })
-    .catch(function(e){console.error('📡 loadPortfolio error:', e);});
-}
-
-// === Портфель: ручной ввод текущей цены ===
-window._portfManualPrices = {};
-
-window.__editPortfPrice = function(token){
-  var td = event.target;
-  var val = td.textContent.replace(/[^0-9.]/g,'');
-  var oldPrice = parseFloat(val) || 0;
-  var manual = window._portfManualPrices[token] || oldPrice;
-  td.innerHTML='<input type="number" step="0.01" min="0" value="'+F(manual,2)+'" style="width:70px;background:var(--bg);border:1px solid var(--blue);color:var(--text);padding:1px 4px;border-radius:3px;text-align:right" onblur="window.__savePortfPrice(\''+token+'\',this)" onkeydown="if(event.key===\'Enter\')this.blur();if(event.key===\'Escape\'){this.value=\''+F(oldPrice,2)+'\';this.blur()}" autofocus>';
-  td.querySelector('input').focus();
-  td.querySelector('input').select();
-};
-
-window.__savePortfPrice = function(token, input){
-  var newPrice = parseFloat(input.value);
-  if(isNaN(newPrice) || newPrice <= 0) return;
-  window._portfManualPrices[token] = newPrice;
-  loadPortfolio();
-};
-
-function renderPortfolio(data){
-  console.log('>>> renderPortfolio', data);
-  var portT=document.getElementById("portTable");
-  console.log('>>> portT', portT);
-  if(!portT){ console.error('portTable NOT FOUND'); return; }
-  if(!data || !data.positions || data.positions.length===0){
-    portT.innerHTML='<tr><td colspan="8" style="color:red">Нет данных</td></tr>';
-    console.log('>>> no data');
-    return;
-  }
-  var rows="";
-  var totalInvest=0,totalCap=0,totalDiff=0;
-  data.positions.forEach(function(p){
-    // Используем ручную цену если задана
-    var current = window._portfManualPrices[p.token] || p.current_price;
-    var invest = p.avg_price * p.qty;
-    var cap = current * p.qty;
-    var diff = cap - invest;
-    var yield_ = invest > 0 ? (diff / invest * 100) : 0;
-    var yieldColor = yield_ >= 0 ? 'green' : 'red';
-    var diffColor = diff >= 0 ? 'green' : 'red';
-    var isManual = window._portfManualPrices.hasOwnProperty(p.token);
-    var currentStyle = isManual ? 'border-bottom:1px dashed var(--blue);cursor:pointer' : 'cursor:pointer';
-    var currentTitle = isManual ? '📝 Ручная цена. Клик: изменить' : 'Клик: изменить';
-    rows+='<tr><td><b>'+p.token+'</b></td><td>'+F(p.qty,2)+'</td>';
-    rows+='<td>$'+F(p.avg_price)+'</td><td style="'+currentStyle+'" title="'+currentTitle+'" onclick="window.__editPortfPrice(\''+p.token+'\')">$'+F(current,2)+'</td>';
-    rows+='<td>$'+F(invest)+'</td><td>$'+F(cap)+'</td>';
-    rows+='<td style="color:'+diffColor+'">$'+F(diff)+'</td>';
-    rows+='<td style="color:'+yieldColor+'">'+P(yield_)+'</td></tr>';
-    totalInvest+=invest;
-    totalCap+=cap;
-    totalDiff+=diff;
-  });
-  var diffColor=totalDiff>=0?'green':'red';
-  rows+='<tr style="font-weight:bold;border-top:2px solid var(--border)"><td colspan="4">Итого</td>';
-  rows+='<td>$'+F(totalInvest)+'</td><td>$'+F(totalCap)+'</td>';
-  rows+='<td style="color:'+diffColor+'">$'+F(totalDiff)+'</td>';
-  var totalYield=totalInvest>0?(totalDiff/totalInvest*100):0;
-  rows+='<td style="color:'+diffColor+'">'+P(totalYield)+'</td></tr>';
-  console.log('>>> setting innerHTML, length:', rows.length);
-  portT.innerHTML=rows;
-  // Force reflow for hidden tab
-  void portT.offsetHeight;
-  console.log('>>> DONE, innerHTML:', portT.innerHTML.substring(0,100));
-}
 
 // === TAB 2: OPTIONS ===
 function renderOptions(opt, pos){
@@ -3933,7 +3852,6 @@ function loadAll(){
     window._lastOptionsData = results[1] || {};
     updateDataSourceBadge(results[1] ? results[1].data_source : null);
     renderPositions(results[0]);
-    loadPortfolio();
     renderOptions(results[1], results[0]);
     renderLayers(results[2]);
     window._lastLayersData=results[2];

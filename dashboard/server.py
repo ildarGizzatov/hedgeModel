@@ -33,7 +33,7 @@ from src.db import (
     get_pending_recommendations, execute_query,
     get_latest_chain_snapshot, get_option_by_id, update_option,
     add_option, record_greeks, get_portfolio_position, sell,
-    get_all_portfolio_symbols, get_portfolio_all,
+    get_all_portfolio_symbols,
     get_connection,
 )
 from src.bybit_api import fetch_spot_price, fetch_option_chain
@@ -657,49 +657,6 @@ def api_sell(body: dict[str, Any]) -> dict[str, Any]:
         }
     else:
         return {"error": "Ошибка продажи", "status": "error"}
-
-
-# ==========================================
-# ЭНДПОИНТ: ПОРТФЕЛЬ (таблица Portf)
-# ==========================================
-
-@app.get("/api/portf")
-def api_portf() -> dict[str, Any]:
-    """Портфель из таблицы Portf с вычисляемыми полями."""
-    positions = get_portfolio_all()
-    
-    result = []
-    for p in positions:
-        token = p["token"]
-        qty = float(p["qty"])
-        avg_price = float(p["avg_price"])
-        
-        # Текущая цена из Bybit или fallback
-        current_price = _get_spot_price(token)
-        if current_price <= 0:
-            current_price = avg_price
-        
-        # Вычисляемые поля
-        invest = avg_price * qty  # Вложение
-        cap = current_price * qty  # Капитализация
-        diff = cap - invest  # Разница
-        yield_ = (diff / invest * 100) if invest > 0 else 0  # Доходность
-        
-        result.append({
-            "token": token,
-            "qty": qty,
-            "avg_price": avg_price,
-            "current_price": current_price,
-            "invest": round(invest, 2),
-            "cap": round(cap, 2),
-            "diff": round(diff, 2),
-            "yield": round(yield_, 2),
-        })
-    
-    return {
-        "positions": result,
-        "updated": date.today().strftime("%Y-%m-%d"),
-    }
 
 
 # ЭНДПОИНТ: ДРУГИЕ АКТИВЫ
