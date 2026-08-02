@@ -421,7 +421,8 @@ function renderPositions(pos){
     buys.forEach(function(b){
       totalBuyPnl+=b.pnl;
       var pc3=clr(b.pnl);
-      html+='<tr class="buy-row"><td>'+b.date+'</td><td><b>'+b.symbol+'</b></td><td>'+b.qty+'</td><td>$'+F(b.price)+'</td><td>$'+F(b.total)+'</td><td class="'+pc3+'">'+U(b.pnl)+'</td><td class="'+pc3+'">'+P(b.pnl_pct)+'</td><td style="color:var(--text-dim)">'+(b.notes||'')+'</td></tr>';
+      var pStr=parseFloat(b.price).toFixed(4);pStr=parseFloat(pStr);  // убирает хвостовые нули
+      html+='<tr class="buy-row"><td>'+b.date+'</td><td><b>'+b.symbol+'</b></td><td>'+b.qty+'</td><td>$'+pStr+'</td><td>$'+F(b.total)+'</td><td class="'+pc3+'">'+U(b.pnl)+'</td><td class="'+pc3+'">'+P(b.pnl_pct)+'</td><td style="color:var(--text-dim)">'+(b.notes||'')+'</td></tr>';
     });
     buyEl.innerHTML=html||'<tr><td colspan="8" style="color:var(--text-dim)">Нет данных</td></tr>';
   }
