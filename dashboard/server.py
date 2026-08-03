@@ -996,8 +996,9 @@ def api_layers() -> dict:
         config = tomllib.load(f)
 
     buy_rows = get_buy_history()
-    sol_qty = sum(float(b["qty"]) for b in buy_rows)
-    sol_total = sum(float(b["total"]) for b in buy_rows)
+    sol_rows = [b for b in buy_rows if b.get("symbol","").upper()=="SOL"]
+    sol_qty = sum(float(b["qty"]) for b in sol_rows)
+    sol_total = sum(float(b["total"]) for b in sol_rows)
     if sol_qty <= 0:
         return {"layers": [], "position_size": 0, "total_budget": 0, "free_budget": 0, "updated": date.today().strftime("%Y-%m-%d")}
     sol_avg = round(sol_total / sol_qty, 2)
