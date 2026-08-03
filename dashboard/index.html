@@ -85,8 +85,13 @@ tr:hover td{background:rgba(88,166,255,.05)}
 <div style="display:flex;gap:16px">
 <div style="width:50%;float:left;margin-bottom:16px">
 <div class="card" style="height:350px"><h2 style="display:flex;justify-content:space-between;align-items:center">📈 История покупок <button class="btn-buy" onclick="window.__showBuyAssetModal()">＋ Купить актив</button></h2>
-<div class="ladder-wrap" style="height:290px;overflow-y:auto"><table><thead><tr><th>Дата</th><th>Token</th><th>Qty</th><th>Цена</th><th>Total</th><th>PnL</th><th>PnL%</th><th>Примечание</th></tr></thead>
+<div class="ladder-wrap" style="height:290px;overflow-y:auto"><table><thead><tr><th>Дата</th><th>Token</th><th>Qty</th><th>Цена</th><th>Total</th><th>PnL</th><th>PnL%</th><th>Примечание</th><th style="width:50px"></th></tr></thead>
 <tbody id="buyHistoryTable"></tbody></table></div>
+</div></div>
+<div style="width:50%;float:left;margin-bottom:16px">
+<div class="card" style="height:350px"><h2 style="display:flex;justify-content:space-between;align-items:center">📉 История продаж</h2>
+<div class="ladder-wrap" style="height:290px;overflow-y:auto"><table><thead><tr><th>Дата</th><th>Token</th><th>Qty</th><th>Цена покупки</th><th>Цена продажи</th><th>Total</th><th>PnL</th><th>PnL%</th></tr></thead>
+<tbody id="sellHistoryTable"></tbody></table></div>
 </div></div>
 </div>
 <div style="clear:both"></div>
@@ -144,6 +149,27 @@ tr:hover td{background:rgba(88,166,255,.05)}
     <div class="modal-actions">
       <button type="button" class="btn-action" onclick="window.__buyAsset()">Купить</button>
       <button class="btn-action" onclick="document.getElementById('buyAssetModal').style.display='none'">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<div id="sellAssetModal" class="modal-overlay" style="display:none">
+  <div class="modal-box">
+    <h3>📉 Закрыть позицию</h3>
+    <div id="sellInfo" style="padding:8px 0;font-size:13px;color:var(--text-dim)"></div>
+    <label>Цена закрытия
+      <input type="number" id="sellPrice" placeholder="0.00" min="0" step="any">
+    </label>
+    <label>Количество
+      <input type="number" id="sellQty" min="0.0001" step="any" max="1000000">
+    </label>
+    <div id="sellCalc" style="padding:8px 0;font-size:13px;color:var(--text-dim)"></div>
+    <label>Примечание (опционально)
+      <input type="text" id="sellNotes" placeholder="Комментарий">
+    </label>
+    <div class="modal-actions">
+      <button type="button" class="btn-action" onclick="window.__sellAsset()">Закрыть</button>
+      <button class="btn-action" onclick="document.getElementById('sellAssetModal').style.display='none'">Отмена</button>
     </div>
   </div>
 </div>

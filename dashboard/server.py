@@ -29,7 +29,7 @@ sys.path.insert(0, str(PROJECT_DIR))
 
 from src.db import (
     get_all_open_options,
-    get_buy_history, get_closed_positions, table_stats,
+    get_buy_history, get_closed_positions, table_stats, get_sell_history,
     get_pending_recommendations, execute_query,
     get_latest_chain_snapshot, get_option_by_id, update_option,
     add_option, record_greeks, get_portfolio_position, sell,
@@ -116,6 +116,31 @@ def _get_spot_price(symbol="SOL"):
         except Exception:
             pass
     return _spot_cache.get(cache_key, {}).get("price", 0)
+
+
+def get_sell_history_data():
+    """Получить историю продаж из базы данных."""
+    sells = get_sell_history()
+    result = []
+    for s in sells:
+        buy_price = float(s["buy_price"])
+        sell_price = float(s["sell_price"])
+        pnl = float(s["pnl"])
+        result.append({
+            "id": s["id"],
+            "buy_id": s["buy_id"],
+            "date": s["sell_date"],
+            "symbol": s["symbol"],
+            "qty": float(s["qty"]),
+            "buy_price": buy_price,
+            "sell_price": sell_price,
+            "total": float(s["total"]),
+            "pnl": round(pnl, 2),
+            "pnl_pct": round(pnl / buy_price * 100, 2) if buy_price > 0 else 0,
+            "notes": s.get("notes", ""),
+        })
+    return result
+
 
 # ==========================================
 # CONFIG
@@ -499,6 +524,7 @@ def api_positions() -> dict[str, Any]:
         if sym_price <= 0:
             sym_price = float(b["price"])
         buy_records.append({
+            "id": b.get("id"),
             "date": b.get("buy_date", ""),
             "qty": float(b["qty"]),
             "price": float(b["price"]),
@@ -566,6 +592,7 @@ def api_positions() -> dict[str, Any]:
             "total_pnl_pct": round(total_pnl_all / total_cost_all * 100, 2) if total_cost_all > 0 else 0,
         },
         "buy_history": buy_records,
+        "sell_history": get_sell_history_data(),
         "pnl_ladder": ladder,
         "updated": date.today().strftime("%Y-%m-%d"),
     }
@@ -616,6 +643,72 @@ def api_buy_asset(body: dict[str, Any]) -> dict[str, Any]:
         }
     except Exception as e:
         return {"error": str(e), "status": "error"}
+
+
+# ЭНДПОИНТ: ПРОДАЖА ИЗ ИСТОРИИ ПОКУПОК
+# ==========================================
+
+@app.post("/api/sell-history")
+def api_sell_history(body: dict[str, Any]) -> dict[str, Any]:
+    """Продать часть или всю позицию из buy_history."""
+    buy_id = int(body.get("buy_id", 0))
+    sell_qty = float(body.get("sell_qty", 0))
+    sell_price = float(body.get("sell_price", 0))
+    sell_date = body.get("sell_date", date.today().isoformat())
+    notes = body.get("notes", "")
+    
+    if buy_id <= 0:
+        return {"error": "buy_id обязателен", "status": "error"}
+    if sell_qty <= 0:
+        return {"error": "sell_qty должно быть > 0", "status": "error"}
+    if sell_price <= 0:
+        return {"error": "sell_price должно быть > 0", "status": "error"}
+    
+    try:
+        from src.db import partial_sell_from_buy
+        
+        result = partial_sell_from_buy(buy_id, sell_qty, sell_price, sell_date, notes)
+        
+        if not result["success"]:
+            return {"error": result["message"], "status": "error"}
+        
+        return {
+            "status": "ok",
+            "message": result["message"],
+            "sell_data": result["sell_data"]
+        }
+    except Exception as e:
+        return {"error": str(e), "status": "error"}
+
+
+# ЭНДПОИНТ: ПРОДАЖА АКТИВА
+# ==========================================
+
+@app.get("/api/sell-history")
+def api_sell_history_list() -> dict[str, Any]:
+    """Получить все продажи."""
+    from src.db import get_sell_history
+    sells = get_sell_history()
+    
+    result = []
+    for s in sells:
+        result.append({
+            "id": s["id"],
+            "buy_id": s["buy_id"],
+            "symbol": s["symbol"],
+            "qty": float(s["qty"]),
+            "buy_price": float(s["buy_price"]),
+            "sell_price": float(s["sell_price"]),
+            "total": float(s["total"]),
+            "pnl": float(s["pnl"]),
+            "sell_date": s["sell_date"],
+            "notes": s.get("notes", "")
+        })
+    
+    return {
+        "sells": result,
+        "updated": date.today().strftime("%Y-%m-%d")
+    }
 
 
 @app.post("/api/sell")

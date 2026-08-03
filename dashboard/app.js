@@ -403,7 +403,9 @@ function renderPositions(pos){
     var pc2=clr(p.pnl);
     var invest = p.avg_price * p.qty;
     var cap = p.current_price * p.qty;
-    rows+='<tr style="font-size:15px"><td><b>'+p.symbol+'</b></td><td>'+F(p.qty,2)+'</td><td>$'+F(p.avg_price)+'</td><td>$'+F(p.current_price)+'</td><td>$'+F(invest)+'</td><td>$'+F(cap)+'</td><td class="'+pc2+'">'+U(p.pnl)+'</td><td class="'+pc2+'">'+P(p.pnl_pct)+'</td></tr>';
+    var apStr=parseFloat(p.avg_price.toFixed(4));
+    var cpStr=parseFloat(p.current_price.toFixed(4));
+    rows+='<tr style="font-size:15px"><td><b>'+p.symbol+'</b></td><td>'+F(p.qty,2)+'</td><td>$'+apStr+'</td><td>$'+cpStr+'</td><td>$'+F(invest)+'</td><td>$'+F(cap)+'</td><td class="'+pc2+'">'+U(p.pnl)+'</td><td class="'+pc2+'">'+P(p.pnl_pct)+'</td></tr>';
     totalInvest+=invest;
     totalCap+=cap;
     totalPnl+=p.pnl;
@@ -422,9 +424,29 @@ function renderPositions(pos){
       totalBuyPnl+=b.pnl;
       var pc3=clr(b.pnl);
       var pStr=parseFloat(b.price).toFixed(4);pStr=parseFloat(pStr);  // убирает хвостовые нули
-      html+='<tr class="buy-row"><td>'+b.date+'</td><td><b>'+b.symbol+'</b></td><td>'+b.qty+'</td><td>$'+pStr+'</td><td>$'+F(b.total)+'</td><td class="'+pc3+'">'+U(b.pnl)+'</td><td class="'+pc3+'">'+P(b.pnl_pct)+'</td><td style="color:var(--text-dim)">'+(b.notes||'')+'</td></tr>';
+      html+='<tr class="buy-row" data-buy-id="'+b.id+'"><td>'+b.date+'</td><td><b>'+b.symbol+'</b></td><td>'+b.qty+'</td><td>$'+pStr+'</td><td>$'+F(b.total)+'</td><td class="'+pc3+'">'+U(b.pnl)+'</td><td class="'+pc3+'">'+P(b.pnl_pct)+'</td><td style="color:var(--text-dim)">'+(b.notes||'')+'</td><td style="text-align:center"><button class="btn-close" onclick="window.__showSellModal('+b.id+',\''+b.symbol+'\','+b.qty+','+b.price+')" style="font-size:14px">✕</button></td></tr>';
     });
-    buyEl.innerHTML=html||'<tr><td colspan="8" style="color:var(--text-dim)">Нет данных</td></tr>';
+    buyEl.innerHTML=html||'<tr><td colspan="9" style="color:var(--text-dim)">Нет данных</td></tr>';
+  }
+
+  // === Sell history ===
+  var sellEl=document.getElementById("sellHistoryTable");
+  if(sellEl){
+    var html="";
+    var sells=pos.sell_history||[];
+    sells.forEach(function(s){
+      var pc4=clr(s.pnl);
+      var bpStr=parseFloat(s.buy_price).toFixed(4);bpStr=parseFloat(bpStr);
+      var spStr=parseFloat(s.sell_price).toFixed(4);spStr=parseFloat(spStr);
+      html+='<tr><td>'+s.date+'</td><td><b>'+s.symbol+'</b></td><td>'+s.qty+'</td><td>$'+bpStr+'</td><td>$'+spStr+'</td><td>$'+F(s.total)+'</td><td class="'+pc4+'">'+U(s.pnl)+'</td><td class="'+pc4+'">'+P(s.pnl_pct)+'</td></tr>';
+    });
+    if(html){
+      var totalSellPnl=0;
+      sells.forEach(function(s){totalSellPnl+=s.pnl;});
+      var tp4=clr(totalSellPnl);
+      html+='<tr class="buy-total-row"><td colspan="6" style="font-size:16px;text-align:right;font-weight:bold">Итого:</td><td class="'+tp4+'" style="font-size:16px;font-weight:bold">'+U(totalSellPnl)+'</td><td class="'+tp4+'" style="font-size:16px;font-weight:bold"></td></tr>';
+    }
+    sellEl.innerHTML=html||'<tr><td colspan="8" style="color:var(--text-dim)">Нет данных</td></tr>';
   }
 
   // === Drop 20% from current price (step $1) ===
@@ -495,6 +517,98 @@ window.__buyAsset = function(){
     alert("Куплено: "+token+" | "+qty+" x $"+F(price,4));
     loadAll();
   }).catch(function(e){console.error("Ошибка покупки:",e);});
+};
+
+// === SELL ASSET ===
+window.__sellAssetData = null;
+
+window.__showSellModal = function(buy_id, symbol, qty, buy_price){
+  window.__sellAssetData = {buy_id: buy_id, symbol: symbol, qty: qty, buy_price: buy_price};
+  
+  // Заполняем информацию
+  document.getElementById('sellInfo').innerHTML = 
+    '<b>'+symbol+'</b> | Остаток: '+qty+' | Цена покупки: $'+buy_price;
+  
+  // Ограничиваем количество
+  document.getElementById('sellQty').value = qty;
+  document.getElementById('sellQty').max = qty;
+  
+  // Загружаем текущую цену
+  api('/api/positions').then(function(pos){
+    if(pos && pos.positions){
+      var p = pos.positions.find(function(p2){return p2.symbol===symbol;});
+      if(p){
+        document.getElementById('sellPrice').value = p.current_price;
+        __calcSellPnl();
+      }
+    }
+  });
+  
+  document.getElementById('sellNotes').value = "";
+  document.getElementById('sellAssetModal').style.display = "flex";
+};
+
+function __calcSellPnl(){
+  if(!window.__sellAssetData) return;
+  var sell_qty = parseFloat(document.getElementById('sellQty').value) || 0;
+  var sell_price = parseFloat(document.getElementById('sellPrice').value) || 0;
+  var calcEl = document.getElementById('sellCalc');
+  
+  if(sell_qty <= 0 || sell_price <= 0){
+    calcEl.innerHTML = "";
+    return;
+  }
+  
+  var total = sell_qty * sell_price;
+  var pnl = (sell_price - window.__sellAssetData.buy_price) * sell_qty;
+  var pnlStr = (pnl >= 0 ? '+' : '') + U(pnl);
+  var pnlColor = pnl >= 0 ? 'green' : 'red';
+  var overQty = sell_qty > window.__sellAssetData.qty;
+  
+  if(overQty){
+    calcEl.innerHTML = 
+      '<span style="color:red">Превышение! Макс: '+window.__sellAssetData.qty+'</span>';
+  } else {
+    calcEl.innerHTML = 
+      'Итого: <b>$'+total+'</b> | PnL: <span style="color:'+pnlColor+'">'+pnlStr+'</span>';
+  }
+}
+
+document.addEventListener('input', function(e){
+  if(e.target.id === 'sellQty' || e.target.id === 'sellPrice'){
+    __calcSellPnl();
+  }
+});
+
+window.__sellAsset = function(){
+  if(!window.__sellAssetData) return;
+  
+  var sell_qty = parseFloat(document.getElementById('sellQty').value);
+  var sell_price = parseFloat(document.getElementById('sellPrice').value);
+  var notes = document.getElementById('sellNotes').value.trim();
+  var sell_date = new Date().toISOString().split('T')[0];
+  
+  if(isNaN(sell_qty)||sell_qty<=0){alert("Укажите корректное количество");return;}
+  if(isNaN(sell_price)||sell_price<=0){alert("Укажите корректную цену");return;}
+  if(sell_qty > window.__sellAssetData.qty){alert("Продажа > остаток позиции");return;}
+  
+  api("/api/sell-history",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+      buy_id: window.__sellAssetData.buy_id,
+      sell_qty: sell_qty,
+      sell_price: sell_price,
+      sell_date: sell_date,
+      notes: notes || ""
+    })
+  }).then(function(res){
+    if(res.error){alert("Ошибка: "+res.error);return;}
+    document.getElementById('sellAssetModal').style.display = 'none';
+    alert(res.message);
+    window.__sellAssetData = null;
+    loadAll();
+  }).catch(function(e){console.error("Ошибка продажи:",e);});
 };
 
 // === TAB 2: OPTIONS ===

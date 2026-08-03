@@ -63,6 +63,24 @@ def migrate_db(conn: sqlite3.Connection) -> None:
             # Установить все существующие строки как open=0
             conn.execute("UPDATE buy_history SET closed=0 WHERE closed IS NULL")
     
+    # sell_history: создать если нет
+    if "sell_history" not in table_names:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS sell_history (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                buy_id          INTEGER NOT NULL,
+                symbol          TEXT NOT NULL,
+                qty             REAL NOT NULL,
+                buy_price       REAL NOT NULL,
+                sell_price      REAL NOT NULL,
+                total           REAL NOT NULL,
+                pnl             REAL NOT NULL,
+                sell_date       TEXT NOT NULL,
+                notes           TEXT
+            )
+        """)
+        print("  → Создана таблица sell_history")
+    
     return conn
 
 
@@ -100,6 +118,92 @@ def insert_buy_history(symbol: str, qty: float, price: float, total: float, buy_
         "VALUES (?, ?, ?, ?, ?, ?, 0)",
         (buy_date, qty, price, total, symbol, notes)
     )
+
+
+# ============================================================
+# SELL_HISTORY — продажа позиций
+# ============================================================
+def get_sell_history() -> list[dict]:
+    """Получить все записи о продажах."""
+    return execute_query("SELECT * FROM sell_history ORDER BY sell_date DESC")
+
+
+def insert_sell_history(buy_id: int, symbol: str, qty: float, buy_price: float, sell_price: float, total: float, pnl: float, sell_date: str, notes: str = "") -> int:
+    """Добавить запись в sell_history."""
+    return execute_write(
+        "INSERT INTO sell_history (buy_id, symbol, qty, buy_price, sell_price, total, pnl, sell_date, notes) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (buy_id, symbol, qty, buy_price, sell_price, total, pnl, sell_date, notes)
+    )
+
+
+def partial_sell_from_buy(buy_id: int, sell_qty: float, sell_price: float, sell_date: str, notes: str = "") -> dict:
+    """Частичная или полная продажа из buy_history.
+    
+    Возвращает: {success: bool, message: str, sell_data: dict}
+    """
+    conn = get_connection()
+    try:
+        # Получаем запись покупки
+        row = conn.execute("SELECT * FROM buy_history WHERE id=?", (buy_id,)).fetchone()
+        if not row:
+            return {"success": False, "message": "Покупка не найдена"}
+        
+        row_dict = dict(row)
+        buy_qty = float(row_dict["qty"])
+        buy_price = float(row_dict["price"])
+        buy_total = float(row_dict["total"])
+        symbol = row_dict["symbol"]
+        
+        if sell_qty <= 0:
+            return {"success": False, "message": "Количество должно быть > 0"}
+        
+        if sell_qty > buy_qty:
+            return {"success": False, "message": f"Продажа {sell_qty} > покупка {buy_qty}"}
+        
+        # Расчёт
+        sell_total = sell_qty * sell_price
+        pnl = (sell_price - buy_price) * sell_qty
+        
+        # Записываем продажу
+        conn.execute(
+            "INSERT INTO sell_history (buy_id, symbol, qty, buy_price, sell_price, total, pnl, sell_date, notes) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (buy_id, symbol, sell_qty, buy_price, sell_price, sell_total, pnl, sell_date, notes)
+        )
+        
+        # Если полная продажа — удаляем запись покупки
+        if sell_qty >= buy_qty:
+            conn.execute("DELETE FROM buy_history WHERE id=?", (buy_id,))
+        else:
+            # Частичная — уменьшаем qty и total
+            new_qty = round(buy_qty - sell_qty, 8)
+            new_total = round(new_qty * buy_price, 4)
+            conn.execute(
+                "UPDATE buy_history SET qty=?, total=? WHERE id=?",
+                (new_qty, new_total, buy_id)
+            )
+        
+        conn.commit()
+        
+        return {
+            "success": True,
+            "message": f"Продано {sell_qty} {symbol} по ${sell_price}",
+            "sell_data": {
+                "buy_id": buy_id,
+                "symbol": symbol,
+                "qty": sell_qty,
+                "buy_price": buy_price,
+                "sell_price": sell_price,
+                "total": sell_total,
+                "pnl": pnl
+            }
+        }
+    except Exception as e:
+        conn.rollback()
+        return {"success": False, "message": str(e)}
+    finally:
+        conn.close()
 
 
 # ============================================================
