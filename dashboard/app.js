@@ -1344,8 +1344,6 @@ function syncNearSelected(){
       html+='<td style="padding:2px 6px;text-align:center">'+(opt.dte||'-')+'</td>';
       var pnlClr=optionPnL>=0?'var(--green)':'var(--red)'; html+='<td style="padding:2px 6px;text-align:right;color:'+pnlClr+'">$'+F(optionPnL,2)+'</td>';
       html+='<td style="padding:2px 6px;text-align:right">$'+F(price,4)+'</td>';
-      var cpd=m&&m.currentPrice>0?F(m.currentPrice/opt.dte,4):'-';
-      html+='<td style="padding:2px 6px;text-align:right">'+cpd+'</td>';
       var qtyStyle=isPurchased?" style=\"width:50px;text-align:center;background:#444;border:1px solid #666;color:#999;padding:2px 4px;border-radius:4px\" disabled":"style=\"width:50px;text-align:center;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px 4px;border-radius:4px\"";
       html+='<td style="padding:2px 6px;text-align:center"><input type="number" min="0" step="1" value="'+qty+'" '+qtyStyle+' onchange="if(!'+(isPurchased?'true':'false')+')window._onSelectQtyChange(\'near\','+idx+',this.value)"></td>';
       html+='<td style="padding:2px 6px;text-align:right">$'+F(total,2)+'</td>';
@@ -1356,6 +1354,8 @@ function syncNearSelected(){
       html+='<td style="padding:2px 6px;text-align:right;'+(gPMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?F(m.gammaProtection,4):'-')+'</td>';
       html+='<td style="padding:2px 6px;text-align:right;'+(accMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?F(m.accuracy*100,0)+'%':'-')+'</td>';
       html+='<td style="padding:2px 6px;text-align:right;'+(wPMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?'$'+F(m.weightedPnL,2):'-')+'</td>';
+      var cpd=m&&m.currentPrice>0?F(m.currentPrice/opt.dte,4):'-';
+      html+='<td style="padding:2px 6px;text-align:right">'+cpd+'</td>';
       html+='<td style="padding:2px 6px;text-align:center"><button style="background:none;border:none;cursor:pointer;color:#d32f2f;font-size:14px" onclick="window._onSelectRemove(\'near\','+idx+')">✕</button></td>';
       html+='</tr>';
     }
@@ -1364,9 +1364,8 @@ function syncNearSelected(){
     } else {
       html+='<tr style="height:22px;font-weight:bold;background:var(--bg);border-top:2px solid var(--border)">';
       html+='<td style="padding:2px 6px;text-align:center"></td>';
-      html+='<td style="padding:2px 6px" colspan="8">Итого:</td>';
+      html+='<td style="padding:2px 6px" colspan="7">Итого:</td>';
       html+='<td style="padding:2px 6px;text-align:right">$'+F(sumTotal,2)+'</td>';
-      html+='<td></td>';
       var pctTotal='';
       if(activeLayer&&activeLayer.budget>0&&sumTotal>0) pctTotal=F(sumTotal/activeLayer.budget*100,1)+'%';
       html+='<td style="padding:2px 6px;text-align:right">'+pctTotal+'</td>';
