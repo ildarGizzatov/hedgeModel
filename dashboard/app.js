@@ -1285,8 +1285,8 @@ function syncNearSelected(){
     // Промежуточный расчёт TV для Resource % — сумма по диапазону страховки
     var tvCurrentArr=[],tvEntryArr=[];
     var spot=window.layerData_near&&window.layerData_near.spot_price?window.layerData_near.spot_price:0;
-    var insLow=Math.round(spot*(1-10/100));
-    var insHigh=Math.round(spot*(1-3/100));
+    var insLow=spot*(1-10/100);
+    var insHigh=spot*(1-3/100);
     for(var idx=0;idx<opts.length;idx++){
       var opt=opts[idx];
       var strike=opt.strike||0;
@@ -1385,7 +1385,7 @@ function syncNearSelected(){
     }
   });
   // Draw gamma chart after table
-  setTimeout(function(){drawNearSelectedGammaChart();renderNearPnlMatrix();}, 100);
+  setTimeout(function(){drawNearSelectedGammaChart();renderNearPnlMatrix();renderNearOptionPricesMatrix();}, 100);
 }
 
 // === Near Layer: PnL Matrix ===
@@ -1401,10 +1401,10 @@ function renderNearPnlMatrix(){
   var data=window.layerData_near;
   if(!data||!data.spot_price) return;
   var spot=data.spot_price;
-  var insLow=Math.round(spot*0.9);
-  var insHigh=Math.round(spot);
-  var p3=Math.round(spot*0.97);
-  var p10=Math.round(spot*0.9);
+  var insLow=spot*0.9;
+  var insHigh=spot*0.97;
+  var firstInHedge=Math.ceil(insLow);
+  var lastInHedge=Math.floor(insHigh);
   thead.innerHTML='';
   var thPrice=document.createElement('th');
   thPrice.style.cssText='text-align:right;padding:2px 6px';
@@ -1420,16 +1420,12 @@ function renderNearPnlMatrix(){
     th.textContent=o.symbol.replace('-P','');
     thead.appendChild(th);
   });
-  var html='';
-  for(var p=insHigh;p>=insLow;p--){
-    var is3=(p===p3);
-    var is10=(p===p10);
-    var bg='';
-    if(is10) bg='background:#ff000030;';
-    if(is3 && !is10) bg='background:#ffaa0020;';
-    html+='<tr style="height:20px;'+bg+'">';
-    html+='<td style="padding:2px 6px;text-align:right">$'+p+'</td>';
-    // Сначала считаем ΣPnL
+  // Сначала считаем ΣPnL для каждой строки
+  var pnlRows={};
+  var allOptionCells={};
+  var matrixLow=Math.round(spot*0.85);
+  var matrixHigh=Math.round(spot);
+  for(p=matrixHigh;p>=matrixLow;p--){
     var totalPnl=0;
     var optionCells=[];
     opts.forEach(function(o){
@@ -1444,32 +1440,32 @@ function renderNearPnlMatrix(){
       totalPnl+=pnl;
       optionCells.push({pnl:pnl});
     });
-    // ΣPnL сразу после цены
-    var tcls=totalPnl>=0?'color:var(--green)':'color:#d32f2f';
-    html+='<td style="padding:2px 6px;text-align:right;font-weight:bold" class="'+tcls+'">$'+F(totalPnl,2)+'</td>';
-    // Потом индивидуальные PnL
+    pnlRows[p]=totalPnl;
+    allOptionCells[p]=optionCells;
+  }
+  // Разница PnL: диапазон страхование (нижняя граница - верхняя граница)
+  var bottomRow = Math.ceil(insLow);
+  var topRow = Math.floor(insHigh);
+  var totalDiff = pnlRows[bottomRow] - pnlRows[topRow];
+  var diffCells=[];
+  for(var k=0; k<allOptionCells[topRow].length; k++){
+    diffCells.push({diff: allOptionCells[bottomRow][k].pnl - allOptionCells[topRow][k].pnl});
+  }
+  var html='';
+  for(p=matrixHigh;p>=matrixLow;p--){
+    var inHedge=(p>=insLow&&p<=insHigh);
+    var bg=inHedge?'background:rgba(63,185,80,0.12);':'';
+    var tcls=pnlRows[p]>=0?'color:var(--green)':'color:#d32f2f';
+    html+='<tr style="height:20px;'+bg+'">';
+    html+='<td style="padding:2px 6px;text-align:right">$'+p+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right;font-weight:bold" class="'+tcls+'">$'+F(pnlRows[p],2)+'</td>';
+    var optionCells=allOptionCells[p];
     for(var k=0;k<optionCells.length;k++){
       var cls=optionCells[k].pnl>=0?'color:var(--green)':'color:#d32f2f';
       html+='<td style="padding:2px 6px;text-align:right" class="'+cls+'">$'+F(optionCells[k].pnl,2)+'</td>';
     }
     html+='</tr>';
   }
-  // PnL difference row (last - first)
-  var totalDiff=0;
-  var diffCells=[];
-  opts.forEach(function(o){
-    var qty=o.qty||1;
-    var strike=o.strike||0;
-    var premium=o.price||0;
-    var iv=o.iv||0.3;
-    var dte=Math.max(o.dte||30,1);
-    var T=dte/365;
-    var pnl3=(_bsPutPrice(Math.round(spot*0.97), strike, T, iv)-premium)*qty;
-    var pnl10=(_bsPutPrice(Math.round(spot*0.9), strike, T, iv)-premium)*qty;
-    var diff=pnl10-pnl3;
-    totalDiff+=diff;
-    diffCells.push({diff:diff});
-  });
   html+='<tr style="height:20px;font-weight:bold;background:var(--bg);border-top:2px solid var(--border)">';
   html+='<td style="padding:2px 6px;text-align:right" colspan="1">Разница PnL:</td>';
   var tcls=totalDiff>=0?'color:var(--green)':'color:#d32f2f';
@@ -1481,6 +1477,58 @@ function renderNearPnlMatrix(){
   html+='</tr>';
   tbody.innerHTML=html;
   }catch(e){console.warn('renderNearPnlMatrix fail:',e);}
+}
+
+// === Near Layer: Option Prices Matrix ===
+function renderNearOptionPricesMatrix(){
+  var tbody=document.querySelector('#nearOptionPricesMatrix tbody');
+  var thead=document.querySelector('#nearOptionPricesMatrix thead tr');
+  if(!tbody||!thead) return;
+  var allOpts=selectedOption.near||[];
+  var opts=allOpts.filter(function(o){return o.checked!==false;});
+  if(opts.length===0){tbody.innerHTML='<tr><td style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';thead.innerHTML='<tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0"><th style="text-align:right;padding:2px 6px">Цена</th></tr>';return;}
+  try{
+  var data=window.layerData_near;
+  if(!data||!data.spot_price) return;
+  var spot=data.spot_price;
+  var spotPrice=spot;
+  // Диапазон страхования: spot*0.9 — spot*0.97 (3-10% просадка)
+  var insLow=spot*0.9;
+  var insHigh=spot*0.97;
+  var matrixLow=Math.round(spot*0.85);
+  var matrixHigh=Math.round(spot);
+  thead.innerHTML='';
+  var thPrice=document.createElement('th');
+  thPrice.style.cssText='text-align:right;padding:2px 6px';
+  thPrice.textContent='Цена';
+  thead.appendChild(thPrice);
+  opts.forEach(function(o){
+    var th=document.createElement('th');
+    th.style.cssText='text-align:right;padding:2px 6px';
+    th.textContent=o.symbol.replace('-P','');
+    thead.appendChild(th);
+  });
+  var html='';
+  for(var p=matrixHigh;p>=matrixLow;p--){
+    var inHedge=(p>=insLow&&p<=insHigh);
+    var rowBg=inHedge?'background:rgba(63,185,80,0.12);':'';
+    html+='<tr style="height:20px;'+rowBg+'">';
+    html+='<td style="padding:2px 6px;text-align:right">$'+p+'</td>';
+    opts.forEach(function(o){
+      var strike=o.strike||0;
+      var iv=o.iv||0.3;
+      var dte=Math.max(o.dte||30,1);
+      var T=dte/365;
+      var intrinsic=Math.max(0, strike - p);
+      var bsPrice=_bsPutPrice(p, strike, T, iv);
+      var timeValue=Math.max(0, bsPrice - intrinsic);
+      var cls=timeValue>0?'color:var(--text)':'color:var(--text-dim)';
+      html+='<td style="padding:2px 6px;text-align:right" class="'+cls+'">$'+F(timeValue,2)+'</td>';
+    });
+    html+='</tr>';
+  }
+  tbody.innerHTML=html;
+  }catch(e){console.warn('renderNearOptionPricesMatrix fail:',e);}
 }
 
 // === Mid Layer: Sync Selected ===
@@ -1934,8 +1982,8 @@ function drawNearSelectedGammaChart(){
   if(!spot) return;
 
   // Insurance range for near layer: 3-10% below spot
-  var insLow=Math.round(spot*(1-10/100));
-  var insHigh=Math.round(spot*(1-3/100));
+  var insLow=spot*(1-10/100);
+  var insHigh=spot*(1-3/100);
   var padRange=4;
   var chartLow=insLow-padRange;
   var chartHigh=Math.max(insHigh+padRange, spot+padRange);
@@ -2200,8 +2248,8 @@ function drawNearPnlBreakdown(){
   if(!spot)return;
 
   // Insurance range: 3-10% below spot
-  var insLow=Math.round(spot*(1-10/100));
-  var insHigh=Math.round(spot*(1-3/100));
+  var insLow=spot*(1-10/100);
+  var insHigh=spot*(1-3/100);
   var prices=[];
   for(var p=Math.round(insHigh);p>=Math.round(insLow);p--){prices.push(p);}
 
@@ -2621,7 +2669,7 @@ function renderDistantPnlMatrix(){
     thead.appendChild(th);
   });
   var html='';
-  for(var p=insHigh;p>=insLow;p--){
+  for(p=Math.round(insHigh);p>=Math.round(insLow);p--){
     var is20=(p===dropPct20);
     var is25=(p===dropPct25);
     var bg=is25?'background:#ff000030':(is20?'background:#ffaa0020':'');
@@ -2695,7 +2743,7 @@ function renderDistantDeltaMatrix(){
     thead.appendChild(th);
   });
   var html='';
-  for(var p=insHigh;p>=insLow;p--){
+  for(p=Math.round(insHigh);p>=Math.round(insLow);p--){
     var is20=(p===dropPct20);
     var is25=(p===dropPct25);
     var bg=is25?'background:#ff000030':(is20?'background:#ffaa0020':'');
@@ -2748,7 +2796,7 @@ function renderDistantDeltaMatrix(){
     var T=dte/365;
     var sumDelta=0;
     var count=0;
-    for(var p=insHigh;p>=insLow;p--){
+    for(p=Math.round(insHigh);p>=Math.round(insLow);p--){
       var d1=(Math.log(p/strike)+(iv*iv/2)*T)/(iv*Math.sqrt(T));
       var sign=d1<0?-1:1;
       var ax=Math.abs(d1)/Math.sqrt(2);
@@ -2899,7 +2947,7 @@ function renderDistantSummaryMatrix(){
   var solAvg=sol?sol.avg_price:0;
   var solQty=sol?sol.qty:0;
   var html='';
-  for(var p=insHigh;p>=insLow;p--){
+  for(p=Math.round(insHigh);p>=Math.round(insLow);p--){
     var is20=(p===dropPct20);
     var is25=(p===dropPct25);
     var bg=is25?'background:#ff000030':(is20?'background:#ffaa0020':'');
@@ -3988,6 +4036,7 @@ function loadAll(){
       renderDistantDeltaMatrix();
       renderDistantPnlMatrix();
       renderNearPnlMatrix();
+      renderNearOptionPricesMatrix();
       renderDistantSummaryMatrix();
 
       // Build global purchased symbols lookup
@@ -4010,6 +4059,7 @@ function loadAll(){
   renderDistantDeltaMatrix();
   renderDistantPnlMatrix();
   renderNearPnlMatrix();
+  renderNearOptionPricesMatrix();
   renderDistantSummaryMatrix();
 }
 
