@@ -1508,10 +1508,13 @@ function renderNearOptionPricesMatrix(){
     th.textContent=o.symbol.replace('-P','');
     thead.appendChild(th);
   });
+  // Сохраняем timeValue для каждой строки
+  var tvRows={};
   var html='';
   for(var p=matrixHigh;p>=matrixLow;p--){
     var inHedge=(p>=insLow&&p<=insHigh);
     var rowBg=inHedge?'background:rgba(63,185,80,0.12);':'';
+    var rowTV=[];
     html+='<tr style="height:20px;'+rowBg+'">';
     html+='<td style="padding:2px 6px;text-align:right">$'+p+'</td>';
     opts.forEach(function(o){
@@ -1523,10 +1526,51 @@ function renderNearOptionPricesMatrix(){
       var bsPrice=_bsPutPrice(p, strike, T, iv);
       var timeValue=Math.max(0, bsPrice - intrinsic);
       var cls=timeValue>0?'color:var(--text)':'color:var(--text-dim)';
+      rowTV.push(timeValue);
       html+='<td style="padding:2px 6px;text-align:right" class="'+cls+'">$'+F(timeValue,2)+'</td>';
     });
     html+='</tr>';
+    tvRows[p]=rowTV.slice();
   }
+  // Сумма timeValue для каждого опциона внутри диапазона страхования
+  var sumCells=[];
+  for(var k=0;k<rowTV.length;k++){
+    var s=0;
+    for(var p=matrixHigh;p>=matrixLow;p--){
+      if(p>=insLow && p<=insHigh) s+=tvRows[p][k];
+    }
+    sumCells.push(s);
+  }
+  // Общая сумма timeValue для каждого опциона в его рабочем окне (hedgeRange)
+  var totalCells=[];
+  for(var k=0;k<opts.length;k++){
+    var o=opts[k];
+    var strike=o.strike||0;var iv=o.iv||0.3;var dte=Math.max(o.dte||30,1);var T=dte/365;
+    var hr=o.hedgeRange;
+    var wLow=hr?hr.low:0;var wHigh=hr?hr.high:spot;
+    var t=0;
+    for(var p=wHigh;p>=wLow;p--){
+      var intrinsic=Math.max(0, strike-p);
+      var bsPrice=_bsPutPrice(p,strike,T,iv);
+      var timeValue=Math.max(0, bsPrice-intrinsic);
+      if(timeValue>0) t+=timeValue;
+    }
+    totalCells.push(t);
+  }
+  html+='<tr style="height:20px;font-weight:bold;background:var(--bg);border-top:2px solid var(--border)">';
+  html+='<td style="padding:2px 6px;text-align:right">Сумма в диапазоне страховке:</td>';
+  for(var k=0;k<sumCells.length;k++){
+    var cls=sumCells[k]>=0?'color:var(--green)':'color:#d32f2f';
+    html+='<td style="padding:2px 6px;text-align:right" class="'+cls+'">$'+F(sumCells[k],2)+'</td>';
+  }
+  html+='</tr>';
+  html+='<tr style="height:20px;font-weight:bold;background:var(--bg);border-top:1px solid var(--border)">';
+  html+='<td style="padding:2px 6px;text-align:right">Общая в рабочем окне:</td>';
+  for(var k=0;k<totalCells.length;k++){
+    var cls=totalCells[k]>=0?'color:var(--green)':'color:#d32f2f';
+    html+='<td style="padding:2px 6px;text-align:right" class="'+cls+'">$'+F(totalCells[k],2)+'</td>';
+  }
+  html+='</tr>';
   tbody.innerHTML=html;
   }catch(e){console.warn('renderNearOptionPricesMatrix fail:',e);}
 }
