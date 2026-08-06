@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "docs/104-active-closing-rules.md",
+                "file": "T009-active-layer-selection.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "104-active-closing-rules"
+              "title": "T009-active-layer-selection"
             }
           }
         ]
@@ -188,8 +188,11 @@
   },
   "active": "bd9c837cb873cf31",
   "lastOpenFiles": [
-    "hedge_model.db-shm",
     "hedge_model.db-wal",
+    "hedge_model.db-shm",
+    "210-active-layer-selection.md",
+    "T009-active-layer-selection.md",
+    "docs/104-active-closing-rules.md",
     "dashboard/sedsB2KqE",
     "dashboard/sedsOttxe",
     "T001-conditions-closing.md",
@@ -199,7 +202,6 @@
     "docs/600-greeks-guide.md",
     "docs/102-adaptation-layer.md",
     "docs/103-active-layer.md",
-    "T009-active-layer-selection.md",
     "AGENTS.md",
     "docs/204-active-layer-selection.md",
     "T011-layer-health-monitoring.md",
@@ -212,7 +214,6 @@
     "hedge_model_new.db-shm",
     "hedge_model_new.db-wal",
     "hedge_model.db.bak3",
-    "hedge_model.db.bak2",
     "2026-07-23.md",
     "2026-06-22.md",
     "2026-06-25.md",
@@ -221,8 +222,6 @@
     "2026-07-14.md",
     "2026-07-19.md",
     "README.md",
-    "docs/203-anchor-selection-algorithm.md",
-    "docs/201-selection-criteria.md",
-    "docs/300-pipeline.md"
+    "docs/203-anchor-selection-algorithm.md"
   ]
 }

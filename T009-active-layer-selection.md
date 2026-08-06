@@ -9,8 +9,6 @@ related: [[103-active-layer]], [[104-active-closing-rules]], [[200-budget-alloca
 
 # T009 — Алгоритм выбора опционов ближнего слоя (Active Layer)
 
-> ⚠️ **Перемещено:** полный алгоритм перенесён в [[210-active-layer-selection]] (docs/)
-
 > Алгоритм подбора опционов для ближнего слоя (Active Layer).
 
 ---

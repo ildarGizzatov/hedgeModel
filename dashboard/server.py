@@ -267,8 +267,8 @@ async def api_buy_options(request: Request) -> dict:
     try:
         q = request.query_params
         layer = q.get("layer", "active")
-        delta_min = float(q.get("delta_min", 0.1))
-        delta_max = float(q.get("delta_max", 0.7))
+        delta_min = float(q.get("delta_min", 0))
+        delta_max = float(q.get("delta_max", 1))
         dte_min = int(q.get("dte_min", 1))
         dte_max = int(q.get("dte_max", 99999))
 
