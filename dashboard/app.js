@@ -211,8 +211,7 @@ window.__showBuyModal = function() {
 
 function fetchBuyOptions() {
   var layer = document.getElementById('buyLayer').value;
-  var defs = layerDefaults[layer] || {delta_min: 0.05, delta_max: 0.7, dte_min: 1, dte_max: 99999};
-  fetch(API+'/api/buy-options?layer='+layer+'&delta_min='+defs.delta_min+'&delta_max='+defs.delta_max+'&dte_min='+defs.dte_min+'&dte_max='+defs.dte_max)
+  fetch(API+'/api/buy-options?layer='+layer+'&delta_min=0&delta_max=1&dte_min=1&dte_max=99999')
     .then(function(r){ return r.json(); })
     .then(function(res) {
       var el = document.getElementById('buyResult');
@@ -1181,8 +1180,8 @@ function calcMetrics(bsData,layer){
   var hedgeLen=Math.abs(hedgeHigh-hedgeLow);
   var hedges={near:{min:3,max:10},mid:{min:10,max:20}};
   var h=hedges[layer]||{min:3,max:10};
-  var insLow=Math.round(bsData.spot*(1-h.max/100));
-  var insHigh=Math.round(bsData.spot*(1-h.min/100));
+  var insLow=Math.ceil(bsData.spot*(1-h.max/100));
+  var insHigh=Math.floor(bsData.spot*(1-h.min/100));
   var insLen=Math.abs(insHigh-insLow);
   var covLow=Math.max(hedgeLow,insLow);
   var covHigh=Math.min(hedgeHigh,insHigh);
@@ -1298,7 +1297,7 @@ function syncNearSelected(){
       var entryIv=opt.iv_entry||iv;
       var qty=opt.qty||1;
       var tvC=0,tvE=0;
-      for(var p=Math.round(insHigh);p>=Math.round(insLow);p--){
+      for(var p=Math.floor(insHigh);p>=Math.ceil(insLow);p--){
         var intr=Math.max(strike-p,0);
         var bsC=0,bsE=0;
         if(p>0&&strike>0&&iv>0&&T>0) bsC=_bsPutPrice(p,strike,T,iv);
@@ -1680,6 +1679,7 @@ function syncMidSelected(){
       html+='<tr style="height:22px">';
       html+='<td style="padding:2px 6px;text-align:center"><input type="checkbox" '+(checked?'checked':'')+' onchange="window._onSelectToggle(\'mid\','+idx+',this.checked)"></td>';
       html+='<td style="padding:2px 6px;font-weight:bold">'+opt.symbol+'</td>';
+      html+='<td style="padding:2px 6px;text-align:right">'+resPct+'</td>';
       html+='<td style="padding:2px 6px;text-align:right">$'+strike+'</td>';
       html+='<td style="padding:2px 6px;text-align:center">'+(opt.dte||'-')+'</td>';
       var pnlClr=optionPnL>=0?'var(--green)':'var(--red)'; html+='<td style="padding:2px 6px;text-align:right;color:'+pnlClr+'">$'+F(optionPnL,2)+'</td>';
@@ -1694,12 +1694,13 @@ function syncMidSelected(){
       html+='<td style="padding:2px 6px;text-align:right;'+(gPMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?F(m.gammaProtection,4):'-')+'</td>';
       html+='<td style="padding:2px 6px;text-align:right;'+(accMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?F(m.accuracy*100,0)+'%':'-')+'</td>';
       html+='<td style="padding:2px 6px;text-align:right;'+(wPMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?'$'+F(m.weightedPnL,2):'-')+'</td>';
-      html+='<td style="padding:2px 6px;text-align:right">'+resPct+'</td>';
+      var cpdMid=m&&m.currentPrice>0?F(m.currentPrice/opt.dte,4):'-';
+      html+='<td style="padding:2px 6px;text-align:right">'+cpdMid+'</td>';
       html+='<td style="padding:2px 6px;text-align:center"><button style="background:none;border:none;cursor:pointer;color:#d32f2f;font-size:14px" onclick="window._onSelectRemove(\'mid\','+idx+')">✕</button></td>';
       html+='</tr>';
     }
     if(html===''){
-      html='<tr><td colspan="16" style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';
+      html='<tr><td colspan="17" style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';
     } else {
       html+='<tr style="height:22px;font-weight:bold;background:var(--bg);border-top:2px solid var(--border)">';
       html+='<td style="padding:2px 6px;text-align:center"></td>';
@@ -1709,6 +1710,7 @@ function syncMidSelected(){
       if(activeLayer&&activeLayer.budget>0&&sumTotal>0) pctTotal=F(sumTotal/activeLayer.budget*100,1)+'%';
       html+='<td style="padding:2px 6px;text-align:right">'+pctTotal+'</td>';
       html+='<td></td><td></td><td></td><td></td><td></td><td></td>';
+      html+='<td></td>';
       html+='<td></td>';
       html+='<td></td>';
       html+='</tr>';
@@ -2295,7 +2297,7 @@ function drawNearPnlBreakdown(){
   var insLow=spot*(1-10/100);
   var insHigh=spot*(1-3/100);
   var prices=[];
-  for(var p=Math.round(insHigh);p>=Math.round(insLow);p--){prices.push(p);}
+  for(var p=Math.floor(insHigh);p>=Math.ceil(insLow);p--){prices.push(p);}
 
   // For each option, compute PnL at each price with current and entry params
   var optionData=[];
