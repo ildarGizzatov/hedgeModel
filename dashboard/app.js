@@ -1,5 +1,12 @@
 const API="http://localhost:8083";
 
+// === Insurance range: near=3-10%, mid=10-20%, distant=15-30% ===
+function getInsuranceRange(layer, spot) {
+  var hedges = {near:[3,10], mid:[10,20], distant:[15,30]};
+  var h = hedges[layer] || [3,10];
+  return { low: Math.round(spot*(1-h[1]/100)), high: Math.round(spot*(1-h[0]/100)) };
+}
+
 // === Tabs ===
 document.querySelectorAll(".tab").forEach(function(t){
   t.addEventListener("click",function(){
@@ -930,11 +937,8 @@ function renderAvailableOptions(layer, containerId, data){
       return;
     }
     var spot=data.spot_price||0;
-    var hedges={near:{min:3,max:10},mid:{min:10,max:20},distant:{min:15,max:30}};
-    var h=hedges[layer]||{min:5,max:20};
-    var lowStrike=spot*(1-h.max/100);
-    var highStrike=spot*(1-h.min/100);
-    var insLow=lowStrike, insHigh=highStrike;
+    var ins = getInsuranceRange(layer, spot);
+    var insLow=ins.low, insHigh=ins.high;
     var opts=data.options||[];
     // Sort by strike desc, then DTE desc
     opts.sort(function(a,b){
@@ -1178,10 +1182,8 @@ function calcMetrics(bsData,layer){
   var hedgeLow=hedgeRange.low;
   var hedgeHigh=hedgeRange.high;
   var hedgeLen=Math.abs(hedgeHigh-hedgeLow);
-  var hedges={near:{min:3,max:10},mid:{min:10,max:20}};
-  var h=hedges[layer]||{min:3,max:10};
-  var insLow=Math.ceil(bsData.spot*(1-h.max/100));
-  var insHigh=Math.floor(bsData.spot*(1-h.min/100));
+  var ins = getInsuranceRange(layer, bsData.spot);
+  var insLow=ins.low, insHigh=ins.high;
   var insLen=Math.abs(insHigh-insLow);
   var covLow=Math.max(hedgeLow,insLow);
   var covHigh=Math.min(hedgeHigh,insHigh);
@@ -1284,8 +1286,8 @@ function syncNearSelected(){
     // Промежуточный расчёт TV для Resource % — сумма по диапазону страховки
     var tvCurrentArr=[],tvEntryArr=[];
     var spot=window.layerData_near&&window.layerData_near.spot_price?window.layerData_near.spot_price:0;
-    var insLow=spot*(1-10/100);
-    var insHigh=spot*(1-3/100);
+    var ins = getInsuranceRange('near', spot);
+    var insLow=ins.low, insHigh=ins.high;
     for(var idx=0;idx<opts.length;idx++){
       var opt=opts[idx];
       var strike=opt.strike||0;
@@ -1297,7 +1299,7 @@ function syncNearSelected(){
       var entryIv=opt.iv_entry||iv;
       var qty=opt.qty||1;
       var tvC=0,tvE=0;
-      for(var p=Math.floor(insHigh);p>=Math.ceil(insLow);p--){
+      for(var p=Math.round(insHigh);p>=Math.round(insLow);p--){
         var intr=Math.max(strike-p,0);
         var bsC=0,bsE=0;
         if(p>0&&strike>0&&iv>0&&T>0) bsC=_bsPutPrice(p,strike,T,iv);
@@ -1400,10 +1402,10 @@ function renderNearPnlMatrix(){
   var data=window.layerData_near;
   if(!data||!data.spot_price) return;
   var spot=data.spot_price;
-  var insLow=spot*0.9;
-  var insHigh=spot*0.97;
-  var firstInHedge=Math.ceil(insLow);
-  var lastInHedge=Math.floor(insHigh);
+  var ins = getInsuranceRange('near', spot);
+  var insLow=ins.low, insHigh=ins.high;
+  var firstInHedge=Math.round(insLow);
+  var lastInHedge=Math.round(insHigh);
   thead.innerHTML='';
   var thPrice=document.createElement('th');
   thPrice.style.cssText='text-align:right;padding:2px 6px';
@@ -1443,8 +1445,8 @@ function renderNearPnlMatrix(){
     allOptionCells[p]=optionCells;
   }
   // Разница PnL: диапазон страхование (нижняя граница - верхняя граница)
-  var bottomRow = Math.ceil(insLow);
-  var topRow = Math.floor(insHigh);
+  var bottomRow = Math.round(insLow);
+  var topRow = Math.round(insHigh);
   var totalDiff = pnlRows[bottomRow] - pnlRows[topRow];
   var diffCells=[];
   for(var k=0; k<allOptionCells[topRow].length; k++){
@@ -1491,9 +1493,8 @@ function renderNearOptionPricesMatrix(){
   if(!data||!data.spot_price) return;
   var spot=data.spot_price;
   var spotPrice=spot;
-  // Диапазон страхования: spot*0.9 — spot*0.97 (3-10% просадка)
-  var insLow=spot*0.9;
-  var insHigh=spot*0.97;
+  var ins = getInsuranceRange('near', spot);
+  var insLow=ins.low, insHigh=ins.high;
   var matrixLow=Math.round(spot*0.85);
   var matrixHigh=Math.round(spot);
   thead.innerHTML='';
@@ -1507,7 +1508,7 @@ function renderNearOptionPricesMatrix(){
     th.textContent=o.symbol.replace('-P','');
     thead.appendChild(th);
   });
-  // Сохраняем timeValue для каждой строки
+  // Сборка массива цен: целые + точные границы вставлены между ними
   var tvRows={};
   var html='';
   for(var p=matrixHigh;p>=matrixLow;p--){
@@ -1625,8 +1626,8 @@ function syncMidSelected(){
     // Промежуточный расчёт TV для Resource % — сумма по диапазону страховки mid
     var tvC_midArr=[],tvE_midArr=[];
     var spotMid=window.layerData_mid&&window.layerData_mid.spot_price?window.layerData_mid.spot_price:0;
-    var insLowMid=Math.round(spotMid*(1-20/100));
-    var insHighMid=Math.round(spotMid*(1-10/100));
+    var insMid = getInsuranceRange('mid', spotMid);
+    var insLowMid=insMid.low, insHighMid=insMid.high;
     for(var idx=0;idx<opts.length;idx++){
       var opt=opts[idx];
       var strike=opt.strike||0;
@@ -2027,9 +2028,8 @@ function drawNearSelectedGammaChart(){
   var spot=window.layerData_near&&window.layerData_near.spot_price?window.layerData_near.spot_price:0;
   if(!spot) return;
 
-  // Insurance range for near layer: 3-10% below spot
-  var insLow=spot*(1-10/100);
-  var insHigh=spot*(1-3/100);
+  var ins = getInsuranceRange('near', spot);
+  var insLow=ins.low, insHigh=ins.high;
   var padRange=4;
   var chartLow=insLow-padRange;
   var chartHigh=Math.max(insHigh+padRange, spot+padRange);
@@ -2293,11 +2293,10 @@ function drawNearPnlBreakdown(){
   var spot=window.layerData_near&&window.layerData_near.spot_price?window.layerData_near.spot_price:0;
   if(!spot)return;
 
-  // Insurance range: 3-10% below spot
-  var insLow=spot*(1-10/100);
-  var insHigh=spot*(1-3/100);
+  var ins = getInsuranceRange('near', spot);
+  var insLow=ins.low, insHigh=ins.high;
   var prices=[];
-  for(var p=Math.floor(insHigh);p>=Math.ceil(insLow);p--){prices.push(p);}
+  for(var p=Math.round(insHigh);p>=Math.round(insLow);p--){prices.push(p);}
 
   // For each option, compute PnL at each price with current and entry params
   var optionData=[];
@@ -2439,9 +2438,8 @@ function drawMidSelectedGammaChart(){
   var spot=window.layerData_mid&&window.layerData_mid.spot_price?window.layerData_mid.spot_price:0;
   if(!spot) return;
 
-  // Insurance range for mid layer: 10-20% below spot
-  var insLow=Math.round(spot*(1-20/100));
-  var insHigh=Math.round(spot*(1-10/100));
+  var ins = getInsuranceRange('mid', spot);
+  var insLow=ins.low, insHigh=ins.high;
   var padRange=4;
   var chartLow=insLow-padRange;
   var chartHigh=Math.max(insHigh+padRange, spot+padRange);
@@ -2695,8 +2693,8 @@ function renderDistantPnlMatrix(){
   var data=window.layerData_distant;
   if(!data||!data.spot_price) return;
   var spot=data.spot_price;
-  var insLow=Math.round(spot*0.70);
-  var insHigh=Math.round(spot*0.85);
+  var ins = getInsuranceRange('distant', spot);
+  var insLow=ins.low, insHigh=ins.high;
   var dropPct20=Math.round(spot*0.80);
   var dropPct25=Math.round(spot*0.75);
   thead.innerHTML='';
@@ -2769,8 +2767,8 @@ function renderDistantDeltaMatrix(){
   var data=window.layerData_distant;
   if(!data||!data.spot_price) return;
   var spot=data.spot_price;
-  var insLow=Math.round(spot*0.70);
-  var insHigh=Math.round(spot*0.85);
+  var ins = getInsuranceRange('distant', spot);
+  var insLow=ins.low, insHigh=ins.high;
   var dropPct20=Math.round(spot*0.80);
   var dropPct25=Math.round(spot*0.75);
   thead.innerHTML='';
@@ -2985,8 +2983,8 @@ function renderDistantSummaryMatrix(){
   var data=window.layerData_distant;
   if(!data||!data.spot_price) return;
   var spot=data.spot_price;
-  var insLow=Math.round(spot*0.70);
-  var insHigh=Math.round(spot);
+  var ins = getInsuranceRange('distant', spot);
+  var insLow=ins.low, insHigh=ins.high;
   var dropPct20=Math.round(spot*0.80);
   var dropPct25=Math.round(spot*0.75);
   var sol=posData&&posData.positions&&posData.positions.length>0?posData.positions.find(function(x){return x.symbol==='SOL';}):null;
@@ -3056,9 +3054,8 @@ function renderDistantGammaChart(){
   if(!data||!data.spot_price){container.innerHTML='Нет данных';return;}
   var spot=data.spot_price;
   
-  // Insurance range: 15-30% drop
-  var insLow=Math.round(spot*0.70);
-  var insHigh=Math.round(spot*0.85);
+  var ins = getInsuranceRange('distant', spot);
+  var insLow=ins.low, insHigh=ins.high;
   
   // X-axis: from 70% to 110% of spot
   var xMin=Math.round(spot*0.60);
@@ -3771,11 +3768,8 @@ function renderOptionGreeks(data, layer){
   var hedgeHigh = hedgeRange.high;
   var hedgeLen = Math.abs(hedgeHigh - hedgeLow);
 
-  // Insurance range: диапазон работы слоя (3-10% для near и т.д.)
-  var hedges={near:{min:3,max:10},distant:{min:15,max:30}};
-  var h=hedges[layer]||{min:5,max:20};
-  var insLow=Math.round(data.spot*(1-h.max/100));
-  var insHigh=Math.round(data.spot*(1-h.min/100));
+  var ins = getInsuranceRange(layer, data.spot);
+  var insLow=ins.low, insHigh=ins.high;
   var insLen = Math.abs(insHigh - insLow);
 
   // Coverage: intersection(gamma_range, insurance_range) / insurance_range
