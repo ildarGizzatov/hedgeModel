@@ -2,8 +2,8 @@ const API="http://localhost:8083";
 
 // === Insurance range: near=3-10%, mid=10-20%, distant=15-30% ===
 function getInsuranceRange(layer, spot) {
-  var hedges = {near:[3,10], mid:[10,20], distant:[15,30]};
-  var h = hedges[layer] || [3,10];
+  var hedges = {near:[0,8], mid:[8,15], distant:[15,25]};
+  var h = hedges[layer] || [15,25];
   return { low: Math.round(spot*(1-h[1]/100)), high: Math.round(spot*(1-h[0]/100)) };
 }
 
@@ -1298,17 +1298,16 @@ function syncNearSelected(){
       var entryT=Math.max(entryDte,1)/365;
       var entryIv=opt.iv_entry||iv;
       var qty=opt.qty||1;
-      var tvC=0,tvE=0;
-      for(var p=Math.round(insHigh);p>=Math.round(insLow);p--){
-        var intr=Math.max(strike-p,0);
-        var bsC=0,bsE=0;
-        if(p>0&&strike>0&&iv>0&&T>0) bsC=_bsPutPrice(p,strike,T,iv);
-        if(p>0&&strike>0&&entryIv>0&&entryT>0) bsE=_bsPutPrice(p,strike,entryT,entryIv);
-        tvC+=(bsC-intr)*qty;
-        tvE+=(bsE-intr)*qty;
-      }
-      tvCurrentArr.push(tvC);
-      tvEntryArr.push(tvE);
+      var hr=metricsArr[idx]&&metricsArr[idx].hedgeRange;
+      var hrLow=hr?hr.low:Math.round(insLow);
+      var hrHigh=hr?hr.high:Math.round(insHigh);
+      var pricesHR=[];
+      for(var pp=Math.round(hrHigh);pp>=Math.round(hrLow);pp--) pricesHR.push(pp);
+      var nHR=pricesHR.length;
+      var tvCSum=sumTimeValue(pricesHR, strike, T, iv, qty, hrLow, hrHigh);
+      var tvESum=sumTimeValue(pricesHR, strike, entryT, entryIv, qty, hrLow, hrHigh);
+      tvCurrentArr.push(tvCSum/nHR);
+      tvEntryArr.push(tvESum/nHR);
     }
 
     // Pass 2: build rows
@@ -1329,7 +1328,7 @@ function syncNearSelected(){
       var m=metricsArr[idx];
       var optionPnL=m?m.optionPnL:0;
       var tvC=tvCurrentArr[idx],tvE=tvEntryArr[idx];
-      var resPct=tvE>0?F(tvC/tvE*100,1)+'% (вх:$'+F(tvE/(opt.qty||1),2)+')':'-';
+      var resPct=tvE>0?F(tvC/tvE*100,1)+'% (вх:$'+F(tvE,2)+')':'-';
       var covMax=m&&(Math.abs(m.coverage-maxVal.cov)<1e-9);
       var sGMax=m&&(Math.abs(m.sumGamma-maxVal.sG)<1e-9);
       var gPMax=m&&(Math.abs(m.gammaProtection-maxVal.gP)<1e-9);
@@ -1340,7 +1339,6 @@ function syncNearSelected(){
       html+='<tr style="height:22px">';
       html+='<td style="padding:2px 6px;text-align:center"><input type="checkbox" '+(checked?'checked':'')+' onchange="window._onSelectToggle(\'near\','+idx+',this.checked)"></td>';
       html+='<td style="padding:2px 6px;font-weight:bold">'+opt.symbol+'</td>';
-      html+='<td style="padding:2px 6px;text-align:right">'+resPct+'</td>';
       html+='<td style="padding:2px 6px;text-align:right">$'+strike+'</td>';
       html+='<td style="padding:2px 6px;text-align:center">'+(opt.dte||'-')+'</td>';
       var pnlClr=optionPnL>=0?'var(--green)':'var(--red)'; html+='<td style="padding:2px 6px;text-align:right;color:'+pnlClr+'">$'+F(optionPnL,2)+'</td>';
@@ -1350,6 +1348,7 @@ function syncNearSelected(){
       html+='<td style="padding:2px 6px;text-align:right">$'+F(total,2)+'</td>';
       html+='<td style="padding:2px 6px;text-align:right">'+pctFromRemaining+'</td>';
       html+='<td style="padding:2px 6px;text-align:right">'+F(delta,4)+'</td>';
+      html+='<td style="padding:2px 6px;text-align:right">'+resPct+'</td>';
       html+='<td style="padding:2px 6px;text-align:right;'+(covMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?F(m.coverage*100,0)+'%':'-')+'</td>';
       html+='<td style="padding:2px 6px;text-align:right;'+(sGMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?F(m.sumGamma,6):'-')+'</td>';
       html+='<td style="padding:2px 6px;text-align:right;'+(gPMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?F(m.gammaProtection,4):'-')+'</td>';
@@ -1361,7 +1360,7 @@ function syncNearSelected(){
       html+='</tr>';
     }
     if(html===''){
-      html='<tr><td colspan="17" style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';
+      html='<tr><td colspan="18" style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';
     } else {
       html+='<tr style="height:22px;font-weight:bold;background:var(--bg);border-top:2px solid var(--border)">';
       html+='<td style="padding:2px 6px;text-align:center"></td>';
@@ -1370,11 +1369,7 @@ function syncNearSelected(){
       var pctTotal='';
       if(activeLayer&&activeLayer.budget>0&&sumTotal>0) pctTotal=F(sumTotal/activeLayer.budget*100,1)+'%';
       html+='<td style="padding:2px 6px;text-align:right">'+pctTotal+'</td>';
-      html+='<td></td><td></td><td></td><td></td><td></td><td></td>';
-      html+='<td></td>';
-      html+='<td></td>';
-      html+='<td></td>';
-      html+='<td></td>';
+      html+='<td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>';
       html+='</tr>';
     }
     tbody.innerHTML=html;
@@ -1508,10 +1503,13 @@ function renderNearOptionPricesMatrix(){
     th.textContent=o.symbol.replace('-P','');
     thead.appendChild(th);
   });
-  // Сборка массива цен: целые + точные границы вставлены между ними
+  // Сборка массива цен: целые цены в диапазоне
+  var prices=[];
+  for(var p=matrixHigh;p>=matrixLow;p--) prices.push(p);
   var tvRows={};
   var html='';
-  for(var p=matrixHigh;p>=matrixLow;p--){
+  for(var i=0;i<prices.length;i++){
+    var p=prices[i];
     var inHedge=(p>=insLow&&p<=insHigh);
     var rowBg=inHedge?'background:rgba(63,185,80,0.12);':'';
     var rowTV=[];
@@ -1522,9 +1520,10 @@ function renderNearOptionPricesMatrix(){
       var iv=o.iv||0.3;
       var dte=Math.max(o.dte||30,1);
       var T=dte/365;
+      var qty=o.qty||1;
       var intrinsic=Math.max(0, strike - p);
       var bsPrice=_bsPutPrice(p, strike, T, iv);
-      var timeValue=Math.max(0, bsPrice - intrinsic);
+      var timeValue=Math.max(0, bsPrice - intrinsic)*qty;
       var cls=timeValue>0?'color:var(--text)':'color:var(--text-dim)';
       rowTV.push(timeValue);
       html+='<td style="padding:2px 6px;text-align:right" class="'+cls+'">$'+F(timeValue,2)+'</td>';
@@ -1534,41 +1533,38 @@ function renderNearOptionPricesMatrix(){
   }
   // Сумма timeValue для каждого опциона внутри диапазона страхования
   var sumCells=[];
-  for(var k=0;k<rowTV.length;k++){
-    var s=0;
-    for(var p=matrixHigh;p>=matrixLow;p--){
-      if(p>=insLow && p<=insHigh) s+=tvRows[p][k];
-    }
-    sumCells.push(s);
+  for(var k=0;k<opts.length;k++){
+    var o=opts[k];
+    var strike=o.strike||0;var iv=o.iv||0.3;var dte=Math.max(o.dte||30,1);var T=dte/365;
+    sumCells.push(sumTimeValue(prices, strike, T, iv, o.qty||1, insLow, insHigh));
   }
-  // Общая сумма timeValue для каждого опциона в его рабочем окне (hedgeRange)
-  var totalCells=[];
+  // Средняя timeValue для каждого опциона в рабочем окне
+  var avgCells=[];
   for(var k=0;k<opts.length;k++){
     var o=opts[k];
     var strike=o.strike||0;var iv=o.iv||0.3;var dte=Math.max(o.dte||30,1);var T=dte/365;
     var hr=o.hedgeRange;
     var wLow=hr?hr.low:0;var wHigh=hr?hr.high:spot;
-    var t=0;
-    for(var p=wHigh;p>=wLow;p--){
-      var intrinsic=Math.max(0, strike-p);
-      var bsPrice=_bsPutPrice(p,strike,T,iv);
-      var timeValue=Math.max(0, bsPrice-intrinsic);
-      if(timeValue>0) t+=timeValue;
-    }
-    totalCells.push(t);
+    var sum=sumTimeValue(prices, strike, T, iv, o.qty||1, wLow, wHigh);
+    var n=0;
+    for(var j=0;j<prices.length;j++) if(prices[j]>=wLow && prices[j]<=wHigh) n++;
+    avgCells.push(n>0?sum/n:0);
   }
   html+='<tr style="height:20px;font-weight:bold;background:var(--bg);border-top:2px solid var(--border)">';
-  html+='<td style="padding:2px 6px;text-align:right">Сумма в диапазоне страховке:</td>';
+  html+='<td style="padding:2px 6px;text-align:right">Средний в диапазоне страховке:</td>';
   for(var k=0;k<sumCells.length;k++){
     var cls=sumCells[k]>=0?'color:var(--green)':'color:#d32f2f';
-    html+='<td style="padding:2px 6px;text-align:right" class="'+cls+'">$'+F(sumCells[k],2)+'</td>';
+    var nIn=0;
+    for(var j=0;j<prices.length;j++) if(prices[j]>=insLow && prices[j]<=insHigh) nIn++;
+    var avgK=nIn>0?sumCells[k]/nIn:0;
+    html+='<td style="padding:2px 6px;text-align:right" class="'+cls+'">$'+F(avgK,2)+'</td>';
   }
   html+='</tr>';
   html+='<tr style="height:20px;font-weight:bold;background:var(--bg);border-top:1px solid var(--border)">';
-  html+='<td style="padding:2px 6px;text-align:right">Общая в рабочем окне:</td>';
-  for(var k=0;k<totalCells.length;k++){
-    var cls=totalCells[k]>=0?'color:var(--green)':'color:#d32f2f';
-    html+='<td style="padding:2px 6px;text-align:right" class="'+cls+'">$'+F(totalCells[k],2)+'</td>';
+  html+='<td style="padding:2px 6px;text-align:right">Средний в рабочем окне:</td>';
+  for(var k=0;k<avgCells.length;k++){
+    var cls=avgCells[k]>=0?'color:var(--green)':'color:#d32f2f';
+    html+='<td style="padding:2px 6px;text-align:right" class="'+cls+'">$'+F(avgCells[k],2)+'</td>';
   }
   html+='</tr>';
   tbody.innerHTML=html;
@@ -1638,17 +1634,17 @@ function syncMidSelected(){
       var entryT=Math.max(entryDte,1)/365;
       var entryIv=opt.iv_entry||iv;
       var qty=opt.qty||1;
-      var tvC=0,tvE=0;
-      for(var p=Math.round(insHighMid);p>=Math.round(insLowMid);p--){
-        var intr=Math.max(strike-p,0);
-        var bsC=0,bsE=0;
-        if(p>0&&strike>0&&iv>0&&T>0) bsC=_bsPutPrice(p,strike,T,iv);
-        if(p>0&&strike>0&&entryIv>0&&entryT>0) bsE=_bsPutPrice(p,strike,entryT,entryIv);
-        tvC+=(bsC-intr)*qty;
-        tvE+=(bsE-intr)*qty;
-      }
-      tvC_midArr.push(tvC);
-      tvE_midArr.push(tvE);
+      var m=metricsArr[idx];
+      var hr=m&&m.hedgeRange;
+      var hrLow=hr?hr.low:Math.round(insLowMid);
+      var hrHigh=hr?hr.high:Math.round(insHighMid);
+      var pricesMid=[];
+      for(var pp=Math.round(hrHigh);pp>=Math.round(hrLow);pp--) pricesMid.push(pp);
+      var nMid=pricesMid.length;
+      var tvCSumM=sumTimeValue(pricesMid, strike, T, iv, qty, hrLow, hrHigh);
+      var tvESumM=sumTimeValue(pricesMid, strike, entryT, entryIv, qty, hrLow, hrHigh);
+      tvC_midArr.push(tvCSumM/nMid);
+      tvE_midArr.push(tvESumM/nMid);
     }
 
     html='';
@@ -1663,7 +1659,7 @@ function syncMidSelected(){
       var isPurchased=(!!purchasedOptions.mid&&purchasedOptions.mid.some(function(p){return p.symbol===opt.symbol;}));
       var total=(opt.price||0)*(opt.qty||1);
       if(checked) sumTotal+=total;
-      var resPct=tvE_midArr[idx]>0?F(tvC_midArr[idx]/tvE_midArr[idx]*100,1)+'% (вх:$'+F(tvE_midArr[idx]/(opt.qty||1),2)+')':'-';
+      var resPct=tvE_midArr[idx]>0?F(tvC_midArr[idx]/tvE_midArr[idx]*100,1)+'% (вх:$'+F(tvE_midArr[idx],2)+')':'-';
       var pctFromRemaining='';
       if(activeLayer&&activeLayer.budget>0&&checked){
         pctFromRemaining=F(total/activeLayer.budget*100,1)+'%';
@@ -1680,7 +1676,6 @@ function syncMidSelected(){
       html+='<tr style="height:22px">';
       html+='<td style="padding:2px 6px;text-align:center"><input type="checkbox" '+(checked?'checked':'')+' onchange="window._onSelectToggle(\'mid\','+idx+',this.checked)"></td>';
       html+='<td style="padding:2px 6px;font-weight:bold">'+opt.symbol+'</td>';
-      html+='<td style="padding:2px 6px;text-align:right">'+resPct+'</td>';
       html+='<td style="padding:2px 6px;text-align:right">$'+strike+'</td>';
       html+='<td style="padding:2px 6px;text-align:center">'+(opt.dte||'-')+'</td>';
       var pnlClr=optionPnL>=0?'var(--green)':'var(--red)'; html+='<td style="padding:2px 6px;text-align:right;color:'+pnlClr+'">$'+F(optionPnL,2)+'</td>';
@@ -1690,6 +1685,7 @@ function syncMidSelected(){
       html+='<td style="padding:2px 6px;text-align:right">$'+F(total,2)+'</td>';
       html+='<td style="padding:2px 6px;text-align:right">'+pctFromRemaining+'</td>';
       html+='<td style="padding:2px 6px;text-align:right">'+F(delta,4)+'</td>';
+      html+='<td style="padding:2px 6px;text-align:right">'+resPct+'</td>';
       html+='<td style="padding:2px 6px;text-align:right;'+(covMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?F(m.coverage*100,0)+'%':'-')+'</td>';
       html+='<td style="padding:2px 6px;text-align:right;'+(sGMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?F(m.sumGamma,6):'-')+'</td>';
       html+='<td style="padding:2px 6px;text-align:right;'+(gPMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?F(m.gammaProtection,4):'-')+'</td>';
@@ -1701,7 +1697,7 @@ function syncMidSelected(){
       html+='</tr>';
     }
     if(html===''){
-      html='<tr><td colspan="17" style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';
+      html='<tr><td colspan="18" style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';
     } else {
       html+='<tr style="height:22px;font-weight:bold;background:var(--bg);border-top:2px solid var(--border)">';
       html+='<td style="padding:2px 6px;text-align:center"></td>';
@@ -1710,10 +1706,7 @@ function syncMidSelected(){
       var pctTotal='';
       if(activeLayer&&activeLayer.budget>0&&sumTotal>0) pctTotal=F(sumTotal/activeLayer.budget*100,1)+'%';
       html+='<td style="padding:2px 6px;text-align:right">'+pctTotal+'</td>';
-      html+='<td></td><td></td><td></td><td></td><td></td><td></td>';
-      html+='<td></td>';
-      html+='<td></td>';
-      html+='<td></td>';
+      html+='<td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>';
       html+='</tr>';
     }
     tbody.innerHTML=html;
@@ -2322,7 +2315,7 @@ function drawNearPnlBreakdown(){
       if(p<=0||strike<=0||iv<=0||T<=0){pnlC=-premium*qty;}else{
         var bsC=_bsPutPrice(p,strike,T,iv);
         pnlC=(bsC-premium)*qty;
-        tvC=(bsC-intr)*qty;
+        tvC=bsC-intr;
       }
       pnlCurrent.push(pnlC); tvCurrent.push(tvC);
 
@@ -2331,7 +2324,7 @@ function drawNearPnlBreakdown(){
       if(p<=0||strike<=0||entryIv<=0||entryT<=0){pnlE=-premium*qty;}else{
         var bsE=_bsPutPrice(p,strike,entryT,entryIv);
         pnlE=(bsE-premium)*qty;
-        tvE=(bsE-intr)*qty;
+        tvE=bsE-intr;
       }
       pnlEntry.push(pnlE); tvEntry.push(tvE);
     }
@@ -2659,6 +2652,22 @@ function drawMidSelectedGammaChart(){
   document.getElementById('midGammaLegend').innerHTML=legendHtml;
 }
 
+
+// === Unified timeValue functions ===
+function calcTimeValue(price, strike, T, IV, qty) {
+  var bs = _bsPutPrice(price, strike, T, IV);
+  var intrinsic = Math.max(0, strike - price);
+  return Math.max(0, bs - intrinsic) * (qty || 1);
+}
+
+function sumTimeValue(prices, strike, T, IV, qty, rangeLow, rangeHigh) {
+  var total = 0;
+  for(var i = 0; i < prices.length; i++) {
+    if(prices[i] >= rangeLow && prices[i] <= rangeHigh)
+      total += calcTimeValue(prices[i], strike, T, IV, qty);
+  }
+  return total;
+}
 
 // === BS Put Price (r=0) ===
 function _bsPutPrice(S, K, T, iv){
