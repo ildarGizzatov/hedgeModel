@@ -1364,12 +1364,12 @@ function syncNearSelected(){
     } else {
       html+='<tr style="height:22px;font-weight:bold;background:var(--bg);border-top:2px solid var(--border)">';
       html+='<td style="padding:2px 6px;text-align:center"></td>';
-      html+='<td style="padding:2px 6px" colspan="7">Итого:</td>';
+      html+='<td style="padding:2px 6px" colspan="6">Итого:</td>';
       html+='<td style="padding:2px 6px;text-align:right">$'+F(sumTotal,2)+'</td>';
       var pctTotal='';
       if(activeLayer&&activeLayer.budget>0&&sumTotal>0) pctTotal=F(sumTotal/activeLayer.budget*100,1)+'%';
       html+='<td style="padding:2px 6px;text-align:right">'+pctTotal+'</td>';
-      html+='<td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>';
+      html+='<td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>';
       html+='</tr>';
     }
     tbody.innerHTML=html;
@@ -1701,12 +1701,12 @@ function syncMidSelected(){
     } else {
       html+='<tr style="height:22px;font-weight:bold;background:var(--bg);border-top:2px solid var(--border)">';
       html+='<td style="padding:2px 6px;text-align:center"></td>';
-      html+='<td style="padding:2px 6px" colspan="7">Итого:</td>';
+      html+='<td style="padding:2px 6px" colspan="6">Итого:</td>';
       html+='<td style="padding:2px 6px;text-align:right">$'+F(sumTotal,2)+'</td>';
       var pctTotal='';
       if(activeLayer&&activeLayer.budget>0&&sumTotal>0) pctTotal=F(sumTotal/activeLayer.budget*100,1)+'%';
       html+='<td style="padding:2px 6px;text-align:right">'+pctTotal+'</td>';
-      html+='<td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>';
+      html+='<td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>';
       html+='</tr>';
     }
     tbody.innerHTML=html;
@@ -1716,7 +1716,193 @@ function syncMidSelected(){
       budgetEl.textContent='💰 Бюджет: $'+F(activeLayer.budget,2)+' | Потрачено: $'+F(activeLayer.spent,2)+' ('+usedPct+'%) | Осталось: $'+F(remainingBudget,2);
     }
   });
-  setTimeout(function(){drawMidSelectedGammaChart();}, 100);
+  setTimeout(function(){drawMidSelectedGammaChart();renderMidPnlMatrix();renderMidOptionPricesMatrix();}, 100);
+}
+
+// === Mid Layer: PnL Matrix ===
+function renderMidPnlMatrix(){
+  var tbody=document.querySelector('#midPnlMatrix tbody');
+  var thead=document.querySelector('#midPnlMatrix thead tr');
+  if(!tbody||!thead) return;
+  var allOpts=selectedOption.mid||[];
+  var opts=allOpts.filter(function(o){return o.checked!==false;});
+  if(opts.length===0){tbody.innerHTML='<tr><td style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';thead.innerHTML='<tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0"><th style="text-align:right;padding:2px 6px">Цена</th><th style="text-align:right;padding:2px 6px">ΣPnL</th></tr>';return;}
+  try{
+  var data=window.layerData_mid;
+  if(!data||!data.spot_price) return;
+  var spot=data.spot_price;
+  var ins = getInsuranceRange('mid', spot);
+  var insLow=ins.low, insHigh=ins.high;
+  var firstInHedge=Math.round(insLow);
+  var lastInHedge=Math.round(insHigh);
+  thead.innerHTML='';
+  var thPrice=document.createElement('th');
+  thPrice.style.cssText='text-align:right;padding:2px 6px';
+  thPrice.textContent='Цена';
+  thead.appendChild(thPrice);
+  var thSigma=document.createElement('th');
+  thSigma.style.cssText='text-align:right;padding:2px 6px';
+  thSigma.textContent='ΣPnL';
+  thead.appendChild(thSigma);
+  opts.forEach(function(o){
+    var th=document.createElement('th');
+    th.style.cssText='text-align:right;padding:2px 6px';
+    th.textContent=o.symbol.replace('-P','');
+    thead.appendChild(th);
+  });
+  // Сначала считаем ΣPnL для каждой строки
+  var pnlRows={};
+  var allOptionCells={};
+  var matrixLow=Math.round(spot*0.85);
+  var matrixHigh=Math.round(spot);
+  for(p=matrixHigh;p>=matrixLow;p--){
+    var totalPnl=0;
+    var optionCells=[];
+    opts.forEach(function(o){
+      var qty=o.qty||1;
+      var strike=o.strike||0;
+      var premium=o.price||0;
+      var iv=o.iv||0.3;
+      var dte=Math.max(o.dte||30,1);
+      var T=dte/365;
+      var bsPrice=_bsPutPrice(p, strike, T, iv);
+      var pnl=(bsPrice-premium)*qty;
+      totalPnl+=pnl;
+      optionCells.push({pnl:pnl});
+    });
+    pnlRows[p]=totalPnl;
+    allOptionCells[p]=optionCells;
+  }
+  // Разница PnL: диапазон страхование (нижняя граница - верхняя граница)
+  var bottomRow = Math.round(insLow);
+  var topRow = Math.round(insHigh);
+  var totalDiff = pnlRows[bottomRow] - pnlRows[topRow];
+  var diffCells=[];
+  for(var k=0; k<allOptionCells[topRow].length; k++){
+    diffCells.push({diff: allOptionCells[bottomRow][k].pnl - allOptionCells[topRow][k].pnl});
+  }
+  var html='';
+  for(p=matrixHigh;p>=matrixLow;p--){
+    var inHedge=(p>=insLow&&p<=insHigh);
+    var bg=inHedge?'background:rgba(63,185,80,0.12);':'';
+    var tcls=pnlRows[p]>=0?'color:var(--green)':'color:#d32f2f';
+    html+='<tr style="height:20px;'+bg+'">';
+    html+='<td style="padding:2px 6px;text-align:right">$'+p+'</td>';
+    html+='<td style="padding:2px 6px;text-align:right;font-weight:bold" class="'+tcls+'">$'+F(pnlRows[p],2)+'</td>';
+    var optionCells=allOptionCells[p];
+    for(var k=0;k<optionCells.length;k++){
+      var cls=optionCells[k].pnl>=0?'color:var(--green)':'color:#d32f2f';
+      html+='<td style="padding:2px 6px;text-align:right" class="'+cls+'">$'+F(optionCells[k].pnl,2)+'</td>';
+    }
+    html+='</tr>';
+  }
+  html+='<tr style="height:20px;font-weight:bold;background:var(--bg);border-top:2px solid var(--border)">';
+  html+='<td style="padding:2px 6px;text-align:right" colspan="1">Разница PnL:</td>';
+  var tcls=totalDiff>=0?'color:var(--green)':'color:#d32f2f';
+  html+='<td style="padding:2px 6px;text-align:right;font-weight:bold" class="'+tcls+'">$'+F(totalDiff,2)+'</td>';
+  for(var k=0;k<diffCells.length;k++){
+    var cls=diffCells[k].diff>=0?'color:var(--green)':'color:#d32f2f';
+    html+='<td style="padding:2px 6px;text-align:right" class="'+cls+'">$'+F(diffCells[k].diff,2)+'</td>';
+  }
+  html+='</tr>';
+  tbody.innerHTML=html;
+  }catch(e){console.warn('renderMidPnlMatrix fail:',e);}
+}
+
+// === Mid Layer: Option Prices Matrix ===
+function renderMidOptionPricesMatrix(){
+  var tbody=document.querySelector('#midOptionPricesMatrix tbody');
+  var thead=document.querySelector('#midOptionPricesMatrix thead tr');
+  if(!tbody||!thead) return;
+  var allOpts=selectedOption.mid||[];
+  var opts=allOpts.filter(function(o){return o.checked!==false;});
+  if(opts.length===0){tbody.innerHTML='<tr><td style="padding:12px;text-align:center;color:var(--text-dim)">Нет выбранных опционов</td></tr>';thead.innerHTML='<tr style="background:var(--bg);border-bottom:2px solid var(--border);position:sticky;top:0"><th style="text-align:right;padding:2px 6px">Цена</th></tr>';return;}
+  try{
+  var data=window.layerData_mid;
+  if(!data||!data.spot_price) return;
+  var spot=data.spot_price;
+  var spotPrice=spot;
+  var ins = getInsuranceRange('mid', spot);
+  var insLow=ins.low, insHigh=ins.high;
+  var matrixLow=Math.round(spot*0.85);
+  var matrixHigh=Math.round(spot);
+  thead.innerHTML='';
+  var thPrice=document.createElement('th');
+  thPrice.style.cssText='text-align:right;padding:2px 6px';
+  thPrice.textContent='Цена';
+  thead.appendChild(thPrice);
+  opts.forEach(function(o){
+    var th=document.createElement('th');
+    th.style.cssText='text-align:right;padding:2px 6px';
+    th.textContent=o.symbol.replace('-P','');
+    thead.appendChild(th);
+  });
+  // Сборка массива цен: целые цены в диапазоне
+  var prices=[];
+  for(var p=matrixHigh;p>=matrixLow;p--) prices.push(p);
+  var tvRows={};
+  var html='';
+  for(var i=0;i<prices.length;i++){
+    var p=prices[i];
+    var inHedge=(p>=insLow&&p<=insHigh);
+    var rowBg=inHedge?'background:rgba(63,185,80,0.12);':'';
+    var rowTV=[];
+    html+='<tr style="height:20px;'+rowBg+'">';
+    html+='<td style="padding:2px 6px;text-align:right">$'+p+'</td>';
+    opts.forEach(function(o){
+      var strike=o.strike||0;
+      var iv=o.iv||0.3;
+      var dte=Math.max(o.dte||30,1);
+      var T=dte/365;
+      var qty=o.qty||1;
+      var intrinsic=Math.max(0, strike - p);
+      var bsPrice=_bsPutPrice(p, strike, T, iv);
+      var timeValue=Math.max(0, bsPrice - intrinsic)*qty;
+      var cls=timeValue>0?'color:var(--text)':'color:var(--text-dim)';
+      rowTV.push(timeValue);
+      html+='<td style="padding:2px 6px;text-align:right" class="'+cls+'">$'+F(timeValue,2)+'</td>';
+    });
+    html+='</tr>';
+    tvRows[p]=rowTV.slice();
+  }
+  // Сумма timeValue для каждого опциона внутри диапазона страхования
+  var sumCells=[];
+  for(var k=0;k<opts.length;k++){
+    var o=opts[k];
+    var strike=o.strike||0;var iv=o.iv||0.3;var dte=Math.max(o.dte||30,1);var T=dte/365;
+    sumCells.push(sumTimeValue(prices, strike, T, iv, o.qty||1, insLow, insHigh));
+  }
+  // Средняя timeValue для каждого опциона в рабочем окне
+  var avgCells=[];
+  for(var k=0;k<opts.length;k++){
+    var o=opts[k];
+    var strike=o.strike||0;var iv=o.iv||0.3;var dte=Math.max(o.dte||30,1);var T=dte/365;
+    var hr=o.hedgeRange;
+    var wLow=hr?hr.low:0;var wHigh=hr?hr.high:spot;
+    var sum=sumTimeValue(prices, strike, T, iv, o.qty||1, wLow, wHigh);
+    var n=0;
+    for(var j=0;j<prices.length;j++) if(prices[j]>=wLow && prices[j]<=wHigh) n++;
+    avgCells.push(n>0?sum/n:0);
+  }
+  html+='<tr style="height:20px;font-weight:bold;background:var(--bg);border-top:2px solid var(--border)">';
+  html+='<td style="padding:2px 6px;text-align:right">Средний в диапазоне страховке:</td>';
+  for(var k=0;k<sumCells.length;k++){
+    var cls=sumCells[k]>=0?'color:var(--green)':'color:#d32f2f';
+    var nIn=0;
+    for(var j=0;j<prices.length;j++) if(prices[j]>=insLow && prices[j]<=insHigh) nIn++;
+    var avgK=nIn>0?sumCells[k]/nIn:0;
+    html+='<td style="padding:2px 6px;text-align:right" class="'+cls+'">$'+F(avgK,2)+'</td>';
+  }
+  html+='</tr>';
+  html+='<tr style="height:20px;font-weight:bold;background:var(--bg);border-top:1px solid var(--border)">';
+  html+='<td style="padding:2px 6px;text-align:right">Средний в рабочем окне:</td>';
+  for(var k=0;k<avgCells.length;k++){
+    var cls=avgCells[k]>=0?'color:var(--green)':'color:#d32f2f';
+    html+='<td style="padding:2px 6px;text-align:right" class="'+cls+'">$'+F(avgCells[k],2)+'</td>';
+  }
+  html+='</tr>';
+  tbody.innerHTML=html;
+  }catch(e){console.warn('renderMidOptionPricesMatrix fail:',e);}
 }
 
 // === Near Selected: Gamma Chart ===
