@@ -1474,7 +1474,7 @@ def _get_hedge_range_by_gamma(rows):
     return {"low": low, "high": high, "gamma_max": gamma_max, "gamma_80": gamma_80, "spot_at_max": max_g["price"]}
 
 @app.get("/api/bs-greeks")
-def api_bs_greeks(symbol: str = None, strike: float = None, dte: float = None, iv: float = None, spot: float = None, premium: float = None, layer: str = None, qty: float = 1) -> dict:
+def api_bs_greeks(symbol: str = None, strike: float = None, dte: float = None, iv: float = None, spot: float = None, premium: float = None, layer: str = None, qty: float = 1, entry_iv: float | None = None, entry_dte: float | None = None, entry_spot: float | None = None) -> dict:
     """BS греки для Put-опциона (от текущей спот вниз до |delta| >= 0.85)."""
     if spot is None or strike is None or dte is None or iv is None:
         return {"error": "missing params"}
@@ -1505,6 +1505,20 @@ def api_bs_greeks(symbol: str = None, strike: float = None, dte: float = None, i
         # Stop when |delta| >= 0.85
         if abs(g.delta) >= 0.85:
             break
+    
+    # Calculate entry hedge range (using entry params)
+    entry_hedge_range = None
+    if entry_iv and entry_dte:
+        entry_rows = []
+        entry_spot_val = entry_spot or spot
+        for price in range(int(math.ceil(entry_spot_val)), 0, -1):
+            T_e = max(entry_dte / 365.0, 1.0 / 365.0)
+            sigma_e = entry_iv
+            g_e = bs_put(price, strike, T_e, sigma_e)
+            entry_rows.append({"price": price, "gamma": g_e.gamma})
+            if abs(g_e.delta) >= 0.85:
+                break
+        entry_hedge_range = _get_hedge_range_by_gamma(entry_rows)
     
     # Получаем текущую рыночную цену из Bybit
     live_greeks, _ = _get_live_greeks()
@@ -1542,6 +1556,7 @@ def api_bs_greeks(symbol: str = None, strike: float = None, dte: float = None, i
         "current_price": current_bybit,
         "rows": rows,
         "hedge_range": _get_hedge_range_by_gamma(rows),
+        "entry_hedge_range": entry_hedge_range,
         "insurance_range": _get_hedge_range_pct(layer, spot),
         "data_source": _get_greeks_status(),
         "qty": qty,

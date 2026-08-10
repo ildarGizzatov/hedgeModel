@@ -1012,13 +1012,13 @@ function renderAvailableOptions(layer, containerId, data){
 function selectOption(layer,symbol,o){
   try {
     if(o){
-      selectedOption[layer].push({symbol:symbol, strike:o.strike, dte:o.dte, iv:o.iv, price:o.price, delta:o.delta, gamma:o.gamma, theta:o.theta, vega:o.vega, spot_at_entry:o.spot_price});
+      selectedOption[layer].push({symbol:symbol, strike:o.strike, dte:o.dte, iv:o.iv, price:o.price, delta:o.delta, gamma:o.gamma, theta:o.theta, vega:o.vega, spot_at_entry:o.spot_price, entry_dte:o.dte, iv_entry:o.iv});
     } else if(layerData_distant&&layerData_distant.options&&layer==='distant'){
       var f=layerData_distant.options.find(function(x){return x.symbol===symbol});
-      selectedOption[layer].push(f?{symbol:symbol, strike:f.strike, dte:f.dte, iv:f.iv, price:f.price, delta:f.delta, gamma:f.gamma, theta:f.theta, vega:f.vega, spot_at_entry:f.spot_price}:{symbol:symbol});
+      selectedOption[layer].push(f?{symbol:symbol, strike:f.strike, dte:f.dte, iv:f.iv, price:f.price, delta:f.delta, gamma:f.gamma, theta:f.theta, vega:f.vega, spot_at_entry:f.spot_price, entry_dte:f.dte, iv_entry:f.iv}:{symbol:symbol});
     } else if(layerData_near&&layerData_near.options&&layer==='near'){
       var f=layerData_near.options.find(function(x){return x.symbol===symbol});
-      selectedOption[layer].push(f?{symbol:symbol, strike:f.strike, dte:f.dte, iv:f.iv, price:f.price, delta:f.delta, gamma:f.gamma, theta:f.theta, vega:f.vega, spot_at_entry:f.spot_price}:{symbol:symbol});
+      selectedOption[layer].push(f?{symbol:symbol, strike:f.strike, dte:f.dte, iv:f.iv, price:f.price, delta:f.delta, gamma:f.gamma, theta:f.theta, vega:f.vega, spot_at_entry:f.spot_price, entry_dte:f.dte, iv_entry:f.iv}:{symbol:symbol});
     } else {
       selectedOption[layer].push({symbol:symbol});
     }
@@ -1220,7 +1220,7 @@ function calcMetrics(bsData,layer){
     weightedPnL+=dPnL*w;
     prevPnL=pnl;
   }
-  var qty=bsData.qty||1; var optPnL=0; var cur=bsData.current_price||0; if(cur>0){optPnL=(cur-premium)*qty;} return{coverage:coverage,accuracy:accuracy,sumGamma:sumGamma,weightedPnL:weightedPnL,gammaProtection:gammaProtection,costPerDay:costPerDay,optionPnL:optPnL,hedgeRange:hedgeRange,currentPrice:cur};
+  var qty=bsData.qty||1; var optPnL=0; var cur=bsData.current_price||0; if(cur>0){optPnL=(cur-premium)*qty;} return{coverage:coverage,accuracy:accuracy,sumGamma:sumGamma,weightedPnL:weightedPnL,gammaProtection:gammaProtection,costPerDay:costPerDay,optionPnL:optPnL,hedgeRange:hedgeRange,entryHedgeRange:bsData.entry_hedge_range,currentPrice:cur};
 }
 
 function syncNearSelected(){
@@ -1252,15 +1252,20 @@ function syncNearSelected(){
   var promises=opts.map(function(opt,idx){
     var spot=currentSpot||opt.spot_price||opt.spot_at_entry||'';
     if(!spot||!opt.strike||!opt.dte||!opt.iv) return Promise.resolve(null);
-    return api('/api/bs-greeks?symbol='+encodeURIComponent(opt.symbol)+'&strike='+opt.strike+'&dte='+opt.dte+'&iv='+opt.iv+'&spot='+spot+'&premium='+opt.price+'&layer=near&qty='+(opt.qty||1))
+    var eiv = opt.iv_entry || opt.iv;
+    var edte = opt.entry_dte || opt.dte;
+    var espot = opt.spot_at_entry || spot;
+    var url='/api/bs-greeks?symbol='+encodeURIComponent(opt.symbol)+'&strike='+opt.strike+'&dte='+opt.dte+'&iv='+opt.iv+'&spot='+spot+'&premium='+opt.price+'&layer=near&qty='+(opt.qty||1)+'&entry_iv='+eiv+'&entry_dte='+edte+'&entry_spot='+espot;
+    return api(url)
       .then(function(d){return calcMetrics(d,'near');})
       .catch(function(e){return null;});
   });
   Promise.all(promises).then(function(metricsArr){
     // Update selectedOption.near with hedgeRange from metrics
     for(var i=0;i<metricsArr.length;i++){
-      if(metricsArr[i] && metricsArr[i].hedgeRange && opts[i]){
-        opts[i].hedgeRange = metricsArr[i].hedgeRange;
+      if(metricsArr[i]){
+        if(metricsArr[i].hedgeRange && opts[i]) opts[i].hedgeRange = metricsArr[i].hedgeRange;
+        if(metricsArr[i].entryHedgeRange && opts[i]) opts[i].entryHedgeRange = metricsArr[i].entryHedgeRange;
       }
     }
     // Pass 1: find max for each metric column
@@ -1339,16 +1344,17 @@ function syncNearSelected(){
       html+='<tr style="height:22px">';
       html+='<td style="padding:2px 6px;text-align:center"><input type="checkbox" '+(checked?'checked':'')+' onchange="window._onSelectToggle(\'near\','+idx+',this.checked)"></td>';
       html+='<td style="padding:2px 6px;font-weight:bold">'+opt.symbol+'</td>';
-      html+='<td style="padding:2px 6px;text-align:right">$'+strike+'</td>';
       html+='<td style="padding:2px 6px;text-align:center">'+(opt.dte||'-')+'</td>';
-      var pnlClr=optionPnL>=0?'var(--green)':'var(--red)'; html+='<td style="padding:2px 6px;text-align:right;color:'+pnlClr+'">$'+F(optionPnL,2)+'</td>';
       html+='<td style="padding:2px 6px;text-align:right">$'+F(price,4)+'</td>';
       var qtyStyle=isPurchased?" style=\"width:50px;text-align:center;background:#444;border:1px solid #666;color:#999;padding:2px 4px;border-radius:4px\" disabled":"style=\"width:50px;text-align:center;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px 4px;border-radius:4px\"";
       html+='<td style="padding:2px 6px;text-align:center"><input type="number" min="0" step="1" value="'+qty+'" '+qtyStyle+' onchange="if(!'+(isPurchased?'true':'false')+')window._onSelectQtyChange(\'near\','+idx+',this.value)"></td>';
+      var pnlClr=optionPnL>=0?'var(--green)':'var(--red)'; html+='<td style="padding:2px 6px;text-align:right;color:'+pnlClr+'">$'+F(optionPnL,2)+'</td>';
       html+='<td style="padding:2px 6px;text-align:right">$'+F(total,2)+'</td>';
       html+='<td style="padding:2px 6px;text-align:right">'+pctFromRemaining+'</td>';
       html+='<td style="padding:2px 6px;text-align:right">'+F(delta,4)+'</td>';
       html+='<td style="padding:2px 6px;text-align:right">'+resPct+'</td>';
+      var wideWinPct=m&&m.entryHedgeRange&&m.hedgeRange?F((m.hedgeRange.high-m.hedgeRange.low)/(m.entryHedgeRange.high-m.entryHedgeRange.low)*100,1)+'%':'-';
+      html+='<td style="padding:2px 6px;text-align:right">'+wideWinPct+'</td>';
       html+='<td style="padding:2px 6px;text-align:right;'+(covMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?F(m.coverage*100,0)+'%':'-')+'</td>';
       html+='<td style="padding:2px 6px;text-align:right;'+(sGMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?F(m.sumGamma,6):'-')+'</td>';
       html+='<td style="padding:2px 6px;text-align:right;'+(gPMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?F(m.gammaProtection,4):'-')+'</td>';
@@ -1364,7 +1370,7 @@ function syncNearSelected(){
     } else {
       html+='<tr style="height:22px;font-weight:bold;background:var(--bg);border-top:2px solid var(--border)">';
       html+='<td style="padding:2px 6px;text-align:center"></td>';
-      html+='<td style="padding:2px 6px" colspan="6">Итого:</td>';
+      html+='<td style="padding:2px 6px" colspan="5">Итого:</td>';
       html+='<td style="padding:2px 6px;text-align:right">$'+F(sumTotal,2)+'</td>';
       var pctTotal='';
       if(activeLayer&&activeLayer.budget>0&&sumTotal>0) pctTotal=F(sumTotal/activeLayer.budget*100,1)+'%';
@@ -1379,9 +1385,9 @@ function syncNearSelected(){
       var usedPct=activeLayer.budget>0?Math.round(activeLayer.spent/activeLayer.budget*100):0;
       budgetEl.textContent='💰 Бюджет: $'+F(activeLayer.budget,2)+' | Потрачено: $'+F(activeLayer.spent,2)+' ('+usedPct+'%) | Осталось: $'+F(remainingBudget,2);
     }
+    // Draw gamma chart & matrices after metrics loaded
+    setTimeout(function(){drawNearSelectedGammaChart();renderNearPnlMatrix();renderNearOptionPricesMatrix();}, 50);
   });
-  // Draw gamma chart after table
-  setTimeout(function(){drawNearSelectedGammaChart();renderNearPnlMatrix();renderNearOptionPricesMatrix();}, 100);
 }
 
 // === Near Layer: PnL Matrix ===
@@ -1599,14 +1605,19 @@ function syncMidSelected(){
   var promises=opts.map(function(opt,idx){
     var spot=currentSpot||opt.spot_price||opt.spot_at_entry||'';
     if(!spot||!opt.strike||!opt.dte||!opt.iv) return Promise.resolve(null);
-    return api('/api/bs-greeks?symbol='+encodeURIComponent(opt.symbol)+'&strike='+opt.strike+'&dte='+opt.dte+'&iv='+opt.iv+'&spot='+spot+'&premium='+opt.price+'&layer=mid&qty='+(opt.qty||1))
+    var eiv = opt.iv_entry || opt.iv;
+    var edte = opt.entry_dte || opt.dte;
+    var espot = opt.spot_at_entry || spot;
+    var url='/api/bs-greeks?symbol='+encodeURIComponent(opt.symbol)+'&strike='+opt.strike+'&dte='+opt.dte+'&iv='+opt.iv+'&spot='+spot+'&premium='+opt.price+'&layer=mid&qty='+(opt.qty||1)+'&entry_iv='+eiv+'&entry_dte='+edte+'&entry_spot='+espot;
+    return api(url)
       .then(function(d){return calcMetrics(d,'mid');})
       .catch(function(e){return null;});
   });
   Promise.all(promises).then(function(metricsArr){
     for(var i=0;i<metricsArr.length;i++){
-      if(metricsArr[i] && metricsArr[i].hedgeRange && opts[i]){
-        opts[i].hedgeRange = metricsArr[i].hedgeRange;
+      if(metricsArr[i]){
+        if(metricsArr[i].hedgeRange && opts[i]) opts[i].hedgeRange = metricsArr[i].hedgeRange;
+        if(metricsArr[i].entryHedgeRange && opts[i]) opts[i].entryHedgeRange = metricsArr[i].entryHedgeRange;
       }
     }
     var maxVal={cov:-1e9,sG:-1e9,gP:-1e9,acc:-1e9,wPnL:-1e9};
@@ -1676,16 +1687,17 @@ function syncMidSelected(){
       html+='<tr style="height:22px">';
       html+='<td style="padding:2px 6px;text-align:center"><input type="checkbox" '+(checked?'checked':'')+' onchange="window._onSelectToggle(\'mid\','+idx+',this.checked)"></td>';
       html+='<td style="padding:2px 6px;font-weight:bold">'+opt.symbol+'</td>';
-      html+='<td style="padding:2px 6px;text-align:right">$'+strike+'</td>';
       html+='<td style="padding:2px 6px;text-align:center">'+(opt.dte||'-')+'</td>';
-      var pnlClr=optionPnL>=0?'var(--green)':'var(--red)'; html+='<td style="padding:2px 6px;text-align:right;color:'+pnlClr+'">$'+F(optionPnL,2)+'</td>';
       html+='<td style="padding:2px 6px;text-align:right">$'+F(price,4)+'</td>';
       var qtyStyle=isPurchased?" style=\"width:50px;text-align:center;background:#444;border:1px solid #666;color:#999;padding:2px 4px;border-radius:4px\" disabled":"style=\"width:50px;text-align:center;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px 4px;border-radius:4px\"";
       html+='<td style="padding:2px 6px;text-align:center"><input type="number" min="0" step="1" value="'+qty+'" '+qtyStyle+' onchange="if(!'+(isPurchased?'true':'false')+')window._onSelectQtyChange(\'mid\','+idx+',this.value)"></td>';
+      var pnlClr=optionPnL>=0?'var(--green)':'var(--red)'; html+='<td style="padding:2px 6px;text-align:right;color:'+pnlClr+'">$'+F(optionPnL,2)+'</td>';
       html+='<td style="padding:2px 6px;text-align:right">$'+F(total,2)+'</td>';
       html+='<td style="padding:2px 6px;text-align:right">'+pctFromRemaining+'</td>';
       html+='<td style="padding:2px 6px;text-align:right">'+F(delta,4)+'</td>';
       html+='<td style="padding:2px 6px;text-align:right">'+resPct+'</td>';
+      var wideWinPctMid=m&&m.entryHedgeRange&&m.hedgeRange?F((m.hedgeRange.high-m.hedgeRange.low)/(m.entryHedgeRange.high-m.entryHedgeRange.low)*100,1)+'%':'-';
+      html+='<td style="padding:2px 6px;text-align:right">'+wideWinPctMid+'</td>';
       html+='<td style="padding:2px 6px;text-align:right;'+(covMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?F(m.coverage*100,0)+'%':'-')+'</td>';
       html+='<td style="padding:2px 6px;text-align:right;'+(sGMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?F(m.sumGamma,6):'-')+'</td>';
       html+='<td style="padding:2px 6px;text-align:right;'+(gPMax?'background:rgba(220,38,38,0.15);':'')+'">'+(m?F(m.gammaProtection,4):'-')+'</td>';
@@ -1701,7 +1713,7 @@ function syncMidSelected(){
     } else {
       html+='<tr style="height:22px;font-weight:bold;background:var(--bg);border-top:2px solid var(--border)">';
       html+='<td style="padding:2px 6px;text-align:center"></td>';
-      html+='<td style="padding:2px 6px" colspan="6">Итого:</td>';
+      html+='<td style="padding:2px 6px" colspan="5">Итого:</td>';
       html+='<td style="padding:2px 6px;text-align:right">$'+F(sumTotal,2)+'</td>';
       var pctTotal='';
       if(activeLayer&&activeLayer.budget>0&&sumTotal>0) pctTotal=F(sumTotal/activeLayer.budget*100,1)+'%';
@@ -1715,8 +1727,9 @@ function syncMidSelected(){
       var usedPct=activeLayer.budget>0?Math.round(activeLayer.spent/activeLayer.budget*100):0;
       budgetEl.textContent='💰 Бюджет: $'+F(activeLayer.budget,2)+' | Потрачено: $'+F(activeLayer.spent,2)+' ('+usedPct+'%) | Осталось: $'+F(remainingBudget,2);
     }
+    // Draw gamma chart & matrices after metrics loaded
+    setTimeout(function(){drawMidSelectedGammaChart();renderMidPnlMatrix();renderMidOptionPricesMatrix();}, 50);
   });
-  setTimeout(function(){drawMidSelectedGammaChart();renderMidPnlMatrix();renderMidOptionPricesMatrix();}, 100);
 }
 
 // === Mid Layer: PnL Matrix ===
@@ -2222,8 +2235,13 @@ function drawNearSelectedGammaChart(){
     if(hr && hr.low && hr.high){
       if(hr.low < chartLow) chartLow = hr.low - 1;
       if(hr.high > chartHigh) chartHigh = hr.high + 1;
-      // Add boundary points
       prices.push(hr.low, hr.high);
+    }
+    var ehr = opts[i].entryHedgeRange;
+    if(ehr && ehr.low && ehr.high){
+      if(ehr.low < chartLow) chartLow = ehr.low - 1;
+      if(ehr.high > chartHigh) chartHigh = ehr.high + 1;
+      prices.push(ehr.low, ehr.high);
     }
   }
   prices.sort(function(a,b){return b-a;});
@@ -2334,19 +2352,33 @@ function drawNearSelectedGammaChart(){
     ctx.restore();
   }
 
-  // Spot line - bright white solid
-  var sx=toX(spot);
-  ctx.strokeStyle='#ffffff';ctx.lineWidth=2;ctx.setLineDash([]);
-  ctx.beginPath();ctx.moveTo(sx,pad.t);ctx.lineTo(sx,pad.t+cH);ctx.stroke();
-  ctx.fillStyle='#ffffff';ctx.font='bold 14px monospace';
-  ctx.fillText('S='+spot,sx+4,pad.t+14);
-
-  // Individual option gammas + max markers
+  // Entry hedge range boundaries as dots on each option's gamma curve
   for(var i=0;i<optionGammas.length;i++){
-    var maxG=-1,maxJ=-1;
+    var ehr = opts[i].entryHedgeRange;
+    if(!ehr || !ehr.low || !ehr.high) continue;
+    var color = colors[i%colors.length];
+    var ehx1=toX(ehr.low), ehx2=toX(ehr.high);
+    if(ehx2<=pad.l || ehx1>=pad.l+cW) continue;
+
+    // Find closest gamma values at entry hedge range boundaries
+    var gyLow=0,gyHigh=0;
     for(var j=0;j<optionGammas[i].length;j++){
-      if(optionGammas[i][j]>maxG){maxG=optionGammas[i][j];maxJ=j;}
+      if(Math.abs(prices[j]-ehr.low)<=1) gyLow=optionGammas[i][j];
+      if(Math.abs(prices[j]-ehr.high)<=1) gyHigh=optionGammas[i][j];
     }
+
+    // Draw small dots at entry hedge range boundaries
+    ctx.beginPath();
+    ctx.arc(ehx1, toY(gyLow), 3, 0, Math.PI*2);
+    ctx.fillStyle=color;ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(ehx2, toY(gyHigh), 3, 0, Math.PI*2);
+    ctx.fillStyle=color;ctx.fill();
+  }
+
+  // Individual option gamma curves (thin dashed)
+  for(var i=0;i<optionGammas.length;i++){
     ctx.beginPath();
     ctx.strokeStyle=colors[i%colors.length];
     ctx.lineWidth=0.5;ctx.setLineDash([4,3]);
@@ -2356,15 +2388,14 @@ function drawNearSelectedGammaChart(){
     }
     ctx.stroke();
     ctx.setLineDash([]);
-    // Mark max for this option
-    if(maxJ>=0){
-      var mx=toX(prices[maxJ]),my=toY(optionGammas[i][maxJ]);
-      ctx.beginPath();ctx.arc(mx,my,5,0,Math.PI*2);
-      ctx.fillStyle=colors[i%colors.length];ctx.fill();
-      ctx.beginPath();ctx.arc(mx,my,8,0,Math.PI*2);
-      ctx.strokeStyle=colors[i%colors.length];ctx.lineWidth=2;ctx.stroke();
-      }
   }
+
+  // Spot line - bright white solid
+  var sx=toX(spot);
+  ctx.strokeStyle='#ffffff';ctx.lineWidth=2;ctx.setLineDash([]);
+  ctx.beginPath();ctx.moveTo(sx,pad.t);ctx.lineTo(sx,pad.t+cH);ctx.stroke();
+  ctx.fillStyle='#ffffff';ctx.font='bold 14px monospace';
+  ctx.fillText('S='+spot,sx+4,pad.t+14);
 
   if(showTotalGamma) {
     // Total gamma curve (filled)
@@ -2633,6 +2664,12 @@ function drawMidSelectedGammaChart(){
       if(hr.high > chartHigh) chartHigh = hr.high + 1;
       prices.push(hr.low, hr.high);
     }
+    var ehr = opts[i].entryHedgeRange;
+    if(ehr && ehr.low && ehr.high){
+      if(ehr.low < chartLow) chartLow = ehr.low - 1;
+      if(ehr.high > chartHigh) chartHigh = ehr.high + 1;
+      prices.push(ehr.low, ehr.high);
+    }
   }
   prices.sort(function(a,b){return b-a;});
 
@@ -2704,7 +2741,7 @@ function drawMidSelectedGammaChart(){
   ctx.beginPath();ctx.moveTo(sx,pad.t);ctx.lineTo(sx,pad.t+cH2);ctx.stroke();
   ctx.fillStyle='#ffffff';ctx.font='bold 14px monospace';
   ctx.fillText('S='+spot,sx+4,pad.t+14);
-  // Working window on each option's gamma curve
+  // Working window on each option's gamma curve (thick line)
   for(var i=0;i<optionGammas.length;i++){
     var hr = opts[i].hedgeRange;
     if(!hr || !hr.low || !hr.high) continue;
@@ -2733,12 +2770,28 @@ function drawMidSelectedGammaChart(){
     }
     ctx.restore();
   }
-  // Individual gamma curves
+
+  // Entry hedge range boundaries as small dots on each option's gamma curve
   for(var i=0;i<optionGammas.length;i++){
-    var maxJ=-1,maxG=-1;
+    var ehr = opts[i].entryHedgeRange;
+    if(!ehr || !ehr.low || !ehr.high) continue;
+    var color = colors[i%colors.length];
+    var ehx1=toX(ehr.low), ehx2=toX(ehr.high);
+    if(ehx2<=pad.l || ehx1>=pad.l+cW2) continue;
+    var gyLow=0,gyHigh=0;
     for(var j=0;j<optionGammas[i].length;j++){
-      if(optionGammas[i][j]>maxG){maxG=optionGammas[i][j];maxJ=j;}
+      if(Math.abs(prices[j]-ehr.low)<=1) gyLow=optionGammas[i][j];
+      if(Math.abs(prices[j]-ehr.high)<=1) gyHigh=optionGammas[i][j];
     }
+    ctx.beginPath();
+    ctx.arc(ehx1, toY(gyLow), 3, 0, Math.PI*2);
+    ctx.fillStyle=color;ctx.fill();
+    ctx.beginPath();
+    ctx.arc(ehx2, toY(gyHigh), 3, 0, Math.PI*2);
+    ctx.fillStyle=color;ctx.fill();
+  }
+  // Individual option gamma curves (thin dashed)
+  for(var i=0;i<optionGammas.length;i++){
     ctx.beginPath();
     ctx.strokeStyle=colors[i%colors.length];
     ctx.lineWidth=0.5;ctx.setLineDash([4,3]);
@@ -2748,13 +2801,6 @@ function drawMidSelectedGammaChart(){
     }
     ctx.stroke();
     ctx.setLineDash([]);
-    if(maxJ>=0){
-      var mx=toX(prices[maxJ]),my=toY(optionGammas[i][maxJ]);
-      ctx.beginPath();ctx.arc(mx,my,5,0,Math.PI*2);
-      ctx.fillStyle=colors[i%colors.length];ctx.fill();
-      ctx.beginPath();ctx.arc(mx,my,8,0,Math.PI*2);
-      ctx.strokeStyle=colors[i%colors.length];ctx.lineWidth=2;ctx.stroke();
-    }
   }
   if(showTotalGamma) {
     ctx.beginPath();
