@@ -10,6 +10,7 @@ kanban-plugin: board
 
 ## 📥 Входящие
 
+- [ ] [[T006-anchor-selection]]
 
 
 ## 📐 На оценке
@@ -26,7 +27,6 @@ kanban-plugin: board
 
 ## ✅ В работе
 
-- [ ] [[T006-anchor-selection]]
 - [ ] [[T009-active-layer-selection]] — Перенести сюда при начале работы
 
 
