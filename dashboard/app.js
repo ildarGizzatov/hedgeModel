@@ -1,4 +1,4 @@
-const API="http://localhost:8083";
+const API= "";
 
 // === Insurance range: near=3-10%, mid=10-20%, distant=15-30% ===
 function getInsuranceRange(layer, spot) {
