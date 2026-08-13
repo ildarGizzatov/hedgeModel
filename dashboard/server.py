@@ -2,7 +2,7 @@
 """
 T007 — Dashboard FastAPI backend.
 
-Читает данные из SQLite-БД (hedge_model.db) и отдаёт JSON.
+Читает данные из PostgreSQL и отдаёт JSON.
 Эндпоинты: /api/positions, /api/options, /api/layers,
            /api/recommendations, /api/summary, /api/blackscholes
 
