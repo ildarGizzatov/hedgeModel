@@ -9,3 +9,4 @@ requests==2.34.2
 # Dev-зависимости (pip install -r requirements-dev.txt)
 # ruff
 # pytest
+psycopg[binary]
